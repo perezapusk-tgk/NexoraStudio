@@ -959,12 +959,6 @@ app.get('/api/leads', async (_req, res) => {
   const { rows } = await pool.query('select l.id, l.project_id, l.name, l.message, l.status, l.created_at, p.name as project_name from leads l left join projects p on p.id=l.project_id where p.studio_id=$1 order by created_at desc limit 100',[req.user.studio_id])
   res.json({ leads: rows })
 })
-
-app.post('/api/bookings/:id/payment', async (req,res) => {
-  const id=req.params.id, amount=Number(req.body?.amount||0), currency=String(req.body?.currency||'EUR').toUpperCase()
-  if(!Number.isFinite(amount)||amount<=0) return res.status(400).json({error:'Некорректная сумма оплаты'})
-  if(!pool){const booking=memoryBookings.find(x=>x.id===id);if(!booking)return res.status(404).json({error:'Бронирование не найдено'});booking.status='completed';const payment={id:crypto.randomUUID(),project_id:booking.project_id||memoryProjects.find(p=>p.slug===booking.project_slug)?.id||null,client_id:booking.client_id||null,booking_id:id,amount,currency,status:'paid',description:'Оплата бронирования '+(booking.service_name||''),created_at:new Date().toISOString()};memoryPayments.unshift(payment);return res.status(201).json({payment,booking})}
-  const b=(await pool.query('select id,project_id,client_id,status,service_name from bookings where id=$1 limit 1',[id])).rows[0];if(!b)return res.status(404).json({error:'Бронирование не найдено'});const q=await pool.query('insert into payments(project_id,client_id,booking_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7) returning *',[b.project_id,b.client_id,id,amount,currency,'paid','Оплата бронирования '+(b.service_name||'')]);await pool.query("update bookings set status='completed' where id=$1",[id]);res.status(201).json({payment:q.rows[0],booking:{...b,status:'completed'}})
 })
 
 app.get('/api/bookings', async (_req, res) => {
