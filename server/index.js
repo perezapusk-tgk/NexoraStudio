@@ -81,12 +81,12 @@ app.patch('/api/projects/:id',async(req,res)=>{if(!pool){
   if(req.body?.settings)p.settings={...(p.settings||{}),...req.body.settings}
   return res.json({project:p})
 }const current=await pool.query('select * from projects where id=$1',[req.params.id]);if(!current.rows[0])return res.status(404).json({error:'Проект не найден'});const settings=req.body?.settings?{...(current.rows[0].settings||{}),...req.body.settings}:current.rows[0].settings;const q=await pool.query('update projects set name=coalesce($1,name),domain=case when $2 is null then domain else $2 end,settings=$3,updated_at=now() where id=$4 returning *',[req.body?.name,req.body?.domain===undefined?null:String(req.body.domain||'').trim()||null,JSON.stringify(settings),req.params.id]);res.json({project:q.rows[0]})});
-app.post('/api/projects/:id/pages',async(req,res)=>{const title=String(req.body?.title||'Новая страница'),slug=slugify(req.body?.slug||title);if(!pool)return res.status(201).json({page:{id:crypto.randomUUID(),title,slug,content:{blocks:[]},published:false}});const q=await pool.query('insert into pages(project_id,title,slug,content) values($1,$2,$3,$4) returning *',[req.params.id,title,slug,JSON.stringify({blocks:[]})]);res.status(201).json({page:q.rows[0]})});
+app.post('/api/projects/:id/pages',async(req,res)=>{const title=String(req.body?.title||'Новая страница'),slug=slugify(req.body?.slug||title);if(!pool){const project=memoryProjects.find(x=>x.id===req.params.id||x.slug===req.params.id);if(!project)return res.status(404).json({error:'Проект не найден'});const page={id:crypto.randomUUID(),title,slug,content:{blocks:[]},published:false};const pages=memoryPages.get(project.id)||[];pages.push(page);memoryPages.set(project.id,pages);return res.status(201).json({page})};const q=await pool.query('insert into pages(project_id,title,slug,content) values($1,$2,$3,$4) returning *',[req.params.id,title,slug,JSON.stringify({blocks:[]})]);res.status(201).json({page:q.rows[0]})});
 app.patch('/api/projects/:id/pages/:pageId',async(req,res)=>{if(!pool){const pages=memoryPages.get(req.params.id)||[];const p=pages.find(x=>x.id===req.params.pageId);if(!p)return res.status(404).json({error:'Страница не найдена'});if(req.body?.content)p.content=req.body.content;return res.json({page:p})}const q=await pool.query('update pages set content=coalesce($1,content),updated_at=now() where id=$2 and project_id=$3 returning *',[req.body?.content?JSON.stringify(req.body.content):null,req.params.pageId,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Страница не найдена'});res.json({page:q.rows[0]})});
 app.get('/api/public/:slug', async (req,res) => {
   const slug = String(req.params.slug || '').trim()
   if (!pool) {
-    const project = memoryProjects.find(p => p.slug === slug)
+    const project = memoryProjects.find(p => p.slug === slug && p.status === 'published')
     if (!project) return res.status(404).json({error:'Публичный проект не найден'})
     return res.json({project,pages:(memoryPages.get(project.id)||[]).filter(x=>x.published),catalog:memoryCatalog.get(project.id)||[]})
   }
@@ -216,6 +216,28 @@ app.get('/api/clients', async (_req, res) => {
   if (!pool) return res.json({ clients: demoClients() })
   const { rows } = await pool.query('select id, name, email, phone, created_at from clients order by created_at desc')
   res.json({ clients: rows })
+})
+
+app.get('/api/projects/:id/analytics', async (req,res) => {
+  const id=req.params.id
+  if(!pool){
+    const project=memoryProjects.find(p=>p.id===id||p.slug===id)
+    if(!project)return res.status(404).json({error:'Проект не найден'})
+    const slug=project.slug
+    const events=memoryEvents.filter(e=>e.slug===slug)
+    const leads=memoryLeads.filter(l=>l.project_slug===slug)
+    const bookings=memoryBookings.filter(b=>b.project_slug===slug)
+    return res.json({metrics:{visits:events.filter(e=>e.event_type==='page_view').length,leads:leads.length,bookings:bookings.length,revenue:0}})
+  }
+  const project=await pool.query('select id from projects where id=$1 or slug=$1 limit 1',[id])
+  if(!project.rows[0])return res.status(404).json({error:'Проект не найден'})
+  const q=await pool.query(`select
+    count(*) filter (where event_type='page_view')::int as visits,
+    count(*) filter (where event_type='lead')::int as leads,
+    count(*) filter (where event_type='booking')::int as bookings,
+    coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue
+    from analytics_events where project_id=$1 and created_at >= now() - interval '30 days'`,[project.rows[0].id])
+  res.json({metrics:q.rows[0]})
 })
 
 app.get('/api/analytics/overview', async (_req, res) => {
