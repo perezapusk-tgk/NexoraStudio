@@ -11,7 +11,7 @@ const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env
 app.use(cors())
 app.use(express.json())
 
-const demoStudio = { id: 'studio_demo', name: 'Nexora Studio', ownerName: 'Алексей', plan: 'pro', projectLimit: 50 }
+const demoStudio = { id: '00000000-0000-0000-0000-000000000001', name: 'Nexora Studio', ownerName: 'Алексей', plan: 'pro', projectLimit: 50 }
 
 app.get('/api/health', async (_req, res) => {
   let database = 'not_configured'
