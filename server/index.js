@@ -150,13 +150,13 @@ app.get('/api/studio/usage', async (req,res) => {
   }
   const [projects,clients,team]=await Promise.all([
     pool.query('select count(*)::int as count from projects where studio_id=$1',[req.user.studio_id]),
-    pool.query('select count(*)::int as count from clients where studio_id=$1',[demoStudio.id]),
-    pool.query('select count(*)::int as count from users where studio_id=$1',[demoStudio.id])
+    pool.query('select count(*)::int as count from clients where studio_id=$1',[req.user.studio_id]),
+    pool.query('select count(*)::int as count from users where studio_id=$1',[req.user.studio_id])
   ])
-  res.json({studio:demoStudio,usage:{projects:projects.rows[0].count,clients:clients.rows[0].count,team:team.rows[0].count},limits:{projects:demoStudio.projectLimit,clients:10000,team:5}})
+  res.json({studio:req.studio,usage:{projects:projects.rows[0].count,clients:clients.rows[0].count,team:team.rows[0].count},limits:{projects:req.studio.project_limit||5,clients:10000,team:5}})
 })
 
-app.get('/api/team', async (_req,res) => {
+app.get('/api/team', async (req,res) => {
   if(!pool) return res.json({members:[{id:'demo-owner',name:demoStudio.ownerName,email:'owner@nexora.local',role:'owner',created_at:new Date().toISOString()}]})
   const q=await pool.query('select id,name,email,role,created_at from users where studio_id=$1 order by created_at',[req.user.studio_id])
   res.json({members:q.rows})
@@ -167,7 +167,7 @@ app.post('/api/team', async (req,res) => {
   if(!name||!email)return res.status(400).json({error:'Имя и email обязательны'})
   if(!['admin','member','viewer'].includes(role))return res.status(400).json({error:'Недопустимая роль'})
   if(!pool)return res.status(201).json({member:{id:crypto.randomUUID(),name,email,role,created_at:new Date().toISOString()}})
-  const count=await pool.query('select count(*)::int as count from users where studio_id=$1',[demoStudio.id])
+  const count=await pool.query('select count(*)::int as count from users where studio_id=$1',[req.user.studio_id])
   if(count.rows[0].count>=5)return res.status(409).json({error:'Достигнут лимит участников тарифа'})
   try {
     const q=await pool.query('insert into users(studio_id,name,email,role) values($1,$2,$3,$4) returning id,name,email,role,created_at',[req.user.studio_id,name,email,role])
