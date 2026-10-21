@@ -33,6 +33,7 @@ export const api = {
   convertLead: (id) => request('/leads/' + id + '/convert',{method:'POST'}),
   clients: () => request('/clients'),
   bookings: () => request('/bookings'),
+  updateBooking: (id,status) => request('/bookings/' + id,{method:'PATCH',body:JSON.stringify({status})}),
   analytics: () => request('/analytics/overview'),
   projectAnalytics: (id) => request('/projects/' + id + '/analytics'),
   templates: () => request('/templates'),
