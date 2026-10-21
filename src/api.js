@@ -44,7 +44,6 @@ export const api = {
   updateInvoice: (id,status) => request('/invoices/' + id,{method:'PATCH',body:JSON.stringify({status})}),
   createPayment: (payload) => request('/payments',{method:'POST',body:JSON.stringify(payload)}),
   updatePayment: (id,status) => request('/payments/' + id,{method:'PATCH',body:JSON.stringify({status})}),
-  updateBooking: (id,status) => request('/bookings/' + id,{method:'PATCH',body:JSON.stringify({status})}),
   analytics: () => request('/analytics/overview'),
   projectAnalytics: (id) => request('/projects/' + id + '/analytics'),
   templates: () => request('/templates'),
