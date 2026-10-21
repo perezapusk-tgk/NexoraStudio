@@ -268,7 +268,7 @@ function Header({ eyebrow, title, description, action }) {
 
 function Dashboard({ projects, onCreate, onNavigate, onOpenProject }) {
   return <>
-    <Header eyebrow="Среда студии" title={`Доброе утро, ${userName} 👋`} description="Вот что происходит с вашими клиентскими проектами сегодня." action={<button className="primary" onClick={onCreate}><Plus size={17}/> Новый проект</button>}/>
+    <Header eyebrow="Среда студии" title="Доброе утро 👋" description="Вот что происходит с вашими клиентскими проектами сегодня." action={<button className="primary" onClick={onCreate}><Plus size={17}/> Новый проект</button>}/>
     <div className="metrics">
       <Metric title="Активные проекты" value="24" change="+12%" icon={FolderKanban}/>
       <Metric title="Новые заявки" value="37" change="+18%" icon={Inbox}/>
