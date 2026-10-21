@@ -97,3 +97,6 @@
 .booking-status{min-width:150px;border:1px solid var(--border,#e7e7e7);background:#fff;border-radius:10px;padding:9px 11px;font:inherit;color:inherit}
 .booking em.pending{background:#fff4d6}.booking em.confirmed{background:#e8f7ee}.booking em.completed{background:#e8eefc}.booking em.cancelled{background:#f4e8e8}
 @media(max-width:760px){.booking-wrap{align-items:flex-start;flex-direction:column}.booking-status{width:100%}.calendar-actions{overflow:auto;max-width:100%}}
+
+
+.invoice-row{display:grid;grid-template-columns:1.4fr 1fr auto 150px;align-items:center;gap:18px}.invoice-number,.invoice-project{display:flex;flex-direction:column;gap:4px}.invoice-number span,.invoice-project span{font-size:12px;color:var(--muted,#777)}.invoice-row>strong{font-size:15px;white-space:nowrap}@media(max-width:760px){.invoice-row{grid-template-columns:1fr;gap:10px}.invoice-row>strong{font-size:17px}.invoice-row .booking-status{width:100%}}
