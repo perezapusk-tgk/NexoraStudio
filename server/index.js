@@ -828,9 +828,10 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
 app.post('/api/stripe/connect/webhook', async (req,res)=>{
   const signing=String(process.env.STRIPE_CONNECT_WEBHOOK_SECRET||process.env.STRIPE_WEBHOOK_SECRET||'').trim()
   if(!signing)return res.status(503).json({error:'Stripe Connect webhook secret не настроен'})
-  const signature=String(req.headers['stripe-signature']||''),timestamp=Number((signature.match(/(?:^|,)t=(\\d+)/)||[])[1]||0),provided=(signature.match(/(?:^|,)v1=([^,]+)/)||[])[1]||'',payload=(req.rawBody||Buffer.from('')).toString('utf8')
+  const signature=String(req.headers['stripe-signature']||''),timestamp=Number((signature.match(/(?:^|,)t=(\\d+)/)||[])[1]||0),providedList=[...signature.matchAll(/(?:^|,)v1=([^,]+)/g)].map(m=>m[1]),payload=(req.rawBody||Buffer.from('')).toString('utf8')
   const expected=crypto.createHmac('sha256',signing).update(String(timestamp)+'.'+payload).digest('hex')
-  if(!timestamp||!provided||expected!==provided||Math.abs(Date.now()/1000-timestamp)>300)return res.status(400).json({error:'Недействительная подпись Stripe Connect webhook'})
+  const valid=providedList.some(v=>crypto.timingSafeEqual(Buffer.from(v),Buffer.from(expected)))&&timestamp&&Math.abs(Date.now()/1000-timestamp)<=300
+  if(!valid)return res.status(400).json({error:'Недействительная подпись Stripe Connect webhook'})
   try{
     const event=JSON.parse(payload),obj=event.data?.object||{}
     if(pool&&event.type==='account.updated'&&obj.id){
