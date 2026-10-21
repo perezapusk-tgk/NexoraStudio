@@ -24,3 +24,17 @@ alter table if exists leads
 
 create index if not exists idx_leads_status_created
   on leads(status, created_at desc);
+
+create table if not exists payments (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  client_id uuid references clients(id) on delete set null,
+  booking_id uuid references bookings(id) on delete set null,
+  amount numeric(12,2) not null,
+  currency text not null default 'EUR',
+  status text not null default 'pending',
+  description text,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_payments_project_created on payments(project_id, created_at desc);
+create index if not exists idx_payments_status on payments(status);
