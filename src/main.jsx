@@ -144,7 +144,7 @@ function App() {
     api.projects().then(items => {
       if (!alive) return
       const list = Array.isArray(items) ? items : (items.projects || [])
-      if (list.length) setProjectData(list.map(p => ({
+      setProjectData(list.map(p => ({
         id: p.id,
         name: p.name || p.title || 'Без названия',
         type: p.project_type === 'miniapp' ? 'Mini App' : p.project_type === 'site' ? 'Сайт' : 'Сайт + Mini App',
