@@ -19,6 +19,8 @@ export const api = {
   createPage: (id,payload) => request('/projects/' + id + '/pages',{method:'POST',body:JSON.stringify(payload)}),
   updatePage: (id,pageId,payload) => request('/projects/' + id + '/pages/' + pageId,{method:'PATCH',body:JSON.stringify(payload)}),
   publishProject: (id) => request('/projects/' + id + '/publish',{method:'POST'}),
+  checkDomain: (id,domain) => request('/projects/' + id + '/domain/check',{method:'POST',body:JSON.stringify({domain})}),
+  connectDomain: (id,domain) => request('/projects/' + id + '/domain/connect',{method:'POST',body:JSON.stringify({domain})}),
   configureTelegram: (id,payload={}) => request('/projects/' + id + '/telegram/configure',{method:'POST',body:JSON.stringify(payload)}),
   publicProject: (slug) => request('/public/' + slug),
   publicLead: (slug,payload) => request('/public/' + slug + '/leads',{method:'POST',body:JSON.stringify(payload)}),
