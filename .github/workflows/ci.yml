@@ -15,5 +15,6 @@ jobs:
         with:
           node-version: 20
       - run: npm install --legacy-peer-deps --no-audit --no-fund
-      - run: node -e "const fs=require('fs');const s=fs.readFileSync('src/main.jsx','utf8');const p=118976;console.log('DEBUG',s.length,s.slice(p-500,p+500))"\n      - run: npm run build
+      - run: node -e 'const fs=require("fs");const s=fs.readFileSync("src/main.jsx","utf8");const p=118976;console.log("DEBUG",s.length,s.slice(p-500,p+500))'
+      - run: npm run build
       - run: node --check server/index.js
