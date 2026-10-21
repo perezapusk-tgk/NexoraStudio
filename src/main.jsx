@@ -214,6 +214,43 @@ function Templates({onCreate}){const templates=[['Barber','Барбершоп','
 
 function SettingsPage(){return <><Header eyebrow="Рабочее пространство" title="Настройки" description="Брендинг, участники, уведомления и параметры студии."/><div className="settings-layout"><div className="settings-nav card">{['Профиль студии','Брендинг','Участники','Уведомления','Интеграции','Безопасность','Тариф и оплата'].map((x,i)=><button className={i===0?'selected':''} key={x}>{x}</button>)}</div><section className="card settings-form"><div className="setting-block"><h2>Профиль студии</h2><span>Основная информация рабочего пространства.</span><label>Название студии<input value="Nexora Studio" readOnly/></label><label>Рабочий email<input value="studio@nexora.local" readOnly/></label><label>Часовой пояс<select defaultValue="Europe/Helsinki"><option>Europe/Helsinki</option><option>Europe/Moscow</option><option>Europe/Berlin</option></select></label></div><div className="setting-block"><h2>Внешний вид</h2><span>Настройте стиль панели и клиентских проектов.</span><div className="theme-options"><button className="theme active"><span/>Светлая</button><button className="theme"><span/>Тёмная</button><button className="theme"><span/>Системная</button></div></div><div className="setting-actions"><button className="filter">Отменить</button><button className="primary">Сохранить изменения</button></div></section></div></>}
 
+function CatalogManager({projectId}){
+  const [items,setItems]=useState([])
+  const [loading,setLoading]=useState(true)
+  const [saving,setSaving]=useState(false)
+  const [editing,setEditing]=useState(null)
+  const [form,setForm]=useState({name:'',description:'',price:'',currency:'EUR',active:true})
+  const load=async()=>{setLoading(true);try{const r=await api.catalog(projectId);setItems(r.items||[])}finally{setLoading(false)}}
+  useEffect(()=>{load()},[projectId])
+  const reset=()=>{setEditing(null);setForm({name:'',description:'',price:'',currency:'EUR',active:true})}
+  const save=async()=>{
+    if(!form.name.trim()) return
+    setSaving(true)
+    try{
+      if(editing) await api.updateCatalogItem(projectId,editing,form)
+      else await api.createCatalogItem(projectId,form)
+      reset(); await load()
+    }finally{setSaving(false)}
+  }
+  const edit=(item)=>{setEditing(item.id);setForm({name:item.name||'',description:item.description||'',price:item.price??'',currency:item.currency||'EUR',active:item.active!==false})}
+  const remove=async(id)=>{if(!window.confirm('Удалить позицию из каталога?'))return;await api.deleteCatalogItem(projectId,id);setItems(v=>v.filter(x=>x.id!==id));if(editing===id)reset()}
+  return <div className="catalog-layout">
+    <section className="card workspace-card">
+      <div className="card-head"><div><h2>Каталог</h2><span>{items.length} позиций · данные доступны сайту и Mini App</span></div><button className="filter" onClick={reset}>Новая позиция</button></div>
+      {loading?<div className="empty-editor"><span>Загружаем каталог…</span></div>:items.length===0?<div className="empty-editor"><Layers3 size={24}/><b>Каталог пока пуст</b><span>Добавьте первую услугу или товар справа.</span></div>:
+      <div className="catalog-list">{items.map(item=><div className="catalog-row" key={item.id}><div className="catalog-thumb">{item.name.slice(0,1)}</div><div className="catalog-main"><b>{item.name}</b><span>{item.description||'Без описания'}</span></div><div className="catalog-price">{item.price!=null?new Intl.NumberFormat('ru-RU',{style:'currency',currency:item.currency||'EUR'}).format(Number(item.price)):'Цена по запросу'}</div><span className={item.active?'status success':'status draft'}><i/>{item.active?'Активна':'Скрыта'}</span><div className="catalog-actions"><button className="filter" onClick={()=>edit(item)}>Изменить</button><button className="row-more" onClick={()=>remove(item.id)}><X size={16}/></button></div></div>)}</div>}
+    </section>
+    <section className="card workspace-card catalog-form">
+      <div className="eyebrow">{editing?'Редактирование':'Новая позиция'}</div><h3>{editing?'Изменить позицию':'Добавить в каталог'}</h3>
+      <label className="workspace-label">Название<input value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))} placeholder="Например, Стрижка"/></label>
+      <label className="workspace-label">Описание<textarea value={form.description} onChange={e=>setForm(v=>({...v,description:e.target.value}))} placeholder="Короткое описание услуги или товара"/></label>
+      <div className="catalog-form-grid"><label className="workspace-label">Цена<input type="number" min="0" step="0.01" value={form.price} onChange={e=>setForm(v=>({...v,price:e.target.value}))} placeholder="35"/></label><label className="workspace-label">Валюта<select value={form.currency} onChange={e=>setForm(v=>({...v,currency:e.target.value}))}><option>EUR</option><option>USD</option><option>RUB</option></select></label></div>
+      <label className="catalog-check"><input type="checkbox" checked={form.active} onChange={e=>setForm(v=>({...v,active:e.target.checked}))}/> Показывать клиентам</label>
+      <div className="setting-actions"><button className="filter" onClick={reset}>Очистить</button><button className="primary" onClick={save} disabled={saving}>{saving?'Сохраняем…':editing?'Сохранить':'Добавить'}</button></div>
+    </section>
+  </div>
+}
+
 function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
   const current=data?.project||project, pages=data?.pages||[];
   const [saving,setSaving]=useState(false), [name,setName]=useState(''), [domain,setDomain]=useState('');
@@ -251,7 +288,7 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
       <div className="workspace-title"><div className="project-logo dark">{current.name?.slice(0,1)}</div><div><b>{current.name}</b><span>{current.project_type||'website'} · {current.status==='published'?'Опубликован':'Черновик'}</span></div></div>
       <div className="workspace-actions"><button className="filter" onClick={()=>setView('preview')}><ExternalLink size={14}/> Предпросмотр</button><button className="primary" onClick={publish} disabled={saving}><Globe2 size={15}/> Опубликовать</button></div>
     </div>
-    <div className="workspace-tabs">{[['overview','Обзор'],['pages','Страницы'],['editor','Редактор'],['preview','Предпросмотр'],['settings','Настройки']].map(([id,label])=><button key={id} className={view===id?'selected':''} onClick={()=>setView(id)}>{label}</button>)}</div>
+    <div className="workspace-tabs">{[['overview','Обзор'],['pages','Страницы'],['catalog','Каталог'],['editor','Редактор'],['preview','Предпросмотр'],['settings','Настройки']].map(([id,label])=><button key={id} className={view===id?'selected':''} onClick={()=>setView(id)}>{label}</button>)}</div>
 
     {view==='overview'&&<div className="workspace-grid">
       <div className="card workspace-card"><div className="eyebrow">Проект</div><h2>Центр управления клиентским проектом</h2><p>Сайт, Mini App, контент, публикация и настройки клиента управляются из одного рабочего пространства.</p><div className="workspace-stat-grid"><div><b>{pages.length}</b><span>страниц</span></div><div><b>{current.status==='published'?'Опубликован':'Черновик'}</b><span>статус</span></div><div><b>{domain||'Не подключен'}</b><span>домен</span></div></div></div>
@@ -260,7 +297,9 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
 
     {view==='pages'&&<div className="card workspace-card"><div className="card-head"><div><h2>Страницы</h2><span>Структура сайта</span></div><button className="primary" onClick={async()=>{await api.createPage(current.id,{title:'Новая страница',slug:'new-page'});await onRefresh()}}><Plus size={15}/> Новая страница</button></div>{pages.map(p=><div className="page-row" key={p.id}><div className="page-icon"><Globe2 size={16}/></div><div><b>{p.title}</b><span>/{p.slug}</span></div><span className={p.published?'status success':'status draft'}><i/>{p.published?'Опубликована':'Черновик'}</span><button className="filter" onClick={()=>{setPageId(p.id);setBlocks(p.content?.blocks||[]);setView('editor')}}>Редактировать</button></div>)}</div>}
 
-    {view==='editor'&&<div className="editor-layout">
+    {view==='catalog'&&<CatalogManager projectId={current.id}/>}
+
+     {view==='editor'&&<div className="editor-layout">
       <aside className="card editor-sidebar"><div className="eyebrow">Редактор</div><h3>{page?.title||'Главная'}</h3><p>Добавляйте и перестраивайте секции страницы.</p>
         <button className="editor-add" onClick={()=>addBlock('hero')}><Palette size={15}/> Первый экран <Plus size={14}/></button>
         <button className="editor-add" onClick={()=>addBlock('services')}><Layers3 size={15}/> Услуги / каталог <Plus size={14}/></button>
