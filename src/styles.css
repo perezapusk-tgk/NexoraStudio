@@ -194,3 +194,6 @@
   .order-creator-line{grid-template-columns:1fr auto}
   .order-creator-line>strong{grid-column:2}
 }
+
+
+.domain-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.domain-info{display:grid;gap:7px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface-muted,#fafafa)}.domain-info small{color:var(--muted);line-height:1.5}.status.error{color:#b42318}.status.error i{background:#d92d20}@media(max-width:620px){.domain-actions button{flex:1}.domain-actions{width:100%}}
