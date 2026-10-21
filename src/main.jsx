@@ -91,6 +91,13 @@ function PublicMiniApp({data,slug}){
 }
 
 
+function InviteAcceptScreen({token,onAuthenticated}){
+  const [form,setForm]=useState({name:'',password:'',confirm:''})
+  const [busy,setBusy]=useState(false),[error,setError]=useState('')
+  const submit=async(e)=>{e.preventDefault();if(form.password!==form.confirm){setError('Пароли не совпадают');return}setBusy(true);setError('');try{const r=await api.acceptInvite({token,name:form.name,password:form.password});onAuthenticated(r)}catch(err){try{setError(JSON.parse(err.message)?.error||'Приглашение недействительно')}catch{setError('Приглашение недействительно')}}finally{setBusy(false)}}
+  return <div className="auth-shell"><div className="auth-card card"><div className="brand auth-brand"><div className="brand-mark">N</div><div><strong>Nexora</strong><span>Studio OS</span></div></div><div className="eyebrow">Приглашение в команду</div><h1>Присоединиться к студии</h1><p>Создайте пароль для первого входа. После принятия приглашения вы сразу попадёте в рабочее пространство.</p><form onSubmit={submit}><label>Ваше имя<input required value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))} placeholder="Ваше имя"/></label><label>Пароль<input required minLength="8" type="password" value={form.password} onChange={e=>setForm(v=>({...v,password:e.target.value}))} placeholder="Минимум 8 символов"/></label><label>Повторите пароль<input required minLength="8" type="password" value={form.confirm} onChange={e=>setForm(v=>({...v,confirm:e.target.value}))} placeholder="Повторите пароль"/></label>{error&&<div className="form-error">{error}</div>}<button className="primary auth-submit" disabled={busy}>{busy?'Создаём доступ…':'Принять приглашение'}</button></form></div></div>
+}
+
 function AuthScreen({onAuthenticated}){
   const [mode,setMode]=useState('login')
   const [form,setForm]=useState({name:'',studioName:'',email:'',password:''})
@@ -110,6 +117,8 @@ function AuthScreen({onAuthenticated}){
 
 function Root(){
   const path=window.location.pathname.split('/').filter(Boolean)
+  const invite=new URLSearchParams(window.location.search).get('invite')
+  if(invite) return <InviteAcceptScreen token={invite} onAuthenticated={()=>{window.history.replaceState({},'',window.location.pathname);window.location.reload()}}/>
   if(path[0]==='published'&&path[1]) return <PublicApp mode="site" slug={path[1]}/>
   if(path[0]==='miniapp'&&path[1]) return <PublicApp mode="miniapp" slug={path[1]}/>
   return <App/>
@@ -408,23 +417,45 @@ function Templates({onCreate}){const templates=[['barber','Barber','Барбер
 function SettingsPage(){
   const [tab,setTab]=useState('profile')
   const [team,setTeam]=useState([])
-  const [form,setForm]=useState({name:'',email:'',role:'member'})
+  const [invites,setInvites]=useState([])
+  const [form,setForm]=useState({email:'',role:'member'})
   const [busy,setBusy]=useState(false)
-  const loadTeam=async()=>{try{const r=await api.team();setTeam(r.members||[])}catch{}}
+  const [inviteLinks,setInviteLinks]=useState({})
+  const loadTeam=async()=>{try{const r=await api.team();setTeam(r.members||[]);setInvites(r.invitations||[])}catch{}}
   useEffect(()=>{if(tab==='team')loadTeam()},[tab])
-  const add=async()=>{if(!form.name||!form.email)return;setBusy(true);try{await api.addTeamMember(form);setForm({name:'',email:'',role:'member'});await loadTeam()}catch(e){let m=e.message;try{m=JSON.parse(e.message).error||m}catch{}window.alert(m)}finally{setBusy(false)}}
+  const add=async()=>{
+    if(!form.email)return
+    setBusy(true)
+    try{
+      const r=await api.addTeamMember(form)
+      if(r.invitation?.invite_url){
+        setInviteLinks(v=>({...v,[r.invitation.id]:r.invitation.invite_url}))
+        await navigator.clipboard?.writeText(r.invitation.invite_url).catch(()=>{})
+        window.alert('Приглашение создано. Ссылка скопирована в буфер обмена.')
+      }
+      setForm({email:'',role:'member'})
+      await loadTeam()
+    }catch(e){let m=e.message;try{m=JSON.parse(e.message).error||m}catch{}window.alert(m)}
+    finally{setBusy(false)}
+  }
   const role=async(id,value)=>{try{await api.updateTeamRole(id,value);await loadTeam()}catch{window.alert('Не удалось изменить роль')}}
   const remove=async(id)=>{if(!window.confirm('Удалить участника из рабочего пространства?'))return;try{await api.removeTeamMember(id);await loadTeam()}catch{window.alert('Не удалось удалить участника')}}
+  const revoke=async(id)=>{if(!window.confirm('Отозвать приглашение?'))return;try{await api.revokeTeamInvitation(id);setInviteLinks(v=>{const n={...v};delete n[id];return n});await loadTeam()}catch{window.alert('Не удалось отозвать приглашение')}}
+  const resend=async(id)=>{try{const r=await api.resendTeamInvitation(id);if(r.invitation?.invite_url){setInviteLinks(v=>({...v,[id]:r.invitation.invite_url}));await navigator.clipboard?.writeText(r.invitation.invite_url).catch(()=>{});window.alert('Новая ссылка создана и скопирована.')}}catch{window.alert('Не удалось обновить приглашение')}}
+  const copy=async(id)=>{const url=inviteLinks[id];if(!url){return resend(id)}await navigator.clipboard?.writeText(url).catch(()=>{});window.alert('Ссылка скопирована')}
   const tabs=['profile','branding','team','notifications','integrations','security','billing']
-  const labels={profile:'Профиль студии',branding:'Брендинг',team:'Участники',notifications:'Уведомления',integrations:'Интеграции',security:'Безопасность',billing:'Тариф и оплата'}
+  const labels={profile:'Профиль студии',branding:'Брендинг',team:'Команда',notifications:'Уведомления',integrations:'Интеграции',security:'Безопасность',billing:'Тариф и оплата'}
   return <><Header eyebrow="Рабочее пространство" title="Настройки" description="Управляйте студией, командой, безопасностью и доступами."/><div className="settings-layout"><div className="settings-nav card">{tabs.map(x=><button className={tab===x?'selected':''} key={x} onClick={()=>setTab(x)}>{labels[x]}</button>)}</div><section className="card settings-form">
     {tab==='profile'&&<><div className="setting-block"><h2>Профиль студии</h2><span>Основная информация рабочего пространства.</span><label>Название студии<input value="Nexora Studio" readOnly/></label><label>Рабочий email<input value="studio@nexora.local" readOnly/></label><label>Часовой пояс<select defaultValue="Europe/Helsinki"><option>Europe/Helsinki</option><option>Europe/Moscow</option><option>Europe/Berlin</option></select></label></div><div className="setting-block"><h2>Внешний вид</h2><span>Настройте стиль панели и клиентских проектов.</span><div className="theme-options"><button className="theme active"><span/>Светлая</button><button className="theme"><span/>Тёмная</button><button className="theme"><span/>Системная</button></div></div></>}
-    {tab==='team'&&<><div className="setting-block"><h2>Команда студии</h2><span>Роли определяют, что участник может просматривать и изменять.</span><div className="role-legend"><span><b>Владелец</b> полный доступ</span><span><b>Администратор</b> команда и рабочие настройки</span><span><b>Участник</b> проекты и CRM</span><span><b>Наблюдатель</b> только просмотр</span></div><div className="team-list">{team.map(m=><div className="team-row" key={m.id}><div className="user-avatar">{String(m.name||'?').slice(0,1)}</div><div className="team-person"><b>{m.name}</b><span>{m.email}</span></div>{m.role==='owner'?<span className="status success"><i/>Владелец</span>:<select value={m.role} onChange={e=>role(m.id,e.target.value)}><option value="admin">Администратор</option><option value="member">Участник</option><option value="viewer">Наблюдатель</option></select>} {m.role!=='owner'&&<button className="filter" onClick={()=>remove(m.id)}>Удалить</button>}</div>)}</div></div><div className="setting-block"><h2>Добавить участника</h2><div className="team-add-grid"><input placeholder="Имя" value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))}/><input type="email" placeholder="Email" value={form.email} onChange={e=>setForm(v=>({...v,email:e.target.value}))}/><select value={form.role} onChange={e=>setForm(v=>({...v,role:e.target.value}))}><option value="admin">Администратор</option><option value="member">Участник</option><option value="viewer">Наблюдатель</option></select><button className="primary" disabled={busy} onClick={add}>{busy?'Добавляем…':'Добавить'}</button></div><small className="settings-note">Участник добавляется непосредственно в рабочее пространство. Email-приглашения подключим следующим этапом.</small></div></>}
-    {tab==='security'&&<div className="setting-block"><h2>Безопасность</h2><span>Сессии и доступ к рабочему пространству.</span><div className="security-cards"><div><ShieldCheck size={18}/><b>Сессии</b><span>Авторизация по защищённому токену на 30 дней.</span></div><div><ShieldCheck size={18}/><b>Пароли</b><span>Пароли не хранятся в открытом виде: используется scrypt.</span></div></div></div>}
+    {tab==='team'&&<><div className="setting-block"><h2>Команда студии</h2><span>Добавляйте сотрудников по email — им выдаётся безопасная ссылка для первого входа.</span><div className="role-legend"><span><b>Владелец</b> полный доступ</span><span><b>Администратор</b> команда и настройки</span><span><b>Участник</b> проекты и CRM</span><span><b>Наблюдатель</b> только просмотр</span></div><div className="team-list">{team.map(m=><div className="team-row" key={m.id}><div className="user-avatar">{String(m.name||'?').slice(0,1)}</div><div className="team-person"><b>{m.name}</b><span>{m.email}</span></div>{m.role==='owner'?<span className="status success"><i/>Владелец</span>:<select value={m.role} onChange={e=>role(m.id,e.target.value)}><option value="admin">Администратор</option><option value="member">Участник</option><option value="viewer">Наблюдатель</option></select>} {m.role!=='owner'&&<button className="filter" onClick={()=>remove(m.id)}>Удалить</button>}</div>)}</div></div>
+      <div className="setting-block"><h2>Ожидают приглашения</h2>{invites.length===0?<div className="empty-editor"><b>Нет активных приглашений</b><span>После отправки здесь появятся ожидающие сотрудники.</span></div>:<div className="team-list">{invites.map(inv=><div className="team-row" key={inv.id}><div className="user-avatar">✉</div><div className="team-person"><b>{inv.email}</b><span>Истекает {new Date(inv.expires_at).toLocaleDateString('ru-RU')} · {inv.role==='admin'?'Администратор':inv.role==='viewer'?'Наблюдатель':'Участник'}</span></div><span className="status draft"><i/>Ожидает</span><button className="filter" onClick={()=>copy(inv.id)}>Скопировать</button><button className="filter" onClick={()=>resend(inv.id)}>Новая ссылка</button><button className="row-more" onClick={()=>revoke(inv.id)}><X size={16}/></button></div>)}</div>}</div>
+      <div className="setting-block"><h2>Пригласить сотрудника</h2><div className="team-add-grid"><input type="email" placeholder="Email сотрудника" value={form.email} onChange={e=>setForm(v=>({...v,email:e.target.value}))}/><select value={form.role} onChange={e=>setForm(v=>({...v,role:e.target.value}))}><option value="admin">Администратор</option><option value="member">Участник</option><option value="viewer">Наблюдатель</option></select><button className="primary" disabled={busy} onClick={add}>{busy?'Создаём…':'Создать приглашение'}</button></div><small className="settings-note">Nexora пока не отправляет письма автоматически: после создания ты получишь ссылку, которую можно отправить сотруднику вручную. Ссылка действует 7 дней.</small></div></>}
+    {tab==='security'&&<div className="setting-block"><h2>Безопасность</h2><span>Сессии и доступ к рабочему пространству.</span><div className="security-cards"><div><ShieldCheck size={18}/><b>Сессии</b><span>Авторизация по защищённому токену на 30 дней.</span></div><div><ShieldCheck size={18}/><b>Пароли</b><span>Пароли не хранятся в открытом виде: используется scrypt.</span></div><div><ShieldCheck size={18}/><b>Приглашения</b><span>Одноразовый токен, срок действия 7 дней и отзыв из настроек.</span></div></div></div>}
     {tab==='billing'&&<div className="setting-block"><h2>Тариф и оплата</h2><span>Текущий план рабочего пространства.</span><div className="plan-box"><Sparkles size={20}/><div><b>Starter</b><span>До 5 проектов · до 5 участников</span></div></div></div>}
     {tab!=='profile'&&tab!=='team'&&tab!=='security'&&tab!=='billing'&&<div className="setting-block"><h2>{labels[tab]}</h2><span>Раздел подготовлен для подключения дополнительных настроек.</span><div className="empty-editor"><Settings size={22}/><b>Готово к настройке</b><span>Функции этого раздела подключим следующим этапом.</span></div></div>}
     {tab==='profile'&&<div className="setting-actions"><button className="filter">Отменить</button><button className="primary">Сохранить изменения</button></div>}
   </section></div></>}
+
 
 function CatalogManager({projectId}) {
   const [items,setItems]=useState([])
