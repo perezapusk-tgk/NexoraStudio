@@ -46,6 +46,40 @@ app.get('/api/projects/:id', async (req,res)=>{const id=req.params.id;if(!pool){
 app.patch('/api/projects/:id',async(req,res)=>{if(!pool)return res.json({project:{id:req.params.id,name:req.body?.name,domain:req.body?.domain}});const q=await pool.query('update projects set name=coalesce($1,name),domain=coalesce($2,domain),updated_at=now() where id=$3 returning *',[req.body?.name,req.body?.domain,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Проект не найден'});res.json({project:q.rows[0]})});
 app.post('/api/projects/:id/pages',async(req,res)=>{const title=String(req.body?.title||'Новая страница'),slug=slugify(req.body?.slug||title);if(!pool)return res.status(201).json({page:{id:crypto.randomUUID(),title,slug,content:{blocks:[]},published:false}});const q=await pool.query('insert into pages(project_id,title,slug,content) values($1,$2,$3,$4) returning *',[req.params.id,title,slug,JSON.stringify({blocks:[]})]);res.status(201).json({page:q.rows[0]})});
 app.patch('/api/projects/:id/pages/:pageId',async(req,res)=>{if(!pool)return res.json({page:{id:req.params.pageId,...req.body}});const q=await pool.query('update pages set content=coalesce($1,content),updated_at=now() where id=$2 and project_id=$3 returning *',[req.body?.content?JSON.stringify(req.body.content):null,req.params.pageId,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Страница не найдена'});res.json({page:q.rows[0]})});
+app.get('/api/projects/:id/catalog', async (req,res) => {
+  const id = req.params.id
+  if (!pool) return res.json({ items: demoCatalog(id) })
+  const q = await pool.query('select id, project_id, name, description, price, currency, image_url, active, created_at from catalog_items where project_id=$1 order by created_at desc',[id])
+  res.json({ items: q.rows })
+})
+app.post('/api/projects/:id/catalog', async (req,res) => {
+  const name = String(req.body?.name || '').trim()
+  if (!name) return res.status(400).json({ error:'Название товара обязательно' })
+  const payload = {
+    name,
+    description: String(req.body?.description || ''),
+    price: req.body?.price === '' || req.body?.price == null ? null : Number(req.body.price),
+    currency: String(req.body?.currency || 'EUR'),
+    image_url: String(req.body?.image_url || ''),
+    active: req.body?.active !== false
+  }
+  if (!pool) return res.status(201).json({ item:{ id:crypto.randomUUID(), project_id:req.params.id, ...payload } })
+  const q = await pool.query('insert into catalog_items(project_id,name,description,price,currency,image_url,active) values($1,$2,$3,$4,$5,$6,$7) returning *',[req.params.id,payload.name,payload.description,payload.price,payload.currency,payload.image_url,payload.active])
+  res.status(201).json({ item:q.rows[0] })
+})
+app.patch('/api/projects/:id/catalog/:itemId', async (req,res) => {
+  if (!pool) return res.json({ item:{ id:req.params.itemId, project_id:req.params.id, ...req.body } })
+  const q = await pool.query('update catalog_items set name=coalesce($1,name),description=coalesce($2,description),price=coalesce($3,price),currency=coalesce($4,currency),image_url=coalesce($5,image_url),active=coalesce($6,active) where id=$7 and project_id=$8 returning *',[req.body?.name,req.body?.description,req.body?.price === '' ? null : req.body?.price,req.body?.currency,req.body?.image_url,req.body?.active,req.params.itemId,req.params.id])
+  if (!q.rows[0]) return res.status(404).json({error:'Позиция каталога не найдена'})
+  res.json({item:q.rows[0]})
+})
+app.delete('/api/projects/:id/catalog/:itemId', async (req,res) => {
+  if (!pool) return res.json({deleted:true})
+  const q = await pool.query('delete from catalog_items where id=$1 and project_id=$2 returning id',[req.params.itemId,req.params.id])
+  if (!q.rows[0]) return res.status(404).json({error:'Позиция каталога не найдена'})
+  res.json({deleted:true})
+})
+
 app.post('/api/projects/:id/publish',async(req,res)=>{if(!pool)return res.json({published:true,project:{id:req.params.id,status:'published'},url:'https://'+req.params.id+'.nexora.site'});const q=await pool.query("update projects set status='published',updated_at=now() where id=$1 returning *",[req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Проект не найден'});await pool.query('update pages set published=true,updated_at=now() where project_id=$1',[req.params.id]);res.json({published:true,project:q.rows[0],url:q.rows[0].domain?'https://'+q.rows[0].domain:'https://'+q.rows[0].slug+'.nexora.site'})});
 app.get('/api/leads', async (_req, res) => {
   if (!pool) return res.json({ leads: demoLeads() })
@@ -99,6 +133,11 @@ function demoProjects(){ return [
   {id:'p1',name:'Barber House',slug:'barber-house',project_type:'website+miniapp',status:'published'},
   {id:'p2',name:'Nordic Beauty',slug:'nordic-beauty',project_type:'website',status:'draft'},
   {id:'p3',name:'Urban Fitness',slug:'urban-fitness',project_type:'miniapp',status:'published'}
+] }
+function demoCatalog(projectId){ return [
+  {id:'item-1',project_id:projectId,name:'Стрижка',description:'Классическая мужская стрижка',price:35,currency:'EUR',active:true},
+  {id:'item-2',project_id:projectId,name:'Стрижка + борода',description:'Комплексная услуга',price:50,currency:'EUR',active:true},
+  {id:'item-3',project_id:projectId,name:'Премиум уход',description:'Уход и укладка',price:65,currency:'EUR',active:true}
 ] }
 function demoLeads(){ return [{id:'l1',name:'Марина Соколова',message:'Хочу записаться на стрижку',status:'new'},{id:'l2',name:'Иван Петров',message:'Есть ли свободное окно в субботу?',status:'in_progress'}] }
 function demoBookings(){ return [{id:'b1',customer_name:'Александр К.',starts_at:'2026-10-21T10:00:00',status:'confirmed'},{id:'b2',customer_name:'Елена М.',starts_at:'2026-10-21T11:00:00',status:'confirmed'}] }
