@@ -12,6 +12,16 @@ app.use(cors())
 app.use(express.json())
 
 const demoStudio = { id: '00000000-0000-0000-0000-000000000001', name: 'Nexora Studio', ownerName: 'Алексей', plan: 'pro', projectLimit: 50 }
+const memoryProjects = demoProjects()
+const memoryPages = new Map(memoryProjects.map(p => [p.id, [{id:'page-'+p.id,title:'Главная',slug:'home',published:p.status==='published',content:{blocks:[
+  {type:'hero',headline:p.name,subheadline:'Современный цифровой опыт для ваших клиентов.',cta:'Оставить заявку'},
+  {type:'services',title:'Услуги',items:['Основная услуга','Популярная услуга','Премиум услуга']},
+  {type:'contacts',title:'Контакты',text:'Свяжитесь с нами удобным способом.'}
+]}}]]))
+const memoryCatalog = new Map(memoryProjects.map(p => [p.id, demoCatalog(p.id)]))
+const memoryLeads = [...demoLeads()]
+const memoryBookings = [...demoBookings()]
+const memoryEvents = []
 
 app.get('/api/health', async (_req, res) => {
   let database = 'not_configured'
@@ -24,7 +34,7 @@ app.get('/api/health', async (_req, res) => {
 app.get('/api/studio', (_req, res) => res.json({ studio: demoStudio }))
 
 app.get('/api/projects', async (_req, res) => {
-  if (!pool) return res.json({ projects: demoProjects() })
+  if (!pool) return res.json({ projects: memoryProjects })
   const { rows } = await pool.query('select id, name, slug, project_type, status, domain, settings, created_at, updated_at from projects order by updated_at desc')
   res.json({ projects: rows })
 })
@@ -33,7 +43,17 @@ app.post('/api/projects', async (req, res) => {
   const name = String(req.body?.name || '').trim()
   const projectType = String(req.body?.projectType || 'website').trim()
   if (!name) return res.status(400).json({ error: 'Название проекта обязательно' })
-  if (!pool) return res.status(201).json({ project: { id: crypto.randomUUID(), name, slug: slugify(name), project_type: projectType, status: 'draft' } })
+  if (!pool) {
+  const project={id:crypto.randomUUID(),name,slug:slugify(name),project_type:projectType,status:'draft',domain:null,settings:{miniApp:{enabled:projectType.includes('miniapp')}}}
+  memoryProjects.unshift(project)
+  memoryPages.set(project.id,[{id:crypto.randomUUID(),title:'Главная',slug:'home',published:false,content:{blocks:[
+    {type:'hero',headline:name,subheadline:'Современный цифровой опыт для ваших клиентов.',cta:'Оставить заявку'},
+    {type:'services',title:'Услуги',items:['Основная услуга','Популярная услуга','Премиум услуга']},
+    {type:'contacts',title:'Контакты',text:'Свяжитесь с нами удобным способом.'}
+  ]}}])
+  memoryCatalog.set(project.id,[])
+  return res.status(201).json({project})
+}
   const slug = slugify(name)
   const { rows } = await pool.query(
     'insert into projects (studio_id, name, slug, project_type, status, settings) values ($1,$2,$3,$4,$5,$6) returning *',
@@ -50,20 +70,33 @@ app.post('/api/projects', async (req, res) => {
   res.status(201).json({ project: rows[0] })
 })
 
-app.get('/api/projects/:id', async (req,res)=>{const id=req.params.id;if(!pool){const project=demoProjects().find(p=>p.id===id)||{id,name:'Новый проект',project_type:'website',status:'draft'};return res.json({project,pages:[{id:'page-'+id,title:'Главная',slug:'home',published:false,content:{blocks:[{type:'hero',headline:'Ваш бизнес. Онлайн.'}]}}]})}const pr=await pool.query('select * from projects where id=$1 or slug=$1 limit 1',[id]);if(!pr.rows[0])return res.status(404).json({error:'Проект не найден'});const pg=await pool.query('select * from pages where project_id=$1 order by created_at',[pr.rows[0].id]);res.json({project:pr.rows[0],pages:pg.rows})});
-app.patch('/api/projects/:id',async(req,res)=>{if(!pool)return res.json({project:{id:req.params.id,name:req.body?.name,domain:req.body?.domain}});const q=await pool.query('update projects set name=coalesce($1,name),domain=coalesce($2,domain),updated_at=now() where id=$3 returning *',[req.body?.name,req.body?.domain,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Проект не найден'});res.json({project:q.rows[0]})});
+app.get('/api/projects/:id', async (req,res)=>{const id=req.params.id;if(!pool){
+  const project=memoryProjects.find(p=>p.id===id||p.slug===id)
+  if(!project) return res.status(404).json({error:'Проект не найден'})
+  return res.json({project,pages:memoryPages.get(project.id)||[]})
+}const pr=await pool.query('select * from projects where id=$1 or slug=$1 limit 1',[id]);if(!pr.rows[0])return res.status(404).json({error:'Проект не найден'});const pg=await pool.query('select * from pages where project_id=$1 order by created_at',[pr.rows[0].id]);res.json({project:pr.rows[0],pages:pg.rows})});
+app.patch('/api/projects/:id',async(req,res)=>{if(!pool){
+  const p=memoryProjects.find(x=>x.id===req.params.id||x.slug===req.params.id)
+  if(!p)return res.status(404).json({error:'Проект не найден'})
+  if(req.body?.name)p.name=String(req.body.name).trim()
+  if(req.body?.domain!==undefined)p.domain=String(req.body.domain||'').trim()||null
+  if(req.body?.settings)p.settings={...(p.settings||{}),...req.body.settings}
+  return res.json({project:p})
+}const q=await pool.query('update projects set name=coalesce($1,name),domain=coalesce($2,domain),updated_at=now() where id=$3 returning *',[req.body?.name,req.body?.domain,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Проект не найден'});res.json({project:q.rows[0]})});
 app.post('/api/projects/:id/pages',async(req,res)=>{const title=String(req.body?.title||'Новая страница'),slug=slugify(req.body?.slug||title);if(!pool)return res.status(201).json({page:{id:crypto.randomUUID(),title,slug,content:{blocks:[]},published:false}});const q=await pool.query('insert into pages(project_id,title,slug,content) values($1,$2,$3,$4) returning *',[req.params.id,title,slug,JSON.stringify({blocks:[]})]);res.status(201).json({page:q.rows[0]})});
-app.patch('/api/projects/:id/pages/:pageId',async(req,res)=>{if(!pool)return res.json({page:{id:req.params.pageId,...req.body}});const q=await pool.query('update pages set content=coalesce($1,content),updated_at=now() where id=$2 and project_id=$3 returning *',[req.body?.content?JSON.stringify(req.body.content):null,req.params.pageId,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Страница не найдена'});res.json({page:q.rows[0]})});
+app.patch('/api/projects/:id/pages/:pageId',async(req,res)=>{if(!pool){const pages=memoryPages.get(req.params.id)||[];const p=pages.find(x=>x.id===req.params.pageId);if(!p)return res.status(404).json({error:'Страница не найдена'});if(req.body?.content)p.content=req.body.content;return res.json({page:p})}const q=await pool.query('update pages set content=coalesce($1,content),updated_at=now() where id=$2 and project_id=$3 returning *',[req.body?.content?JSON.stringify(req.body.content):null,req.params.pageId,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Страница не найдена'});res.json({page:q.rows[0]})});
 app.get('/api/public/:slug', async (req,res) => {
   const slug = String(req.params.slug || '').trim()
   if (!pool) {
-    const project = demoProjects().find(p => p.slug === slug)
+    const project = memoryProjects.find(p => p.slug === slug)
     if (!project) return res.status(404).json({error:'Публичный проект не найден'})
-    return res.json({project,pages:[{id:'page-'+project.id,title:'Главная',slug:'home',published:true,content:{blocks:[
+    return res.json({project,pages:(memoryPages.get(project.id)||[]).filter(x=>x.published),catalog:memoryCatalog.get(project.id)||[]}) /* MEMORY */
+    /* legacy demo payload removed */
+    /* return res.json({project,pages:[{id:'page-'+project.id,title:'Главная',slug:'home',published:true,content:{blocks:[
       {type:'hero',headline:project.name,subheadline:'Современный цифровой опыт для ваших клиентов.',cta:'Записаться'},
       {type:'services',title:'Услуги',items:['Основная услуга','Популярная услуга','Премиум услуга']},
       {type:'contacts',title:'Контакты',text:'Свяжитесь с нами удобным способом.'}
-    ]}}],catalog:demoCatalog(project.id)})
+    ]}}],catalog:demoCatalog(project.id)}) */
   }
   const q = await pool.query('select * from projects where slug=$1 and status=\'published\' limit 1',[slug])
   if (!q.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
@@ -79,7 +112,7 @@ app.post('/api/public/:slug/leads', async (req,res) => {
   const phone=String(req.body?.phone||'').trim()
   const message=String(req.body?.message||'').trim()
   if(!name || (!phone && !String(req.body?.email||'').trim())) return res.status(400).json({error:'Укажите имя и телефон или email'})
-  if(!pool) return res.status(201).json({lead:{id:crypto.randomUUID(),project_slug:slug,name,phone,message,status:'new',source:'public'}})
+  if(!pool){const lead={id:crypto.randomUUID(),project_slug:slug,name,phone,email:String(req.body?.email||''),message,status:'new',source:'public',created_at:new Date().toISOString()};memoryLeads.unshift(lead);return res.status(201).json({lead})}
   const pr=await pool.query("select id from projects where slug=$1 and status='published' limit 1",[slug])
   if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
   const q=await pool.query('insert into leads(project_id,name,email,phone,message,status,source) values($1,$2,$3,$4,$5,$6,$7) returning id,name,email,phone,message,status,source,created_at',[pr.rows[0].id,name,String(req.body?.email||'').trim()||null,phone||null,message,'new','public'])
@@ -93,7 +126,7 @@ app.post('/api/public/:slug/bookings', async (req,res) => {
   const startsAt=String(req.body?.starts_at||'').trim()
   const serviceName=String(req.body?.service_name||'').trim()
   if(!name || !phone || !startsAt) return res.status(400).json({error:'Заполните имя, телефон и время'})
-  if(!pool) return res.status(201).json({booking:{id:crypto.randomUUID(),project_slug:slug,customer_name:name,customer_phone:phone,starts_at:startsAt,service_name:serviceName,status:'pending'}})
+  if(!pool){const booking={id:crypto.randomUUID(),project_slug:slug,customer_name:name,customer_phone:phone,starts_at:startsAt,service_name:serviceName,status:'pending'};memoryBookings.push(booking);return res.status(201).json({booking})}
   const pr=await pool.query("select id from projects where slug=$1 and status='published' limit 1",[slug])
   if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
   const q=await pool.query('insert into bookings(project_id,customer_name,customer_phone,starts_at,service_name,status) values($1,$2,$3,$4,$5,$6) returning *',[pr.rows[0].id,name,phone,startsAt,serviceName||null,'pending'])
@@ -102,7 +135,7 @@ app.post('/api/public/:slug/bookings', async (req,res) => {
 
 app.post('/api/public/:slug/events', async (req,res) => {
   const slug=String(req.params.slug||'').trim()
-  if(!pool) return res.status(204).end()
+  if(!pool){memoryEvents.push({slug,event_type:String(req.body?.event_type||'page_view'),path:String(req.body?.path||''),created_at:new Date().toISOString()});return res.status(204).end()}
   const pr=await pool.query('select id from projects where slug=$1 limit 1',[slug])
   if(!pr.rows[0]) return res.status(404).json({error:'Проект не найден'})
   const type=String(req.body?.event_type||'page_view')
@@ -113,7 +146,7 @@ app.post('/api/public/:slug/events', async (req,res) => {
 
 app.get('/api/projects/:id/catalog', async (req,res) => {
   const id = req.params.id
-  if (!pool) return res.json({ items: demoCatalog(id) })
+  if (!pool) return res.json({ items: memoryCatalog.get(id) || [] })
   const q = await pool.query('select id, project_id, name, description, price, currency, image_url, active, created_at from catalog_items where project_id=$1 order by created_at desc',[id])
   res.json({ items: q.rows })
 })
@@ -128,32 +161,32 @@ app.post('/api/projects/:id/catalog', async (req,res) => {
     image_url: String(req.body?.image_url || ''),
     active: req.body?.active !== false
   }
-  if (!pool) return res.status(201).json({ item:{ id:crypto.randomUUID(), project_id:req.params.id, ...payload } })
+  if (!pool) { const item={id:crypto.randomUUID(),project_id:req.params.id,...payload};const list=memoryCatalog.get(req.params.id)||[];list.unshift(item);memoryCatalog.set(req.params.id,list);return res.status(201).json({item}) }
   const q = await pool.query('insert into catalog_items(project_id,name,description,price,currency,image_url,active) values($1,$2,$3,$4,$5,$6,$7) returning *',[req.params.id,payload.name,payload.description,payload.price,payload.currency,payload.image_url,payload.active])
   res.status(201).json({ item:q.rows[0] })
 })
 app.patch('/api/projects/:id/catalog/:itemId', async (req,res) => {
-  if (!pool) return res.json({ item:{ id:req.params.itemId, project_id:req.params.id, ...req.body } })
+  if (!pool){const list=memoryCatalog.get(req.params.id)||[];const item=list.find(x=>x.id===req.params.itemId);if(!item)return res.status(404).json({error:'Позиция каталога не найдена'});Object.assign(item,req.body);return res.json({item})}
   const q = await pool.query('update catalog_items set name=coalesce($1,name),description=coalesce($2,description),price=coalesce($3,price),currency=coalesce($4,currency),image_url=coalesce($5,image_url),active=coalesce($6,active) where id=$7 and project_id=$8 returning *',[req.body?.name,req.body?.description,req.body?.price === '' ? null : req.body?.price,req.body?.currency,req.body?.image_url,req.body?.active,req.params.itemId,req.params.id])
   if (!q.rows[0]) return res.status(404).json({error:'Позиция каталога не найдена'})
   res.json({item:q.rows[0]})
 })
 app.delete('/api/projects/:id/catalog/:itemId', async (req,res) => {
-  if (!pool) return res.json({deleted:true})
+  if (!pool){const list=memoryCatalog.get(req.params.id)||[];const next=list.filter(x=>x.id!==req.params.itemId);if(next.length===list.length)return res.status(404).json({error:'Позиция каталога не найдена'});memoryCatalog.set(req.params.id,next);return res.json({deleted:true})}
   const q = await pool.query('delete from catalog_items where id=$1 and project_id=$2 returning id',[req.params.itemId,req.params.id])
   if (!q.rows[0]) return res.status(404).json({error:'Позиция каталога не найдена'})
   res.json({deleted:true})
 })
 
-app.post('/api/projects/:id/publish',async(req,res)=>{if(!pool)return res.json({published:true,project:{id:req.params.id,status:'published'},url:'https://'+req.params.id+'.nexora.site'});const q=await pool.query("update projects set status='published',updated_at=now() where id=$1 returning *",[req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Проект не найден'});await pool.query('update pages set published=true,updated_at=now() where project_id=$1',[req.params.id]);res.json({published:true,project:q.rows[0],url:q.rows[0].domain?'https://'+q.rows[0].domain:'https://'+q.rows[0].slug+'.nexora.site'})});
+app.post('/api/projects/:id/publish',async(req,res)=>{if(!pool){const p=memoryProjects.find(x=>x.id===req.params.id||x.slug===req.params.id);if(!p)return res.status(404).json({error:'Проект не найден'});p.status='published';(memoryPages.get(p.id)||[]).forEach(x=>x.published=true);return res.json({published:true,project:p,url:'https://'+p.slug+'.nexora.site'})}const q=await pool.query("update projects set status='published',updated_at=now() where id=$1 returning *",[req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Проект не найден'});await pool.query('update pages set published=true,updated_at=now() where project_id=$1',[req.params.id]);res.json({published:true,project:q.rows[0],url:q.rows[0].domain?'https://'+q.rows[0].domain:'https://'+q.rows[0].slug+'.nexora.site'})});
 app.get('/api/leads', async (_req, res) => {
-  if (!pool) return res.json({ leads: demoLeads() })
+  if (!pool) return res.json({ leads: memoryLeads })
   const { rows } = await pool.query('select l.id, l.project_id, l.name, l.message, l.status, l.created_at, p.name as project_name from leads l left join projects p on p.id=l.project_id order by created_at desc limit 100')
   res.json({ leads: rows })
 })
 
 app.get('/api/bookings', async (_req, res) => {
-  if (!pool) return res.json({ bookings: demoBookings() })
+  if (!pool) return res.json({ bookings: memoryBookings })
   const { rows } = await pool.query('select b.id, b.project_id, b.customer_name, b.starts_at, b.status, p.name as project_name from bookings b left join projects p on p.id=b.project_id order by starts_at asc limit 100')
   res.json({ bookings: rows })
 })
@@ -165,7 +198,7 @@ app.get('/api/clients', async (_req, res) => {
 })
 
 app.get('/api/analytics/overview', async (_req, res) => {
-  if (!pool) return res.json({ metrics: { visits: 28460, leads: 1284, bookings: 624, revenue: 18420 } })
+  if (!pool) return res.json({ metrics: { visits: 28460 + memoryEvents.length, leads: memoryLeads.length, bookings: memoryBookings.length, revenue: 18420 } })
   const { rows } = await pool.query(`
     select
       count(*) filter (where event_type='page_view')::int as visits,
