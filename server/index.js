@@ -786,7 +786,38 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
     order=(await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[project.id,clientId,number,'pending',total,String(req.body?.currency||'EUR').toUpperCase(),JSON.stringify(normalized)])).rows[0]
     await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[project.id,'order_created','/checkout',total,JSON.stringify({order_id:order.id})])
   }
-  res.status(201).json({order})
+  let checkout_url=null
+  if(String(req.body?.payment_provider||'').toLowerCase()==='stripe' && String(req.body?.currency||'').toUpperCase()!=='RUB'){
+    try{
+      let connectAccountId=null
+      if(pool) connectAccountId=(await pool.query('select stripe_connect_account_id from studios where id=$1',[project.studio_id])).rows[0]?.stripe_connect_account_id
+      else connectAccountId=(memoryStudios.find(x=>x.id===project.studio_id)||demoStudio).stripe_connect_account_id
+      if(connectAccountId){
+        const currency=String(req.body?.currency||'EUR').toLowerCase()
+        const unit=Math.round(total*100)
+        const feePercent=Math.max(0,Math.min(100,Number(process.env.STRIPE_PLATFORM_FEE_PERCENT||5)))
+        const fee=Math.round(unit*feePercent/100)
+        const session=await stripeRequest('/v1/checkout/sessions','POST',{
+          mode:'payment',
+          'success_url':billingAppUrl()+'/?order='+encodeURIComponent(order.id)+'&payment=success&session_id={CHECKOUT_SESSION_ID}',
+          'cancel_url':billingAppUrl()+'/?order='+encodeURIComponent(order.id)+'&payment=cancelled',
+          'customer_email':email||'',
+          'line_items[0][price_data][currency]':currency,
+          'line_items[0][price_data][product_data][name]':project.name+' — заказ '+number,
+          'line_items[0][price_data][unit_amount]':unit,
+          'line_items[0][quantity]':1,
+          'payment_intent_data[application_fee_amount]':fee,
+          'payment_intent_data[transfer_data][destination]':connectAccountId,
+          'metadata[order_id]':String(order.id),
+          'metadata[studio_id]':String(project.studio_id),
+          'metadata[project_id]':String(project.id)
+        })
+        checkout_url=session.url||null
+        if(pool) await pool.query("update orders set status='pending' where id=$1",[order.id])
+      }
+    }catch(e){ console.error('Stripe project checkout:',e.message) }
+  }
+  res.status(201).json({order,checkout_url})
 })
 
 app.post('/api/public/:slug/events', async (req,res) => {
