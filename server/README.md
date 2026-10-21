@@ -26,3 +26,14 @@ If `DATABASE_URL` is absent, the API intentionally uses demo data so the fronten
 ## PostgreSQL
 
 Run `server/schema.sql` against the Nexora PostgreSQL database, then set `DATABASE_URL`.
+
+
+## Billing
+
+Nexora supports real checkout in two currencies:
+- USD → Stripe Checkout (`STRIPE_SECRET_KEY`)
+- RUB → ЮKassa (`YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY`)
+
+Set `APP_URL` or `FRONTEND_URL` to the public app URL. Without provider credentials, real checkout is intentionally unavailable; `BILLING_MODE=manual` can be used only for development/testing and does not charge money.
+
+Each successful checkout grants the selected plan for 30 days. The app confirms the payment with the provider before activating the plan.
