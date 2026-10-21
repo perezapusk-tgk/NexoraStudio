@@ -37,3 +37,10 @@ Nexora supports real checkout in two currencies:
 Set `APP_URL` or `FRONTEND_URL` to the public app URL. Without provider credentials, real checkout is intentionally unavailable; `BILLING_MODE=manual` can be used only for development/testing and does not charge money.
 
 Each successful checkout grants the selected plan for 30 days. The app confirms the payment with the provider before activating the plan.
+
+
+## Stripe
+
+Для production задайте `STRIPE_SECRET_KEY` и `STRIPE_WEBHOOK_SECRET`. Для Connect рекомендуется отдельный `STRIPE_CONNECT_WEBHOOK_SECRET` (если используется отдельный endpoint). Комиссия платежей проектов задаётся через `STRIPE_PLATFORM_FEE_PERCENT`.
+
+Поток: Studio → Connect onboarding → опубликованный Website/Mini App → Stripe Checkout → Connected Account; Nexora удерживает application fee. SaaS-тарифы Nexora идут отдельной Stripe Billing subscription.
