@@ -371,7 +371,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   if(!name || (!phone && !email) || !items.length) return res.status(400).json({error:'Укажите имя, телефон или email и хотя бы один товар'})
   let project
   if(!pool) project=memoryProjects.find(p=>p.slug===slug && p.status==='published')
-  else project=(await pool.query("select id,name,slug from projects where slug=$1 and status='published' limit 1",[slug])).rows[0]
+  else project=(await pool.query("select id,name,slug,studio_id from projects where slug=$1 and status='published' limit 1",[slug])).rows[0]
   if(!project) return res.status(404).json({error:'Публичный проект не найден'})
   let clientId=null
   if(pool){
