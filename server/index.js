@@ -35,6 +35,7 @@ memoryInvoices.forEach(x=>x.studio_id=demoStudio.id)
 const memoryStudios = [demoStudio]
 const memoryUsers = [{id:'demo-owner',studio_id:demoStudio.id,name:demoStudio.ownerName,email:'owner@nexora.local',role:'owner',password_hash:hashPassword('demo')}]
 const memorySessions = new Map()
+const memoryInvitations = []
 
 function hashPassword(password,salt=crypto.randomBytes(16).toString('hex')) {
   return salt+':'+crypto.scryptSync(String(password),salt,64).toString('hex')
@@ -46,7 +47,9 @@ function verifyPassword(password,stored) {
   return crypto.timingSafeEqual(Buffer.from(actual,'hex'),Buffer.from(expected,'hex'))
 }
 const createSessionToken=()=>crypto.randomBytes(32).toString('hex')
+const createInviteToken=()=>crypto.randomBytes(32).toString('hex')
 const tokenHash=token=>crypto.createHash('sha256').update(token).digest('hex')
+const inviteUrl=token=>{const base=String(process.env.APP_URL||process.env.FRONTEND_URL||'http://localhost:5173').replace(/\/$/,'');return base+'/?invite='+encodeURIComponent(token)}
 const authPayload=(u,studio,token)=>({token,user:{id:u.id,name:u.name,email:u.email,role:u.role},studio:{id:studio.id,name:studio.name,ownerName:studio.owner_name||studio.ownerName,plan:studio.plan,projectLimit:studio.project_limit||studio.projectLimit}})
 
 async function requireAuth(req,res,next){
@@ -119,6 +122,41 @@ app.post('/api/auth/login',async(req,res)=>{
     const token=createSessionToken();memorySessions.set(tokenHash(token),{user_id:u.id,expiresAt:Date.now()+30*86400000})
     res.json(authPayload(u,studio,token))
   }catch(e){res.status(500).json({error:'Не удалось выполнить вход'})}
+})
+app.post('/api/auth/accept-invite',async(req,res)=>{
+  const token=String(req.body?.token||'').trim()
+  const name=String(req.body?.name||'').trim()
+  const password=String(req.body?.password||'')
+  if(!token||!name||password.length<8)return res.status(400).json({error:'Ссылка, имя и пароль от 8 символов обязательны'})
+  try{
+    const hash=tokenHash(token)
+    if(pool){
+      const q=await pool.query(`select i.*,s.name as studio_name,s.owner_name,s.plan,s.project_limit
+        from team_invitations i join studios s on s.id=i.studio_id
+        where i.token_hash=$1 and i.expires_at>now() and i.accepted_at is null`,[hash])
+      if(!q.rows[0])return res.status(400).json({error:'Приглашение недействительно или уже истекло'})
+      const inv=q.rows[0]
+      if((await pool.query('select id from users where lower(email)=lower($1)',[inv.email])).rows[0])return res.status(409).json({error:'Пользователь с таким email уже существует'})
+      const c=await pool.connect()
+      try{
+        await c.query('begin')
+        const user=(await c.query('insert into users(studio_id,name,email,role,password_hash) values($1,$2,$3,$4,$5) returning id,name,email,role',[inv.studio_id,name,inv.email,inv.role,hashPassword(password)])).rows[0]
+        await c.query('update team_invitations set accepted_at=now() where id=$1',[inv.id])
+        const session=createSessionToken()
+        await c.query("insert into sessions(user_id,token_hash,expires_at) values($1,$2,now()+interval '30 days')",[user.id,tokenHash(session)])
+        await c.query('commit')
+        return res.status(201).json(authPayload(user,{id:inv.studio_id,name:inv.studio_name,owner_name:inv.owner_name,plan:inv.plan,project_limit:inv.project_limit},session))
+      }catch(e){await c.query('rollback');throw e}finally{c.release()}
+    }
+    const inv=memoryInvitations.find(x=>x.token_hash===hash&&x.expires_at>Date.now()&&!x.accepted_at)
+    if(!inv)return res.status(400).json({error:'Приглашение недействительно или уже истекло'})
+    if(memoryUsers.some(x=>x.email===inv.email))return res.status(409).json({error:'Пользователь с таким email уже существует'})
+    const user={id:crypto.randomUUID(),studio_id:inv.studio_id,name,email:inv.email,role:inv.role,password_hash:hashPassword(password)}
+    memoryUsers.push(user);inv.accepted_at=Date.now()
+    const studio=memoryStudios.find(x=>x.id===inv.studio_id)||demoStudio
+    const session=createSessionToken();memorySessions.set(tokenHash(session),{user_id:user.id,expiresAt:Date.now()+30*86400000})
+    return res.status(201).json(authPayload(user,studio,session))
+  }catch(e){res.status(500).json({error:'Не удалось принять приглашение'})}
 })
 app.get('/api/auth/me',requireAuth,async(req,res)=>res.json({user:req.user,studio:req.studio}))
 app.post('/api/auth/logout',requireAuth,async(req,res)=>{
@@ -194,9 +232,77 @@ app.get('/api/studio/usage', async (req,res) => {
 })
 
 app.get('/api/team', async (req,res) => {
-  if(!pool) return res.json({members:[{id:'demo-owner',name:demoStudio.ownerName,email:'owner@nexora.local',role:'owner',created_at:new Date().toISOString()}]})
-  const q=await pool.query('select id,name,email,role,created_at from users where studio_id=$1 order by created_at',[req.user.studio_id])
-  res.json({members:q.rows})
+  if(!pool){
+    const members=memoryUsers.filter(x=>x.studio_id===req.user.studio_id).map(x=>({id:x.id,name:x.name,email:x.email,role:x.role,created_at:x.created_at||new Date().toISOString()}))
+    const invitations=memoryInvitations.filter(x=>x.studio_id===req.user.studio_id&&!x.accepted_at).map(x=>({id:x.id,email:x.email,role:x.role,expires_at:new Date(x.expires_at).toISOString(),created_at:new Date(x.created_at).toISOString(),invite_url:inviteUrl(x.token)}))
+    return res.json({members,invitations})
+  }
+  const [m,i]=await Promise.all([
+    pool.query('select id,name,email,role,created_at from users where studio_id=$1 order by created_at',[req.user.studio_id]),
+    pool.query("select id,email,role,expires_at,created_at from team_invitations where studio_id=$1 and accepted_at is null order by created_at desc",[req.user.studio_id])
+  ])
+  res.json({members:m.rows,invitations:i.rows.map(x=>({...x,invite_url:null}))})
+})
+
+app.post('/api/team', async (req,res) => {
+  if(!requireRole(req,res,['owner','admin'])) return
+  const email=String(req.body?.email||'').trim().toLowerCase(),role=String(req.body?.role||'member').trim()
+  if(!email)return res.status(400).json({error:'Email обязателен'})
+  if(!['admin','member','viewer'].includes(role))return res.status(400).json({error:'Недопустимая роль'})
+  try{
+    if(pool){
+      const [users,invites]=await Promise.all([
+        pool.query('select count(*)::int as count from users where studio_id=$1',[req.user.studio_id]),
+        pool.query("select count(*)::int as count from team_invitations where studio_id=$1 and accepted_at is null and expires_at>now()",[req.user.studio_id])
+      ])
+      if(users.rows[0].count+invites.rows[0].count>=5)return res.status(409).json({error:'Достигнут лимит участников тарифа'})
+      if((await pool.query('select id from users where lower(email)=lower($1)',[email])).rows[0])return res.status(409).json({error:'Пользователь с таким email уже существует'})
+      if((await pool.query("select id from team_invitations where studio_id=$1 and lower(email)=lower($2) and accepted_at is null and expires_at>now()",[req.user.studio_id,email])).rows[0])return res.status(409).json({error:'Для этого email уже есть активное приглашение'})
+      const raw=createInviteToken()
+      const q=await pool.query('insert into team_invitations(studio_id,email,role,token_hash,expires_at,invited_by) values($1,$2,$3,$4,now()+interval \'7 days\',$5) returning id,email,role,expires_at,created_at',[req.user.studio_id,email,role,tokenHash(raw),req.user.id])
+      return res.status(201).json({invitation:{...q.rows[0],invite_url:inviteUrl(raw)}})
+    }
+    const activeUsers=memoryUsers.filter(x=>x.studio_id===req.user.studio_id).length
+    const activeInvites=memoryInvitations.filter(x=>x.studio_id===req.user.studio_id&&!x.accepted_at&&x.expires_at>Date.now()).length
+    if(activeUsers+activeInvites>=5)return res.status(409).json({error:'Достигнут лимит участников тарифа'})
+    if(memoryUsers.some(x=>x.email===email))return res.status(409).json({error:'Пользователь с таким email уже существует'})
+    if(memoryInvitations.some(x=>x.studio_id===req.user.studio_id&&x.email===email&&!x.accepted_at&&x.expires_at>Date.now()))return res.status(409).json({error:'Для этого email уже есть активное приглашение'})
+    const raw=createInviteToken(),inv={id:crypto.randomUUID(),studio_id:req.user.studio_id,email,role,token_hash:tokenHash(raw),token:raw,expires_at:Date.now()+7*86400000,created_at:Date.now(),accepted_at:null}
+    memoryInvitations.push(inv)
+    res.status(201).json({invitation:{id:inv.id,email,role,expires_at:new Date(inv.expires_at).toISOString(),created_at:new Date(inv.created_at).toISOString(),invite_url:inviteUrl(raw)}})
+  }catch(e){res.status(500).json({error:'Не удалось создать приглашение'})}
+})
+
+app.delete('/api/team/invitations/:id', async (req,res) => {
+  if(!requireRole(req,res,['owner','admin'])) return
+  const id=req.params.id
+  if(pool){
+    const q=await pool.query('delete from team_invitations where id=$1 and studio_id=$2 and accepted_at is null returning id',[id,req.user.studio_id])
+    if(!q.rows[0])return res.status(404).json({error:'Приглашение не найдено'})
+  } else {
+    const i=memoryInvitations.findIndex(x=>x.id===id&&x.studio_id===req.user.studio_id&&!x.accepted_at)
+    if(i<0)return res.status(404).json({error:'Приглашение не найдено'})
+    memoryInvitations.splice(i,1)
+  }
+  res.json({ok:true})
+})
+
+app.post('/api/team/invitations/:id/resend', async (req,res) => {
+  if(!requireRole(req,res,['owner','admin'])) return
+  const id=req.params.id
+  try{
+    if(pool){
+      const current=await pool.query("select * from team_invitations where id=$1 and studio_id=$2 and accepted_at is null",[id,req.user.studio_id])
+      if(!current.rows[0])return res.status(404).json({error:'Приглашение не найдено'})
+      const raw=createInviteToken()
+      const q=await pool.query('update team_invitations set token_hash=$1,expires_at=now()+interval \'7 days\' where id=$2 returning id,email,role,expires_at,created_at',[tokenHash(raw),id])
+      return res.json({invitation:{...q.rows[0],invite_url:inviteUrl(raw)}})
+    }
+    const inv=memoryInvitations.find(x=>x.id===id&&x.studio_id===req.user.studio_id&&!x.accepted_at)
+    if(!inv)return res.status(404).json({error:'Приглашение не найдено'})
+    const raw=createInviteToken();inv.token_hash=tokenHash(raw);inv.token=raw;inv.expires_at=Date.now()+7*86400000
+    res.json({invitation:{id:inv.id,email:inv.email,role:inv.role,expires_at:new Date(inv.expires_at).toISOString(),created_at:new Date(inv.created_at).toISOString(),invite_url:inviteUrl(raw)}})
+  }catch(e){res.status(500).json({error:'Не удалось обновить приглашение'})}
 })
 
 app.patch('/api/team/:id', async (req,res) => {
@@ -226,23 +332,6 @@ app.delete('/api/team/:id', async (req,res) => {
   }
   res.json({ok:true})
 })
-
-app.post('/api/team', async (req,res) => {
-  const name=String(req.body?.name||'').trim(),email=String(req.body?.email||'').trim().toLowerCase(),role=String(req.body?.role||'member').trim()
-  if(!name||!email)return res.status(400).json({error:'Имя и email обязательны'})
-  if(!['admin','member','viewer'].includes(role))return res.status(400).json({error:'Недопустимая роль'})
-  if(!pool)return res.status(201).json({member:{id:crypto.randomUUID(),name,email,role,created_at:new Date().toISOString()}})
-  const count=await pool.query('select count(*)::int as count from users where studio_id=$1',[req.user.studio_id])
-  if(count.rows[0].count>=5)return res.status(409).json({error:'Достигнут лимит участников тарифа'})
-  try {
-    const q=await pool.query('insert into users(studio_id,name,email,role) values($1,$2,$3,$4) returning id,name,email,role,created_at',[req.user.studio_id,name,email,role])
-    res.status(201).json({member:q.rows[0]})
-  } catch(e) {
-    if(e.code==='23505')return res.status(409).json({error:'Пользователь с таким email уже существует'})
-    throw e
-  }
-})
-
 
 app.get('/api/projects', async (req, res) => {
   if (!pool) return res.json({ projects: memoryProjects.filter(p=>p.studio_id===req.user.studio_id) })
