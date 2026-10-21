@@ -108,9 +108,9 @@ function App() {
       })))
       setApiState('online')
     }).catch(() => alive && setApiState('offline'))
-    Promise.allSettled([api.leads(), api.clients(), api.bookings(), api.payments(), api.invoices(), api.analytics(), api.orders()]).then(([leads, clients, bookings, payments, invoices, analytics]) => {
+    Promise.allSettled([api.leads(), api.clients(), api.bookings(), api.payments(), api.invoices(), api.analytics(), api.orders()]).then(([leads, clients, bookings, payments, invoices, analytics, ordersResult]) => {
       if (!alive) return
-      setOrders(analytics.status === 'fulfilled' ? [] : [])
+      setOrders(ordersResult.status === 'fulfilled' ? (ordersResult.value.orders || []) : [])
       setCrm({
         leads: leads.status === 'fulfilled' ? (leads.value.leads || []) : [],
         clients: clients.status === 'fulfilled' ? (clients.value.clients || []) : [],
