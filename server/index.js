@@ -413,6 +413,20 @@ app.patch('/api/orders/:id', async (req,res) => {
   if(!q.rows[0])return res.status(404).json({error:'Заказ не найден'})
   res.json({order:q.rows[0]})
 })
+app.post('/api/orders/:id/invoice', async (req,res) => {
+  const id=req.params.id
+  let order
+  if(!pool) order=memoryOrders.find(x=>x.id===id)
+  else { const q=await pool.query('select * from orders where id=$1 limit 1',[id]); order=q.rows[0] }
+  if(!order) return res.status(404).json({error:'Заказ не найден'})
+  if(Number(order.total||0)<=0) return res.status(400).json({error:'У заказа некорректная сумма'})
+  const number='INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
+  const description='Счёт по заказу '+order.number
+  if(!pool){ const invoice={id:crypto.randomUUID(),project_id:order.project_id,client_id:order.client_id||null,number,amount:Number(order.total),currency:order.currency||'EUR',status:'sent',due_date:null,description,created_at:new Date().toISOString()}; memoryInvoices.unshift(invoice); return res.status(201).json({invoice}) }
+  const q=await pool.query('insert into invoices(project_id,client_id,number,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7) returning *',[order.project_id,order.client_id||null,number,order.total,order.currency||'EUR','sent',description])
+  res.status(201).json({invoice:q.rows[0]})
+})
+
 
 app.get('/api/payments', async (_req,res) => {
   if (!pool) return res.json({payments:memoryPayments})
