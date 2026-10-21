@@ -1375,6 +1375,22 @@ app.post('/api/payments', async (req,res) => {
   }
   res.status(201).json({payment:q.rows[0]})
 })
+app.patch('/api/payments/:id', async (req,res) => {
+  const status=String(req.body?.status||'').trim()
+  if(!['pending','paid','refunded','failed'].includes(status)) return res.status(400).json({error:'Недопустимый статус платежа'})
+  if(!pool){
+    const p=memoryPayments.find(x=>x.id===req.params.id&&x.studio_id===req.user.studio_id)
+    if(!p)return res.status(404).json({error:'Платёж не найден'})
+    p.status=status
+    if(p.order_id){const o=memoryOrders.find(x=>x.id===p.order_id&&x.studio_id===req.user.studio_id);if(o)o.status=status==='paid'?'paid':status==='refunded'?'refunded':o.status}
+    return res.json({payment:p})
+  }
+  const q=await pool.query("update payments p set status=$1 from projects pr where p.id=$2 and p.project_id=pr.id and pr.studio_id=$3 returning p.*",[status,req.params.id,req.user.studio_id])
+  if(!q.rows[0])return res.status(404).json({error:'Платёж не найден'})
+  if(q.rows[0].order_id) await pool.query("update orders set status=$1 where id=$2 and project_id in (select id from projects where studio_id=$3)",[status==='paid'?'paid':status==='refunded'?'refunded':'pending',q.rows[0].order_id,req.user.studio_id])
+  res.json({payment:q.rows[0]})
+})
+
 app.get('/api/analytics/overview', async (_req, res) => {
   if (!pool) {
     const since=new Date(Date.now()-30*86400000)
