@@ -208,7 +208,7 @@ function App() {
           {active === 'Проекты' && !selectedProject && <Projects projects={filteredProjects} onCreate={() => setShowCreate(true)} onOpenProject={openProject}/>}
           {active === 'Заявки' && <InboxPage leads={crm.leads} />}
           {active === 'Клиенты' && !selectedClient && <Clients clients={crm.clients} onOpenClient={openClient} />}
-          {active === 'Клиенты' && selectedClient && <ClientWorkspace data={clientData} onBack={() => { setSelectedClient(null); setClientData(null) }} />}
+          {active === 'Клиенты' && selectedClient && <ClientWorkspace data={clientData} projects={projectData} onRefresh={async () => { if (selectedClient?.id) setClientData(await api.client(selectedClient.id)); const [cl,ord,inv]=await Promise.all([api.clients(),api.orders(),api.invoices()]); setCrm(v=>({...v,clients:cl.clients||[],invoices:inv.invoices||[]})); setOrders(ord.orders||[]) }} onBack={() => { setSelectedClient(null); setClientData(null) }} />}
           {active === 'Бронирования' && <Bookings bookings={crm.bookings} projects={projects} />}
           {active === 'Платежи' && <Payments payments={crm.payments} />}
           {active === 'Счета' && <Invoices invoices={crm.invoices} projects={projectData} />}
@@ -299,7 +299,7 @@ function Invoices({invoices=[],projects=[]}) {
 
 function Clients({clients=[],onOpenClient}){const rows=clients.length?clients:['Barber House','Nordic Beauty','Urban Fitness','Mokka Coffee','North Studio','Luna Dental'];return <><Header eyebrow="CRM" title="Клиенты" description="Единая база клиентов, история покупок, записей и оплат." action={<button className="primary"><Plus size={17}/> Добавить клиента</button>}/><div className="client-grid">{rows.map((x,i)=>{const name=typeof x==='string'?x:x.name;const activity=x.last_activity?Math.max(0,Math.floor((Date.now()-new Date(x.last_activity).getTime())/86400000)):null;return <button className="card client-card client-card-button" key={x.id||x.name||x} onClick={()=>typeof x==='string'?null:onOpenClient?.(x)}><div className={`client-logo c${i}`}>{name.slice(0,1)}</div><div><h3>{name}</h3><span>{x.project_count??0} {Number(x.project_count)===1?'проект':'проекта'} · {x.contact_count??0} взаимодействий</span></div><span className="row-more"><MoreHorizontal size={17}/></span><div className="client-bottom"><span>Последняя активность</span><b>{activity===null?'нет активности':activity===0?'сегодня':activity===1?'вчера':activity+' дн. назад'}</b></div></button>})}</div></>}
 
-function ClientWorkspace({data,onBack,onRefresh}){
+function ClientWorkspace({data,projects=[],onBack,onRefresh}){
   const c=data?.client||{},leads=data?.leads||[],bookings=data?.bookings||[],payments=data?.payments||[],invoices=data?.invoices||[],orders=data?.orders||[]
   const [editing,setEditing]=useState(false),[saving,setSaving]=useState(false),[invoiceOpen,setInvoiceOpen]=useState(false),[invoice,setInvoice]=useState({project_id:'',amount:'',description:'',due_date:''}),[notice,setNotice]=useState('')
   const [form,setForm]=useState({name:c.name||'',email:c.email||'',phone:c.phone||''})
