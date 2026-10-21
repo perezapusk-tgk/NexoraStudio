@@ -92,3 +92,8 @@
 .telegram-status{display:flex;align-items:center;gap:10px;margin:16px 0 2px}
 .telegram-status>b{font-size:13px}
 .settings-note{display:block;color:var(--muted,#6b7280);line-height:1.5;margin-top:2px}
+
+.booking-wrap{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%}
+.booking-status{min-width:150px;border:1px solid var(--border,#e7e7e7);background:#fff;border-radius:10px;padding:9px 11px;font:inherit;color:inherit}
+.booking em.pending{background:#fff4d6}.booking em.confirmed{background:#e8f7ee}.booking em.completed{background:#e8eefc}.booking em.cancelled{background:#f4e8e8}
+@media(max-width:760px){.booking-wrap{align-items:flex-start;flex-direction:column}.booking-status{width:100%}.calendar-actions{overflow:auto;max-width:100%}}
