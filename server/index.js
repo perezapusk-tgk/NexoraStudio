@@ -25,7 +25,7 @@ app.get('/api/studio', (_req, res) => res.json({ studio: demoStudio }))
 
 app.get('/api/projects', async (_req, res) => {
   if (!pool) return res.json({ projects: demoProjects() })
-  const { rows } = await pool.query('select id, name, slug, project_type, status, created_at, updated_at from projects order by updated_at desc')
+  const { rows } = await pool.query('select id, name, slug, project_type, status, domain, settings, created_at, updated_at from projects order by updated_at desc')
   res.json({ projects: rows })
 })
 
@@ -49,13 +49,13 @@ app.patch('/api/projects/:id/pages/:pageId',async(req,res)=>{if(!pool)return res
 app.post('/api/projects/:id/publish',async(req,res)=>{if(!pool)return res.json({published:true,project:{id:req.params.id,status:'published'},url:'https://'+req.params.id+'.nexora.site'});const q=await pool.query("update projects set status='published',updated_at=now() where id=$1 returning *",[req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Проект не найден'});await pool.query('update pages set published=true,updated_at=now() where project_id=$1',[req.params.id]);res.json({published:true,project:q.rows[0],url:q.rows[0].domain?'https://'+q.rows[0].domain:'https://'+q.rows[0].slug+'.nexora.site'})});
 app.get('/api/leads', async (_req, res) => {
   if (!pool) return res.json({ leads: demoLeads() })
-  const { rows } = await pool.query('select id, project_id, name, message, status, created_at from leads order by created_at desc limit 100')
+  const { rows } = await pool.query('select l.id, l.project_id, l.name, l.message, l.status, l.created_at, p.name as project_name from leads l left join projects p on p.id=l.project_id order by created_at desc limit 100')
   res.json({ leads: rows })
 })
 
 app.get('/api/bookings', async (_req, res) => {
   if (!pool) return res.json({ bookings: demoBookings() })
-  const { rows } = await pool.query('select id, project_id, customer_name, starts_at, status from bookings order by starts_at asc limit 100')
+  const { rows } = await pool.query('select b.id, b.project_id, b.customer_name, b.starts_at, b.status, p.name as project_name from bookings b left join projects p on p.id=b.project_id order by starts_at asc limit 100')
   res.json({ bookings: rows })
 })
 
