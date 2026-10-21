@@ -37,6 +37,35 @@ const activities = [
   ['Получен платёж', 'Barber House · €85', '3 ч назад', 'payment'],
 ]
 
+function PublicApp({mode,slug}){
+  const [data,setData]=useState(null)
+  const [error,setError]=useState('')
+  useEffect(()=>{let alive=true;api.publicProject(slug).then(v=>alive&&setData(v)).catch(()=>alive&&setError('Проект не найден')).finally(()=>{});return()=>{alive=false}},[slug])
+  if(error) return <div className="public-error"><b>{error}</b><span>Проверьте адрес публикации.</span></div>
+  if(!data) return <div className="public-loading">Загрузка…</div>
+  return mode==='miniapp'?<PublicMiniApp data={data}/>:<PublicSite data={data}/>
+}
+
+function PublicSite({data}){
+  const project=data.project,pages=data.pages||[],blocks=pages[0]?.content?.blocks||[],catalog=(data.catalog||[]).filter(x=>x.active!==false)
+  return <div className="public-app"><header className="public-nav"><b>{project.name}</b><span>Сайт</span></header><main className="public-site">
+    {blocks.map((b,i)=>b.type==='hero'?<section className="public-hero" key={i}><small>NEXORA</small><h1>{b.headline}</h1><p>{b.subheadline}</p><button>{b.cta||'Подробнее'}</button></section>:b.type==='services'?<section className="public-block" key={i}><div className="public-kicker">{b.title}</div><div className="public-cards">{(b.items||[]).map(x=><article key={x}><b>{x}</b><span>Подробности и запись доступны онлайн.</span></article>)}</div></section>:<section className="public-block" key={i}><div className="public-kicker">{b.title}</div><p>{b.text}</p></section>)}
+    {catalog.length>0&&<section className="public-block"><div className="public-kicker">Каталог</div><div className="public-cards">{catalog.map(x=><article key={x.id}><b>{x.name}</b><span>{x.description||'Услуга или товар'}</span><strong>{x.price!=null?new Intl.NumberFormat('ru-RU',{style:'currency',currency:x.currency||'EUR'}).format(Number(x.price)):'По запросу'}</strong></article>)}</div></section>}
+  </main></div>
+}
+
+function PublicMiniApp({data}){
+  const project=data.project,catalog=(data.catalog||[]).filter(x=>x.active!==false)
+  return <div className="mini-public"><div className="mini-public-top"><b>{project.name}</b><span>Telegram Mini App</span></div><section className="mini-public-hero"><small>ОНЛАЙН-СЕРВИС</small><h1>{project.name}</h1><p>Каталог, запись и заявки — прямо внутри Telegram.</p><button>Записаться</button></section><section className="mini-public-section"><div className="public-kicker">Каталог</div>{catalog.length?catalog.map(x=><div className="mini-public-item" key={x.id}><div><b>{x.name}</b><span>{x.description||'Услуга'}</span></div><strong>{x.price!=null?new Intl.NumberFormat('ru-RU',{style:'currency',currency:x.currency||'EUR'}).format(Number(x.price)):'По запросу'}</strong><button>Выбрать</button></div>):<div className="mini-public-empty">Каталог будет доступен после публикации позиций.</div>}</section></div>
+}
+
+function Root(){
+  const path=window.location.pathname.split('/').filter(Boolean)
+  if(path[0]==='published'&&path[1]) return <PublicApp mode="site" slug={path[1]}/>
+  if(path[0]==='miniapp'&&path[1]) return <PublicApp mode="miniapp" slug={path[1]}/>
+  return <App/>
+}
+
 function App() {
   const [active, setActive] = useState('Обзор')
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -325,4 +354,4 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
 
 function CreateProject({onClose,onCreate}){return <div className="modal-backdrop" onMouseDown={onClose}><div className="modal card" onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="eyebrow">Новый проект</span><h2>Что создаём?</h2></div><button className="icon-btn" onClick={onClose}><X size={18}/></button></div><div className="create-options"><button onClick={() => onCreate("site")}><div><Globe2 size={20}/></div><b>Сайт</b><span>Запустить сайт из шаблона</span><ChevronRight size={17}/></button><button onClick={() => onCreate("miniapp")}><div><Smartphone size={20}/></div><b>Telegram Mini App</b><span>Каталог, заявки и бронирования</span><ChevronRight size={17}/></button><button onClick={() => onCreate("site_miniapp")}><div><Layers3 size={20}/></div><b>Сайт + Mini App</b><span>Полный клиентский проект</span><ChevronRight size={17}/></button></div></div></div>}
  
-createRoot(document.getElementById('root')).render(<App />)
+createRoot(document.getElementById('root')).render(<Root />)
