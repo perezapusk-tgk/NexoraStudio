@@ -1389,4 +1389,4 @@ app.get('/api/analytics/overview', async (_req, res) => {
   res.json({metrics})
 })
 
-app.listen(port,()=>console.log(`Nexora API listening on ${port}`))
+if (process.env.NODE_ENV !== 'test') app.listen(port,()=>console.log(`Nexora API listening on ${port}`))
