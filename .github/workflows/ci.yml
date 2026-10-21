@@ -15,6 +15,6 @@ jobs:
         with:
           node-version: 20
       - run: npm install --legacy-peer-deps --no-audit --no-fund
-      - run: npx --yes esbuild src/main.jsx --loader:jsx --outfile=/tmp/nexora-check.js
+      - run: npx --yes esbuild src/main.jsx --loader:.jsx=jsx --outfile=/tmp/nexora-check.js
       - run: npm run build
       - run: node --check server/index.js
