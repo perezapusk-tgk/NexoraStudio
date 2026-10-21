@@ -820,6 +820,21 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   res.status(201).json({order,checkout_url})
 })
 
+app.post('/api/stripe/connect/webhook', async (req,res)=>{
+  const signing=String(process.env.STRIPE_CONNECT_WEBHOOK_SECRET||process.env.STRIPE_WEBHOOK_SECRET||'').trim()
+  if(!signing)return res.status(503).json({error:'Stripe Connect webhook secret не настроен'})
+  const signature=String(req.headers['stripe-signature']||''),timestamp=Number((signature.match(/(?:^|,)t=(\\d+)/)||[])[1]||0),provided=(signature.match(/(?:^|,)v1=([^,]+)/)||[])[1]||'',payload=(req.rawBody||Buffer.from('')).toString('utf8')
+  const expected=crypto.createHmac('sha256',signing).update(String(timestamp)+'.'+payload).digest('hex')
+  if(!timestamp||!provided||expected!==provided||Math.abs(Date.now()/1000-timestamp)>300)return res.status(400).json({error:'Недействительная подпись Stripe Connect webhook'})
+  try{
+    const event=JSON.parse(payload),obj=event.data?.object||{}
+    if(pool&&event.type==='account.updated'&&obj.id){
+      await pool.query("update studios set stripe_connect_status=$1,updated_at=now() where stripe_connect_account_id=$2",[obj.charges_enabled&&obj.payouts_enabled?'active':'pending',obj.id])
+    }
+    res.json({received:true})
+  }catch(e){res.status(400).json({error:'Не удалось обработать Connect webhook'})}
+})
+
 app.post('/api/public/:slug/events', async (req,res) => {
   const slug=String(req.params.slug||'').trim()
   if(!pool){memoryEvents.push({slug,event_type:String(req.body?.event_type||'page_view'),path:String(req.body?.path||''),created_at:new Date().toISOString()});return res.status(204).end()}
