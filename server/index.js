@@ -158,6 +158,53 @@ app.post('/api/public/:slug/bookings', async (req,res) => {
   res.status(201).json({booking:q.rows[0]})
 })
 
+app.post('/api/public/:slug/checkout', async (req,res) => {
+  const slug=String(req.params.slug||'').trim()
+  const name=String(req.body?.name||'').trim()
+  const phone=String(req.body?.phone||'').trim()
+  const email=String(req.body?.email||'').trim()
+  const items=Array.isArray(req.body?.items)?req.body.items:[]
+  if(!name || (!phone && !email) || !items.length) return res.status(400).json({error:'Укажите имя, телефон или email и хотя бы один товар'})
+  let project
+  if(!pool) project=memoryProjects.find(p=>p.slug===slug && p.status==='published')
+  else project=(await pool.query("select id,name,slug from projects where slug=$1 and status='published' limit 1",[slug])).rows[0]
+  if(!project) return res.status(404).json({error:'Публичный проект не найден'})
+  let clientId=null
+  if(pool){
+    const existing=(await pool.query('select id from clients where studio_id=$1 and ((phone=$2 and $2 <> \'\') or (email=$3 and $3 <> \'\')) limit 1',[demoStudio.id,phone,email])).rows[0]
+    if(existing) clientId=existing.id
+    else clientId=(await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id',[demoStudio.id,name,email||null,phone||null])).rows[0].id
+  } else {
+    const existing=memoryClients.find(c=>(phone && c.phone===phone)||(email && c.email===email))
+    if(existing) clientId=existing.id
+    else { const client={id:crypto.randomUUID(),name,email,phone,created_at:new Date().toISOString()}; memoryClients.unshift(client); clientId=client.id }
+  }
+  let total=0
+  const normalized=[]
+  for(const item of items){
+    const catalogId=String(item.catalog_id||item.id||'').trim()
+    const quantity=Math.max(1,Number(item.quantity||1))
+    let source
+    if(pool) source=(await pool.query('select id,name,price,currency from catalog_items where id=$1 and project_id=$2 and active=true limit 1',[catalogId,project.id])).rows[0]
+    else source=(memoryCatalog.get(project.id)||[]).find(x=>x.id===catalogId && x.active!==false)
+    if(!source) return res.status(400).json({error:'Товар не найден'})
+    const price=Number(source.price||0)
+    total+=price*quantity
+    normalized.push({catalog_id:source.id,name:source.name,price,quantity})
+  }
+  const number='ORD-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
+  let order
+  if(!pool){
+    order={id:crypto.randomUUID(),project_id:project.id,client_id:clientId,number,status:'pending',total,currency:String(req.body?.currency||'EUR').toUpperCase(),items:normalized,created_at:new Date().toISOString()}
+    memoryOrders.unshift(order)
+    memoryEvents.push({slug,event_type:'order_created',path:'/checkout',value:total,created_at:new Date().toISOString()})
+  } else {
+    order=(await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[project.id,clientId,number,'pending',total,String(req.body?.currency||'EUR').toUpperCase(),JSON.stringify(normalized)])).rows[0]
+    await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[project.id,'order_created','/checkout',total,JSON.stringify({order_id:order.id})])
+  }
+  res.status(201).json({order})
+})
+
 app.post('/api/public/:slug/events', async (req,res) => {
   const slug=String(req.params.slug||'').trim()
   if(!pool){memoryEvents.push({slug,event_type:String(req.body?.event_type||'page_view'),path:String(req.body?.path||''),created_at:new Date().toISOString()});return res.status(204).end()}
