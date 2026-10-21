@@ -136,9 +136,42 @@ app.get('/api/health', async (_req, res) => {
   res.json({ ok: true, service: 'nexora-api', version: '0.2.0', database })
 })
 
-app.use('/api',(req,res,next)=>{
+app.use('/api',async(req,res,next)=>{
   if(req.path==='/health'||req.path.startsWith('/auth/')||req.path.startsWith('/public/'))return next()
-  return requireAuth(req,res,next)
+  try{
+    await requireAuth(req,res,async()=>{
+      const parts=req.path.split('/').filter(Boolean)
+      const type=parts[0],id=parts[1]
+      if(!id)return next()
+      if(pool){
+        const queries={
+          projects:'select id from projects where studio_id=$1 and (id=$2 or slug=$2) limit 1',
+          leads:'select l.id from leads l join projects p on p.id=l.project_id where p.studio_id=$1 and l.id=$2 limit 1',
+          clients:'select id from clients where studio_id=$1 and id=$2 limit 1',
+          bookings:'select b.id from bookings b join projects p on p.id=b.project_id where p.studio_id=$1 and b.id=$2 limit 1',
+          payments:'select x.id from payments x join projects p on p.id=x.project_id where p.studio_id=$1 and x.id=$2 limit 1',
+          invoices:'select x.id from invoices x join projects p on p.id=x.project_id where p.studio_id=$1 and x.id=$2 limit 1',
+          orders:'select x.id from orders x join projects p on p.id=x.project_id where p.studio_id=$1 and x.id=$2 limit 1'
+        }
+        if(queries[type]){
+          const q=await pool.query(queries[type],[req.user.studio_id,id])
+          if(!q.rows[0])return res.status(404).json({error:'Объект не найден'})
+        }
+      } else {
+        const maps={
+          projects:()=>memoryProjects.find(x=>(x.id===id||x.slug===id)&&x.studio_id===req.user.studio_id),
+          leads:()=>memoryLeads.find(x=>x.id===id&&x.studio_id===req.user.studio_id),
+          clients:()=>memoryClients.find(x=>x.id===id&&x.studio_id===req.user.studio_id),
+          bookings:()=>memoryBookings.find(x=>x.id===id&&x.studio_id===req.user.studio_id),
+          payments:()=>memoryPayments.find(x=>x.id===id&&x.studio_id===req.user.studio_id),
+          invoices:()=>memoryInvoices.find(x=>x.id===id&&x.studio_id===req.user.studio_id),
+          orders:()=>memoryOrders.find(x=>x.id===id&&x.studio_id===req.user.studio_id)
+        }
+        if(maps[type]&&!maps[type]())return res.status(404).json({error:'Объект не найден'})
+      }
+      next()
+    })
+  }catch(e){next(e)}
 })
 
 app.get('/api/studio', (req, res) => res.json({ studio: req.studio }))
@@ -342,13 +375,13 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   if(!project) return res.status(404).json({error:'Публичный проект не найден'})
   let clientId=null
   if(pool){
-    const existing=(await pool.query('select id from clients where studio_id=$1 and ((phone=$2 and $2 <> \'\') or (email=$3 and $3 <> \'\')) limit 1',[demoStudio.id,phone,email])).rows[0]
+    const existing=(await pool.query('select id from clients where studio_id=$1 and ((phone=$2 and $2 <> \'\') or (email=$3 and $3 <> \'\')) limit 1',[project.studio_id||demoStudio.id,phone,email])).rows[0]
     if(existing) clientId=existing.id
     else clientId=(await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id',[demoStudio.id,name,email||null,phone||null])).rows[0].id
   } else {
     const existing=memoryClients.find(c=>(phone && c.phone===phone)||(email && c.email===email))
     if(existing) clientId=existing.id
-    else { const client={id:crypto.randomUUID(),name,email,phone,created_at:new Date().toISOString()}; memoryClients.unshift(client); clientId=client.id }
+    else { const client={id:crypto.randomUUID(),studio_id:project.studio_id||demoStudio.id,name,email,phone,created_at:new Date().toISOString()}; memoryClients.unshift(client); clientId=client.id }
   }
   let total=0
   const normalized=[]
@@ -366,7 +399,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   const number='ORD-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
   let order
   if(!pool){
-    order={id:crypto.randomUUID(),project_id:project.id,client_id:clientId,number,status:'pending',total,currency:String(req.body?.currency||'EUR').toUpperCase(),items:normalized,created_at:new Date().toISOString()}
+    order={id:crypto.randomUUID(),studio_id:project.studio_id||demoStudio.id,project_id:project.id,client_id:clientId,number,status:'pending',total,currency:String(req.body?.currency||'EUR').toUpperCase(),items:normalized,created_at:new Date().toISOString()}
     memoryOrders.unshift(order)
     memoryEvents.push({slug,event_type:'order_created',path:'/checkout',value:total,created_at:new Date().toISOString()})
   } else {
