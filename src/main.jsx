@@ -151,6 +151,24 @@ function App() {
 
   useEffect(() => {
     if(!auth) return
+    const params=new URLSearchParams(window.location.search)
+    if(params.get('billing')!=='success') return
+    const provider=params.get('provider')
+    const paymentId=params.get('session_id') || params.get('payment_id')
+    if(!provider || !paymentId) return
+    api.billingConfirm(provider,paymentId).then(()=>{
+      window.history.replaceState({},'',window.location.pathname)
+      window.alert('Оплата подтверждена. Тариф активирован на 30 дней.')
+    }).catch(err=>{
+      let m=err.message||'Оплата ещё не подтверждена'
+      try{m=JSON.parse(err.message).error||m}catch{}
+      window.history.replaceState({},'',window.location.pathname)
+      window.alert(m)
+    })
+  },[auth])
+
+  useEffect(() => {
+    if(!auth) return
     let alive = true
     api.projects().then(items => {
       if (!alive) return
