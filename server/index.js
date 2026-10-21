@@ -270,7 +270,7 @@ function billingAmount(plan,currency){
   return currency==='USD'?Number(base.toFixed(2)):Number((base*100).toFixed(2))
 }
 function billingAppUrl(){
-  return String(process.env.APP_URL||process.env.FRONTEND_URL||'http://localhost:5173').replace(/\\/$/,'')
+  return String(process.env.APP_URL||process.env.FRONTEND_URL||'http://localhost:5173').replace(/\/$/,'')
 }
 async function createStripeCheckout({studioId,plan,amount,currency,email}){
   const secret=String(process.env.STRIPE_SECRET_KEY||'').trim()
