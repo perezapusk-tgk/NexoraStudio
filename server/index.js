@@ -277,6 +277,10 @@ app.use('/api',async(req,res,next)=>{
   }catch(e){next(e)}
 })
 
+app.get('/api/templates', async (_req,res)=>{
+  const templates=Object.values(TEMPLATE_DEFINITIONS).map(t=>({id:t.id,name:t.name,category:t.category,blocks:t.blocks.length,catalog:t.catalog.length,description:'Готовый сайт + Mini App'}))
+  res.json({templates})
+})
 app.get('/api/studio', async (req, res) => {
   if(!pool) return res.json({studio:{...req.studio,billing_currency:memoryStudios.find(x=>x.id===req.user.studio_id)?.billing_currency||'RUB'}})
   const q=await pool.query('select * from studios where id=$1',[req.user.studio_id])
