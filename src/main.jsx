@@ -357,13 +357,25 @@ function Templates({onCreate}){const templates=[['barber','Barber','Барбер
 
 function SettingsPage(){return <><Header eyebrow="Рабочее пространство" title="Настройки" description="Брендинг, участники, уведомления и параметры студии."/><div className="settings-layout"><div className="settings-nav card">{['Профиль студии','Брендинг','Участники','Уведомления','Интеграции','Безопасность','Тариф и оплата'].map((x,i)=><button className={i===0?'selected':''} key={x}>{x}</button>)}</div><section className="card settings-form"><div className="setting-block"><h2>Профиль студии</h2><span>Основная информация рабочего пространства.</span><label>Название студии<input value="Nexora Studio" readOnly/></label><label>Рабочий email<input value="studio@nexora.local" readOnly/></label><label>Часовой пояс<select defaultValue="Europe/Helsinki"><option>Europe/Helsinki</option><option>Europe/Moscow</option><option>Europe/Berlin</option></select></label></div><div className="setting-block"><h2>Внешний вид</h2><span>Настройте стиль панели и клиентских проектов.</span><div className="theme-options"><button className="theme active"><span/>Светлая</button><button className="theme"><span/>Тёмная</button><button className="theme"><span/>Системная</button></div></div><div className="setting-actions"><button className="filter">Отменить</button><button className="primary">Сохранить изменения</button></div></section></div></>}
 
-function CatalogManager({projectId}){
+function CatalogManager({projectId}) {
   const [items,setItems]=useState([])
+  const [clients,setClients]=useState([])
   const [loading,setLoading]=useState(true)
   const [saving,setSaving]=useState(false)
   const [editing,setEditing]=useState(null)
   const [form,setForm]=useState({name:'',description:'',price:'',currency:'EUR',active:true})
-  const load=async()=>{setLoading(true);try{const r=await api.catalog(projectId);setItems(r.items||[])}finally{setLoading(false)}}
+  const [orderOpen,setOrderOpen]=useState(false)
+  const [orderItems,setOrderItems]=useState([])
+  const [orderClient,setOrderClient]=useState('')
+  const [orderSaving,setOrderSaving]=useState(false)
+  const load=async()=>{
+    setLoading(true)
+    try{
+      const [catalog,crmClients]=await Promise.all([api.catalog(projectId),api.clients()])
+      setItems(catalog.items||[])
+      setClients(crmClients.clients||[])
+    }finally{setLoading(false)}
+  }
   useEffect(()=>{load()},[projectId])
   const reset=()=>{setEditing(null);setForm({name:'',description:'',price:'',currency:'EUR',active:true})}
   const save=async()=>{
@@ -377,11 +389,32 @@ function CatalogManager({projectId}){
   }
   const edit=(item)=>{setEditing(item.id);setForm({name:item.name||'',description:item.description||'',price:item.price??'',currency:item.currency||'EUR',active:item.active!==false})}
   const remove=async(id)=>{if(!window.confirm('Удалить позицию из каталога?'))return;await api.deleteCatalogItem(projectId,id);setItems(v=>v.filter(x=>x.id!==id));if(editing===id)reset()}
+  const openOrder=(item)=>{
+    setOrderItems([{...item,quantity:1}])
+    setOrderClient('')
+    setOrderOpen(true)
+  }
+  const changeQty=(id,delta)=>setOrderItems(v=>v.map(x=>x.id===id?{...x,quantity:Math.max(1,x.quantity+delta)}:x))
+  const createOrder=async()=>{
+    if(!orderItems.length) return
+    setOrderSaving(true)
+    try{
+      const r=await api.createOrder({project_id:projectId,client_id:orderClient||null,currency:orderItems[0].currency||'EUR',items:orderItems.map(x=>({catalog_id:x.id,quantity:x.quantity}))})
+      setOrderOpen(false)
+      setOrderItems([])
+      window.alert('Заказ '+r.order.number+' создан. Теперь его можно оплатить и выставить счёт в разделе «Заказы».')
+    }catch(err){
+      let message=err.message||'Не удалось создать заказ'
+      try{const parsed=JSON.parse(err.message);message=parsed.error||message}catch{}
+      window.alert(message)
+    }finally{setOrderSaving(false)}
+  }
+  const orderTotal=orderItems.reduce((sum,x)=>sum+Number(x.price||0)*Number(x.quantity||1),0)
   return <div className="catalog-layout">
     <section className="card workspace-card">
       <div className="card-head"><div><h2>Каталог</h2><span>{items.length} позиций · данные доступны сайту и Mini App</span></div><button className="filter" onClick={reset}>Новая позиция</button></div>
       {loading?<div className="empty-editor"><span>Загружаем каталог…</span></div>:items.length===0?<div className="empty-editor"><Layers3 size={24}/><b>Каталог пока пуст</b><span>Добавьте первую услугу или товар справа.</span></div>:
-      <div className="catalog-list">{items.map(item=><div className="catalog-row" key={item.id}><div className="catalog-thumb">{item.name.slice(0,1)}</div><div className="catalog-main"><b>{item.name}</b><span>{item.description||'Без описания'}</span></div><div className="catalog-price">{item.price!=null?new Intl.NumberFormat('ru-RU',{style:'currency',currency:item.currency||'EUR'}).format(Number(item.price)):'Цена по запросу'}</div><span className={item.active?'status success':'status draft'}><i/>{item.active?'Активна':'Скрыта'}</span><div className="catalog-actions"><button className="filter" onClick={()=>edit(item)}>Изменить</button><button className="row-more" onClick={()=>remove(item.id)}><X size={16}/></button></div></div>)}</div>}
+      <div className="catalog-list">{items.map(item=><div className="catalog-row" key={item.id}><div className="catalog-thumb">{item.name.slice(0,1)}</div><div className="catalog-main"><b>{item.name}</b><span>{item.description||'Без описания'}</span></div><div className="catalog-price">{item.price!=null?new Intl.NumberFormat('ru-RU',{style:'currency',currency:item.currency||'EUR'}).format(Number(item.price)):'Цена по запросу'}</div><span className={item.active?'status success':'status draft'}><i/>{item.active?'Активна':'Скрыта'}</span><div className="catalog-actions"><button className="filter" onClick={()=>openOrder(item)}>Создать заказ</button><button className="filter" onClick={()=>edit(item)}>Изменить</button><button className="row-more" onClick={()=>remove(item.id)}><X size={16}/></button></div></div>)}</div>}
     </section>
     <section className="card workspace-card catalog-form">
       <div className="eyebrow">{editing?'Редактирование':'Новая позиция'}</div><h3>{editing?'Изменить позицию':'Добавить в каталог'}</h3>
@@ -391,6 +424,15 @@ function CatalogManager({projectId}){
       <label className="catalog-check"><input type="checkbox" checked={form.active} onChange={e=>setForm(v=>({...v,active:e.target.checked}))}/> Показывать клиентам</label>
       <div className="setting-actions"><button className="filter" onClick={reset}>Очистить</button><button className="primary" onClick={save} disabled={saving}>{saving?'Сохраняем…':editing?'Сохранить':'Добавить'}</button></div>
     </section>
+    {orderOpen&&<div className="public-modal-backdrop" onMouseDown={()=>setOrderOpen(false)}><section className="card order-creator" onMouseDown={e=>e.stopPropagation()}>
+      <button className="public-close" onClick={()=>setOrderOpen(false)}><X size={18}/></button>
+      <div className="eyebrow">Продажи</div><h2>Создать заказ</h2><p className="order-creator-note">Позиция из каталога попадёт в реестр заказов. После создания можно принять оплату и выписать счёт.</p>
+      <div className="order-creator-lines">{orderItems.map(item=><div className="order-creator-line" key={item.id}><div><b>{item.name}</b><span>{new Intl.NumberFormat('ru-RU',{style:'currency',currency:item.currency||'EUR'}).format(Number(item.price||0))} за шт.</span></div><div className="qty-control"><button type="button" onClick={()=>changeQty(item.id,-1)}>−</button><b>{item.quantity}</b><button type="button" onClick={()=>changeQty(item.id,1)}>+</button></div><strong>{new Intl.NumberFormat('ru-RU',{style:'currency',currency:item.currency||'EUR'}).format(Number(item.price||0)*Number(item.quantity||1))}</strong></div>)}</div>
+      <label className="workspace-label">Клиент<select value={orderClient} onChange={e=>setOrderClient(e.target.value)}><option value="">Без клиента</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}{c.phone?' · '+c.phone:''}</option>)}</select></label>
+      {!clients.length&&<div className="order-creator-empty">В CRM пока нет клиентов. Заказ можно создать без клиента, а клиент будет привязан автоматически при покупке с сайта или Mini App.</div>}
+      <div className="order-creator-total"><span>Итого</span><strong>{new Intl.NumberFormat('ru-RU',{style:'currency',currency:orderItems[0]?.currency||'EUR'}).format(orderTotal)}</strong></div>
+      <div className="setting-actions"><button className="filter" onClick={()=>setOrderOpen(false)}>Отмена</button><button className="primary" disabled={orderSaving||!orderItems.length} onClick={createOrder}>{orderSaving?'Создаём…':'Создать заказ'}</button></div>
+    </section></div>}
   </div>
 }
 
