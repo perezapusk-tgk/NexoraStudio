@@ -14,6 +14,65 @@ app.use(express.json({verify:(req,_res,buf)=>{req.rawBody=Buffer.from(buf)}}))
 const PLAN_CONFIG = { free:{name:'Free',price:0,projectLimit:1,teamLimit:1,clientLimit:100}, starter:{name:'Starter',price:9,projectLimit:10,teamLimit:3,clientLimit:1000}, pro:{name:'Pro',price:19,projectLimit:50,teamLimit:5,clientLimit:10000}, agency:{name:'Agency',price:39,projectLimit:200,teamLimit:15,clientLimit:50000} }
 const planConfig=plan=>PLAN_CONFIG[String(plan||'starter').toLowerCase()]||PLAN_CONFIG.starter
 const demoStudio = { id: '00000000-0000-0000-0000-000000000001', name: 'Nexora Studio', ownerName: 'Алексей', plan: 'pro', projectLimit: 50 }
+const TEMPLATE_DEFINITIONS={
+  barber:{id:'barber',name:'Барбершоп',category:'Красота',blocks:[
+    {type:'hero',headline:'Барбершоп нового поколения',subheadline:'Запись онлайн, услуги и мастера в одном месте.',cta:'Записаться',action:'booking'},
+    {type:'services',title:'Услуги',items:['Мужская стрижка','Стрижка + борода','Премиум уход'],action:'booking',columns:3},
+    {type:'testimonials',title:'Отзывы клиентов',items:['«Отличный сервис и атмосфера»','«Записываюсь каждый месяц»'],columns:2},
+    {type:'contacts',title:'Мы рядом',text:'Адрес, телефон и часы работы.'},
+    {type:'cta',title:'Готовы к обновлению?',text:'Выберите удобное время и запишитесь онлайн.',button:'Записаться',action:'booking'}
+  ],catalog:[{name:'Мужская стрижка',description:'Классическая стрижка',price:25,currency:'EUR'},{name:'Стрижка + борода',description:'Комплексная услуга',price:35,currency:'EUR'},{name:'Премиум уход',description:'Стрижка, борода и уход',price:50,currency:'EUR'}]},
+  beauty:{id:'beauty',name:'Салон красоты',category:'Красота',blocks:[
+    {type:'hero',headline:'Красота начинается с заботы о себе',subheadline:'Услуги, специалисты и онлайн-запись.',cta:'Записаться',action:'booking'},
+    {type:'services',title:'Популярные услуги',items:['Стрижка и укладка','Маникюр','Косметология'],action:'booking',columns:3},
+    {type:'gallery',title:'Наши работы',items:['Новый образ','Маникюр','Уход'],columns:3},
+    {type:'testimonials',title:'Отзывы',items:['«Очень понравилось»','«Вернусь снова»'],columns:2},
+    {type:'cta',title:'Запишитесь онлайн',text:'Выберите услугу и удобное время.',button:'Записаться',action:'booking'}
+  ],catalog:[{name:'Стрижка и укладка',description:'Образ на каждый день',price:35,currency:'EUR'},{name:'Маникюр',description:'Маникюр с покрытием',price:30,currency:'EUR'},{name:'Косметология',description:'Консультация и уход',price:60,currency:'EUR'}]},
+  cafe:{id:'cafe',name:'Кафе / ресторан',category:'Ресторан',blocks:[
+    {type:'hero',headline:'Вкусные встречи каждый день',subheadline:'Меню, заказ и бронирование столика онлайн.',cta:'Забронировать столик',action:'booking'},
+    {type:'services',title:'Меню',items:['Завтраки','Основные блюда','Десерты'],action:'lead',columns:3},
+    {type:'gallery',title:'Атмосфера',items:['Зал','Кухня','Вечер'],columns:3},
+    {type:'contacts',title:'Контакты',text:'Адрес, часы работы и контакты.'},
+    {type:'cta',title:'Забронируйте столик',text:'Мы подготовим стол к вашему приходу.',button:'Забронировать',action:'booking'}
+  ],catalog:[{name:'Завтрак',description:'Кофе и блюдо на выбор',price:12,currency:'EUR'},{name:'Основное блюдо',description:'Блюдо дня',price:18,currency:'EUR'},{name:'Десерт',description:'Домашний десерт',price:8,currency:'EUR'}]},
+  fitness:{id:'fitness',name:'Фитнес',category:'Спорт',blocks:[
+    {type:'hero',headline:'Тренируйтесь с удовольствием',subheadline:'Абонементы, тренеры и запись на занятия.',cta:'Начать',action:'booking'},
+    {type:'services',title:'Направления',items:['Тренажёрный зал','Персональные тренировки','Групповые занятия'],action:'booking',columns:3},
+    {type:'testimonials',title:'Что говорят участники',items:['«Наконец-то вошёл в режим»','«Отличные тренеры»'],columns:2},
+    {type:'faq',title:'Частые вопросы',items:['Как проходит первое занятие — Подберём программу после знакомства.','Можно ли отменить запись — Да, заранее предупредите администратора.'],openFirst:true},
+    {type:'cta',title:'Готовы начать?',text:'Запишитесь на первое занятие.',button:'Записаться',action:'booking'}
+  ],catalog:[{name:'Разовое занятие',description:'Доступ на один день',price:15,currency:'EUR'},{name:'Персональная тренировка',description:'Занятие с тренером',price:40,currency:'EUR'},{name:'Абонемент',description:'Месячный абонемент',price:59,currency:'EUR'}]},
+  shop:{id:'shop',name:'Интернет-магазин',category:'Магазин',blocks:[
+    {type:'hero',headline:'Ваши любимые товары онлайн',subheadline:'Каталог, корзина и быстрый заказ.',cta:'Смотреть каталог',action:'lead'},
+    {type:'services',title:'Категории',items:['Новинки','Хиты продаж','Спецпредложения'],action:'lead',columns:3},
+    {type:'gallery',title:'Подборка товаров',items:['Новинки','Популярное','Акции'],columns:3},
+    {type:'cta',title:'Есть вопросы?',text:'Оставьте заявку — мы поможем с выбором.',button:'Написать нам',action:'lead'}
+  ],catalog:[{name:'Хит продаж',description:'Популярный товар',price:29,currency:'EUR'},{name:'Новинка',description:'Новая позиция',price:39,currency:'EUR'},{name:'Спецпредложение',description:'Цена по акции',price:19,currency:'EUR'}]},
+  services:{id:'services',name:'Услуги',category:'Бизнес',blocks:[
+    {type:'hero',headline:'Профессиональные услуги для бизнеса',subheadline:'Покажите экспертизу и принимайте заявки онлайн.',cta:'Получить консультацию',action:'lead'},
+    {type:'services',title:'Наши услуги',items:['Консультация','Комплексное решение','Сопровождение'],action:'lead',columns:3},
+    {type:'testimonials',title:'Клиенты о нас',items:['«Получили результат быстрее ожиданий»','«Отличная команда»'],columns:2},
+    {type:'faq',title:'FAQ',items:['Как начать — Оставьте заявку и мы свяжемся с вами.','Сколько длится работа — Срок зависит от задачи.'],openFirst:true},
+    {type:'cta',title:'Обсудим задачу?',text:'Расскажите, что нужно сделать.',button:'Оставить заявку',action:'lead'}
+  ],catalog:[{name:'Консультация',description:'Разбор задачи',price:50,currency:'EUR'},{name:'Комплексное решение',description:'Проект под ключ',price:250,currency:'EUR'},{name:'Сопровождение',description:'Поддержка проекта',price:90,currency:'EUR'}]}
+}
+function templateDefinition(id=''){
+  return TEMPLATE_DEFINITIONS[String(id||'').toLowerCase()] || TEMPLATE_DEFINITIONS.services
+}
+function slugify(value){return String(value||'project').toLowerCase().trim().replace(/[^a-z0-9а-яё]+/gi,'-').replace(/^-+|-+$/g,'')||'project'}
+function demoProjects(){return [
+  {id:'demo-barber',studio_id:demoStudio.id,name:'Barber House',slug:'barber-house',project_type:'website',status:'published',domain:null},
+  {id:'demo-beauty',studio_id:demoStudio.id,name:'Nordic Beauty',slug:'nordic-beauty',project_type:'website',status:'draft',domain:null},
+  {id:'demo-fitness',studio_id:demoStudio.id,name:'Urban Fitness',slug:'urban-fitness',project_type:'miniapp',status:'published',domain:null},
+  {id:'demo-cafe',studio_id:demoStudio.id,name:'Mokka Coffee',slug:'mokka-coffee',project_type:'website',status:'draft',domain:null}
+]}
+function demoCatalog(projectId){return TEMPLATE_DEFINITIONS.services.catalog.map((x,i)=>({id:'demo-cat-'+projectId+'-'+i,project_id:projectId,...x,active:true}))}
+function demoLeads(){return [{id:'lead-1',project_id:'demo-barber',project_slug:'barber-house',name:'Иван',phone:'+358 40 000 0001',email:'ivan@example.com',message:'Хочу записаться',status:'new',created_at:new Date().toISOString()}]}
+function demoClients(){return [{id:'client-1',studio_id:demoStudio.id,name:'Иван',phone:'+358 40 000 0001',email:'ivan@example.com',created_at:new Date().toISOString()}]}
+function demoBookings(){return [{id:'booking-1',project_id:'demo-barber',project_slug:'barber-house',client_id:'client-1',client_name:'Иван',service_name:'Мужская стрижка',starts_at:new Date(Date.now()+86400000).toISOString(),status:'confirmed',created_at:new Date().toISOString()}]}
+function demoPayments(){return [{id:'pay-1',project_id:'demo-barber',client_id:'client-1',amount:85,currency:'EUR',status:'paid',description:'Заказ',created_at:new Date().toISOString()}]}
+function demoInvoices(){return [{id:'inv-1',project_id:'demo-barber',client_id:'client-1',number:'INV-DEMO-001',amount:85,currency:'EUR',status:'paid',description:'Счёт',created_at:new Date().toISOString()}]}
 const memoryProjects = demoProjects()
 const memoryPages = new Map(memoryProjects.map(p => [p.id, [{id:'page-'+p.id,title:'Главная',slug:'home',published:p.status==='published',content:{blocks:[
   {type:'hero',headline:p.name,subheadline:'Современный цифровой опыт для ваших клиентов.',cta:'Оставить заявку'},
