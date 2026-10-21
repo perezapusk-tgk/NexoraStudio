@@ -698,7 +698,7 @@ app.post('/api/projects/:id/telegram/configure', async (req,res) => {
     : (await pool.query('select * from projects where id=$1 or slug=$1 limit 1',[req.params.id])).rows[0]
   if (!project) return res.status(404).json({ error: 'Проект не найден' })
   const domain = String(project.domain || '').trim()
-  const base = domain ? 'https://' + domain.replace(/^https?:\\/\\//,'').replace(/\\/$/,'') : 'https://' + project.slug + '.nexora.site'
+  const base = domain ? 'https://' + domain.replace(/^https?:\/\//,'').replace(/\/$/,'') : 'https://' + project.slug + '.nexora.site'
   const miniAppUrl = base + '/miniapp/' + project.slug
   const callTelegram = async (method, body) => {
     const response = await fetch('https://api.telegram.org/bot' + token + '/' + method, { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(body) })
