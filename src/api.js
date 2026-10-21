@@ -1,15 +1,26 @@
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
+const AUTH_KEY = 'nexora_auth_token'
+
+export function getAuthToken(){ return localStorage.getItem(AUTH_KEY) || '' }
+export function setAuthToken(token){ if(token) localStorage.setItem(AUTH_KEY,token); else localStorage.removeItem(AUTH_KEY) }
 
 async function request(path, options = {}) {
-  const response = await fetch(API_BASE + path, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options,
-  })
-  if (!response.ok) throw new Error(await response.text())
+  const token=getAuthToken()
+  const headers={ 'Content-Type':'application/json', ...(options.headers || {}) }
+  if(token) headers.Authorization='Bearer '+token
+  const response = await fetch(API_BASE + path, { ...options, headers })
+  if (!response.ok) {
+    if(response.status===401) setAuthToken('')
+    throw new Error(await response.text())
+  }
   return response.json()
 }
 
 export const api = {
+  authRegister: async (payload) => { const r=await request('/auth/register',{method:'POST',body:JSON.stringify(payload)}); setAuthToken(r.token); return r },
+  authLogin: async (payload) => { const r=await request('/auth/login',{method:'POST',body:JSON.stringify(payload)}); setAuthToken(r.token); return r },
+  authMe: () => request('/auth/me'),
+  authLogout: async () => { try{return await request('/auth/logout',{method:'POST'})} finally{setAuthToken('')} },
   health: () => request('/health'),
   studio: () => request('/studio'),
   studioUsage: () => request('/studio/usage'),
