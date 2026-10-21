@@ -212,8 +212,17 @@ app.get('/api/leads', async (_req, res) => {
 
 app.get('/api/bookings', async (_req, res) => {
   if (!pool) return res.json({ bookings: memoryBookings })
-  const { rows } = await pool.query('select b.id, b.project_id, b.customer_name, b.starts_at, b.status, p.name as project_name from bookings b left join projects p on p.id=b.project_id order by starts_at asc limit 100')
+  const { rows } = await pool.query('select b.id, b.project_id, b.client_id, b.customer_name, b.customer_phone, b.starts_at, b.ends_at, b.service_name, b.status, p.name as project_name from bookings b left join projects p on p.id=b.project_id order by starts_at asc limit 100')
   res.json({ bookings: rows })
+})
+
+app.patch('/api/bookings/:id', async (req,res) => {
+  const status=String(req.body?.status||'').trim()
+  if(!['pending','confirmed','completed','cancelled'].includes(status)) return res.status(400).json({error:'Недопустимый статус бронирования'})
+  if(!pool){const booking=memoryBookings.find(x=>x.id===req.params.id);if(!booking)return res.status(404).json({error:'Бронирование не найдено'});booking.status=status;return res.json({booking})}
+  const q=await pool.query('update bookings set status=$1 where id=$2 returning *',[status,req.params.id])
+  if(!q.rows[0])return res.status(404).json({error:'Бронирование не найдено'})
+  res.json({booking:q.rows[0]})
 })
 
 app.patch('/api/leads/:id', async (req,res) => {
