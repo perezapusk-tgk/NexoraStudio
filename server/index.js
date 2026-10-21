@@ -1210,7 +1210,7 @@ app.get('/api/projects/:id/analytics', async (req,res) => {
 
 
 app.get('/api/orders', async (_req,res) => {
-  if (!pool) return res.json({orders: memoryOrders})
+  if (!pool) return res.json({orders: memoryOrders.filter(x=>x.studio_id===req.user.studio_id)})
   const {rows}=await pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name,c.name as client_name from orders o left join projects pr on pr.id=o.project_id left join clients c on c.id=o.client_id where pr.studio_id=$1 order by o.created_at desc limit 200',[req.user.studio_id])
   res.json({orders:rows})
 })
