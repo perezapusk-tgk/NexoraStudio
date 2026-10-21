@@ -439,6 +439,7 @@ function CatalogManager({projectId}) {
 function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
   const current=data?.project||project, pages=data?.pages||[];
   const [saving,setSaving]=useState(false), [name,setName]=useState(''), [domain,setDomain]=useState('');
+  const [device,setDevice]=useState('desktop');
   const [tg,setTg]=useState({enabled:false,configured:false,botUsername:'',buttonText:'Открыть Mini App',url:''});
   const [telegramBusy,setTelegramBusy]=useState(false);
   const [domainBusy,setDomainBusy]=useState(false), [domainInfo,setDomainInfo]=useState(null);
@@ -460,7 +461,11 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
     const defaults={
       hero:{type:'hero',headline:'Ваш бизнес. Онлайн.',subheadline:'Понятный цифровой опыт для ваших клиентов.',cta:'Оставить заявку'},
       services:{type:'services',title:'Услуги',items:['Основная услуга','Популярная услуга','Премиум услуга']},
-      contacts:{type:'contacts',title:'Контакты',text:'Свяжитесь с нами удобным способом.'}
+      contacts:{type:'contacts',title:'Контакты',text:'Свяжитесь с нами удобным способом.'},
+      gallery:{type:'gallery',title:'Галерея',items:['Фото 1','Фото 2','Фото 3']},
+      testimonials:{type:'testimonials',title:'Отзывы',items:['«Отличный сервис и внимательное отношение.»','«Всё удобно: запись заняла меньше минуты.»']},
+      faq:{type:'faq',title:'Частые вопросы',items:['Как записаться? — Оставьте заявку на сайте.','Как оплатить? — Онлайн или при получении.']},
+      cta:{type:'cta',title:'Готовы начать?',text:'Оставьте заявку — мы свяжемся с вами.',button:'Оставить заявку'}
     };
     setBlocks(v=>[...v,defaults[type]]);
   };
@@ -497,21 +502,27 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
       <aside className="card editor-sidebar"><div className="eyebrow">Редактор</div><h3>{page?.title||'Главная'}</h3><p>Добавляйте и перестраивайте секции страницы.</p>
         <button className="editor-add" onClick={()=>addBlock('hero')}><Palette size={15}/> Первый экран <Plus size={14}/></button>
         <button className="editor-add" onClick={()=>addBlock('services')}><Layers3 size={15}/> Услуги / каталог <Plus size={14}/></button>
-        <button className="editor-add" onClick={()=>addBlock('contacts')}><Users size={15}/> Контакты / CTA <Plus size={14}/></button>
+        <button className="editor-add" onClick={()=>addBlock('contacts')}><Users size={15}/> Контакты <Plus size={14}/></button>
+        <button className="editor-add" onClick={()=>addBlock('gallery')}><Globe2 size={15}/> Галерея <Plus size={14}/></button>
+        <button className="editor-add" onClick={()=>addBlock('testimonials')}><CheckCircle2 size={15}/> Отзывы <Plus size={14}/></button>
+        <button className="editor-add" onClick={()=>addBlock('faq')}><Layers3 size={15}/> FAQ <Plus size={14}/></button>
+        <button className="editor-add" onClick={()=>addBlock('cta')}><Zap size={15}/> CTA-блок <Plus size={14}/></button>
         <div className="editor-hint">Изменения сохраняются в выбранной странице. Порядок блоков можно менять стрелками.</div>
       </aside>
-      <section className="card editor-canvas"><div className="editor-toolbar"><div><b>{page?.title||'Главная'}</b><span>{blocks.length} блоков</span></div><button className="primary" onClick={saveEditor} disabled={saving}>{saving?'Сохраняем…':'Сохранить'}</button></div>
+      <section className="card editor-canvas"><div className="editor-toolbar"><div><b>{page?.title||'Главная'}</b><span>{blocks.length} блоков</span></div><div className="editor-device"><button className={device==='desktop'?'selected':''} onClick={()=>setDevice('desktop')}>ПК</button><button className={device==='mobile'?'selected':''} onClick={()=>setDevice('mobile')}>Телефон</button><button className="primary" onClick={saveEditor} disabled={saving}>{saving?'Сохраняем…':'Сохранить'}</button></div></div>
         <div className="editor-stack">{blocks.length===0&&<div className="empty-editor"><Palette size={24}/><b>Страница пока пустая</b><span>Добавьте первый блок слева.</span></div>}
         {blocks.map((b,i)=><div className="editable-block" key={i}>
-          <div className="block-controls"><span>{i+1}</span><b>{b.type==='hero'?'Первый экран':b.type==='services'?'Услуги':'Контакты'}</b><button onClick={()=>moveBlock(i,-1)} disabled={i===0}>↑</button><button onClick={()=>moveBlock(i,1)} disabled={i===blocks.length-1}>↓</button><button onClick={()=>removeBlock(i)}>Удалить</button></div>
+          <div className="block-controls"><span>{i+1}</span><b>{b.type==='hero'?'Первый экран':b.type==='services'?'Услуги':b.type==='contacts'?'Контакты':b.type==='gallery'?'Галерея':b.type==='testimonials'?'Отзывы':b.type==='faq'?'FAQ':'CTA'}</b><button onClick={()=>moveBlock(i,-1)} disabled={i===0}>↑</button><button onClick={()=>moveBlock(i,1)} disabled={i===blocks.length-1}>↓</button><button onClick={()=>removeBlock(i)}>Удалить</button></div>
           {b.type==='hero'&&<div className="block-form"><label>Заголовок<input value={b.headline||''} onChange={e=>updateBlock(i,{headline:e.target.value})}/></label><label>Подзаголовок<textarea value={b.subheadline||''} onChange={e=>updateBlock(i,{subheadline:e.target.value})}/></label><label>Кнопка<input value={b.cta||''} onChange={e=>updateBlock(i,{cta:e.target.value})}/></label></div>}
           {b.type==='services'&&<div className="block-form"><label>Заголовок<input value={b.title||''} onChange={e=>updateBlock(i,{title:e.target.value})}/></label><label>Услуги<textarea value={(b.items||[]).join('\n')} onChange={e=>updateBlock(i,{items:e.target.value.split('\n').filter(Boolean)})}/></label></div>}
           {b.type==='contacts'&&<div className="block-form"><label>Заголовок<input value={b.title||''} onChange={e=>updateBlock(i,{title:e.target.value})}/></label><label>Текст<textarea value={b.text||''} onChange={e=>updateBlock(i,{text:e.target.value})}/></label></div>}
+          {['gallery','testimonials','faq'].includes(b.type)&&<div className="block-form"><label>Заголовок<input value={b.title||''} onChange={e=>updateBlock(i,{title:e.target.value})}/></label><label>Элементы<textarea value={(b.items||[]).join('\n')} onChange={e=>updateBlock(i,{items:e.target.value.split('\n').filter(Boolean)})}/></label></div>}
+          {b.type==='cta'&&<div className="block-form"><label>Заголовок<input value={b.title||''} onChange={e=>updateBlock(i,{title:e.target.value})}/></label><label>Текст<textarea value={b.text||''} onChange={e=>updateBlock(i,{text:e.target.value})}/></label><label>Кнопка<input value={b.button||''} onChange={e=>updateBlock(i,{button:e.target.value})}/></label></div>}
         </div>)}</div>
       </section>
     </div>}
 
-    {view==='preview'&&<div className="card preview-shell"><div className="preview-top"><b>{current.name}</b><span>{domain||'preview.nexora.site'}</span></div><div className="public-preview">{blocks.map((b,i)=><div key={i} className={b.type==='hero'?'preview-hero':'preview-section'}>{b.type==='hero'?<><small>ПРЕДПРОСМОТР</small><h1>{b.headline}</h1><p>{b.subheadline}</p><button>{b.cta}</button></>:b.type==='services'?<><span>{b.title}</span><div className="preview-services">{(b.items||[]).map(x=><b key={x}>{x}</b>)}</div></>:<><h2>{b.title}</h2><p>{b.text}</p></>}</div>)}{!blocks.length&&<div className="empty-editor"><b>Нет блоков</b><span>Добавьте блоки в редакторе.</span></div>}</div></div>}
+    {view==='preview'&&<div className="card preview-shell"><div className="preview-top"><b>{current.name}</b><span>{domain||'preview.nexora.site'}</span></div><div className={`public-preview ${device==='mobile'?'preview-mobile':''}`}>{blocks.map((b,i)=><div key={i} className={b.type==='hero'?'preview-hero':'preview-section'}>{b.type==='hero'?<><small>ПРЕДПРОСМОТР</small><h1>{b.headline}</h1><p>{b.subheadline}</p><button>{b.cta}</button></>:b.type==='services'?<><span>{b.title}</span><div className="preview-services">{(b.items||[]).map(x=><b key={x}>{x}</b>)}</div></>:b.type==='cta'?<><h2>{b.title}</h2><p>{b.text}</p><button>{b.button}</button></>:<><h2>{b.title}</h2><div className="preview-services">{(b.items||[]).map(x=><b key={x}>{x}</b>)}</div></>}</div>)}{!blocks.length&&<div className="empty-editor"><b>Нет блоков</b><span>Добавьте блоки в редакторе.</span></div>}</div></div>}
 
     {view==='settings'&&<div className="workspace-settings">
       <div className="card workspace-card"><div className="eyebrow">Настройки проекта</div><h2>Основные параметры</h2><label className="workspace-label">Название проекта<input value={name} onChange={e=>setName(e.target.value)}/></label><label className="workspace-label">Домен<input placeholder="client.ru" value={domain} onChange={e=>{setDomain(e.target.value);setDomainInfo(null)}}/></label>
