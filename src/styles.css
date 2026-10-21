@@ -145,3 +145,33 @@
 
 .order-detail-actions{display:flex;gap:10px;align-items:center;margin-top:18px;flex-wrap:wrap}
 .order-invoice-note{display:flex;align-items:center;gap:9px;margin:16px 0;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft);font-size:13px}
+
+/* Calendar v2 */
+.calendar-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 0 14px}
+.calendar-toolbar h2{margin:0 0 4px}.calendar-toolbar span{color:var(--muted,#7b8190);font-size:13px}
+.calendar-toolbar-actions,.calendar-filters,.booking-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.calendar-filters{padding:0 0 14px;border-bottom:1px solid var(--line,#eceef2)}
+.calendar-week-head{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;padding:12px 0;color:var(--muted,#7b8190);font-size:12px;text-align:center}
+.calendar-week-head>div{padding:8px;border-radius:10px;background:#f7f7f8}.calendar-week-head .today{font-weight:700;color:#111827}
+.calendar-day-grid,.calendar-week-grid{display:grid;gap:10px;padding-top:12px}
+.calendar-week-grid{grid-template-columns:repeat(7,minmax(0,1fr));align-items:start}
+.booking-slot{display:flex;gap:14px;align-items:stretch;min-width:0}
+.calendar-week-grid .booking-slot{display:block}
+.slot-time{width:76px;flex:0 0 76px;display:flex;flex-direction:column;gap:3px;padding:10px 0;color:#161a22}
+.slot-time span{font-size:11px;color:var(--muted,#7b8190)}
+.booking-wrap{flex:1;display:flex;align-items:center;gap:10px;min-width:0}
+.booking-wrap .booking{flex:1;min-width:0}
+.booking-actions{justify-content:flex-end}
+.calendar-week-grid .booking-slot{background:#fafafa;border:1px solid var(--line,#eceef2);border-radius:12px;padding:10px}
+.calendar-week-grid .slot-time{width:auto;padding:0 0 8px}
+.calendar-week-grid .booking-wrap{display:block}.calendar-week-grid .booking-actions{margin-top:8px;justify-content:flex-start}
+.booking-editor{width:min(620px,calc(100vw - 32px));padding:26px;position:relative}
+.booking-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:20px 0}
+.booking-form-grid label{display:flex;flex-direction:column;gap:7px;font-size:13px;font-weight:600}
+.booking-form-grid input{width:100%;box-sizing:border-box}
+@media(max-width:900px){
+  .calendar-toolbar{align-items:flex-start;flex-direction:column}.calendar-week-grid{grid-template-columns:1fr}
+  .calendar-week-head{grid-template-columns:repeat(7,minmax(70px,1fr));overflow-x:auto}
+  .calendar-week-grid .booking-wrap{display:flex}.calendar-week-grid .slot-time{width:76px;padding:10px 0}
+}
+@media(max-width:620px){.booking-form-grid{grid-template-columns:1fr}.booking-wrap{align-items:flex-start;flex-direction:column}.booking-actions{width:100%}.booking-actions button,.booking-actions select{flex:1}}
