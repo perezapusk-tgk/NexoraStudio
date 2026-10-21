@@ -26,6 +26,107 @@ const memoryPayments = [...demoPayments()]
 const memoryInvoices = [...demoInvoices()]
 const memoryOrders = []
 const memoryEvents = []
+memoryProjects.forEach(x=>x.studio_id=demoStudio.id)
+memoryClients.forEach(x=>x.studio_id=demoStudio.id)
+memoryLeads.forEach(x=>x.studio_id=demoStudio.id)
+memoryBookings.forEach(x=>x.studio_id=demoStudio.id)
+memoryPayments.forEach(x=>x.studio_id=demoStudio.id)
+memoryInvoices.forEach(x=>x.studio_id=demoStudio.id)
+const memoryStudios = [demoStudio]
+const memoryUsers = [{id:'demo-owner',studio_id:demoStudio.id,name:demoStudio.ownerName,email:'owner@nexora.local',role:'owner',password_hash:hashPassword('demo')}]
+const memorySessions = new Map()
+
+function hashPassword(password,salt=crypto.randomBytes(16).toString('hex')) {
+  return salt+':'+crypto.scryptSync(String(password),salt,64).toString('hex')
+}
+function verifyPassword(password,stored) {
+  if(!stored||!String(stored).includes(':')) return false
+  const [salt,expected]=String(stored).split(':')
+  const actual=crypto.scryptSync(String(password),salt,64).toString('hex')
+  return crypto.timingSafeEqual(Buffer.from(actual,'hex'),Buffer.from(expected,'hex'))
+}
+const createSessionToken=()=>crypto.randomBytes(32).toString('hex')
+const tokenHash=token=>crypto.createHash('sha256').update(token).digest('hex')
+const authPayload=(u,studio,token)=>({token,user:{id:u.id,name:u.name,email:u.email,role:u.role},studio:{id:studio.id,name:studio.name,ownerName:studio.owner_name||studio.ownerName,plan:studio.plan,projectLimit:studio.project_limit||studio.projectLimit}})
+
+async function requireAuth(req,res,next){
+  const header=String(req.headers.authorization||'')
+  const token=header.startsWith('Bearer ')?header.slice(7).trim():''
+  if(!token) return res.status(401).json({error:'Требуется авторизация'})
+  try {
+    if(pool){
+      const q=await pool.query(`select u.id,u.name,u.email,u.role,u.studio_id,s.name as studio_name,s.owner_name,s.plan,s.project_limit
+        from sessions se join users u on u.id=se.user_id join studios s on s.id=u.studio_id
+        where se.token_hash=$1 and se.expires_at>now()`,[tokenHash(token)])
+      if(!q.rows[0]) return res.status(401).json({error:'Сессия истекла или недействительна'})
+      const x=q.rows[0]
+      req.user={id:x.id,name:x.name,email:x.email,role:x.role,studio_id:x.studio_id}
+      req.studio={id:x.studio_id,name:x.studio_name,owner_name:x.owner_name,plan:x.plan,project_limit:x.project_limit}
+      return next()
+    }
+    const session=memorySessions.get(tokenHash(token))
+    if(!session||session.expiresAt<Date.now()) return res.status(401).json({error:'Сессия истекла или недействительна'})
+    const u=memoryUsers.find(x=>x.id===session.user_id)
+    if(!u) return res.status(401).json({error:'Пользователь не найден'})
+    const studio=memoryStudios.find(x=>x.id===u.studio_id)||demoStudio
+    req.user={id:u.id,name:u.name,email:u.email,role:u.role,studio_id:u.studio_id}
+    req.studio={id:studio.id,name:studio.name,owner_name:studio.ownerName,plan:studio.plan,project_limit:studio.projectLimit}
+    next()
+  } catch(e){next(e)}
+}
+
+app.post('/api/auth/register',async(req,res)=>{
+  const name=String(req.body?.name||'').trim(),studioName=String(req.body?.studioName||'').trim(),email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||'')
+  if(!name||!studioName||!email||password.length<8)return res.status(400).json({error:'Имя, название студии, email и пароль от 8 символов обязательны'})
+  try{
+    if(pool){
+      if((await pool.query('select id from users where lower(email)=lower($1)',[email])).rows[0])return res.status(409).json({error:'Пользователь с таким email уже существует'})
+      const c=await pool.connect()
+      try{
+        await c.query('begin')
+        const studio=(await c.query('insert into studios(name,owner_name,plan,project_limit) values($1,$2,$3,$4) returning *',[studioName,name,'starter',5])).rows[0]
+        const user=(await c.query('insert into users(studio_id,name,email,role,password_hash) values($1,$2,$3,$4,$5) returning id,name,email,role',[studio.id,name,email,'owner',hashPassword(password)])).rows[0]
+        const token=createSessionToken()
+        await c.query("insert into sessions(user_id,token_hash,expires_at) values($1,$2,now()+interval '30 days')",[user.id,tokenHash(token)])
+        await c.query('commit')
+        return res.status(201).json(authPayload(user,studio,token))
+      }catch(e){await c.query('rollback');throw e}finally{c.release()}
+    }
+    if(memoryUsers.some(x=>x.email===email))return res.status(409).json({error:'Пользователь с таким email уже существует'})
+    const studio={id:crypto.randomUUID(),name:studioName,ownerName:name,plan:'starter',projectLimit:5}
+    memoryStudios.push(studio)
+    const user={id:crypto.randomUUID(),studio_id:studio.id,name,email,role:'owner',password_hash:hashPassword(password)}
+    memoryUsers.push(user)
+    const token=createSessionToken();memorySessions.set(tokenHash(token),{user_id:user.id,expiresAt:Date.now()+30*86400000})
+    res.status(201).json(authPayload(user,studio,token))
+  }catch(e){res.status(500).json({error:'Не удалось создать рабочее пространство'})}
+})
+app.post('/api/auth/login',async(req,res)=>{
+  const email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||'')
+  if(!email||!password)return res.status(400).json({error:'Введите email и пароль'})
+  try{
+    if(pool){
+      const q=await pool.query(`select u.id,u.name,u.email,u.role,u.password_hash,u.studio_id,s.name as studio_name,s.owner_name,s.plan,s.project_limit
+        from users u join studios s on s.id=u.studio_id where lower(u.email)=lower($1)`,[email])
+      if(!q.rows[0]||!verifyPassword(password,q.rows[0].password_hash))return res.status(401).json({error:'Неверный email или пароль'})
+      const x=q.rows[0],user={id:x.id,name:x.name,email:x.email,role:x.role},studio={id:x.studio_id,name:x.studio_name,owner_name:x.owner_name,plan:x.plan,project_limit:x.project_limit}
+      const token=createSessionToken();await pool.query("insert into sessions(user_id,token_hash,expires_at) values($1,$2,now()+interval '30 days')",[user.id,tokenHash(token)])
+      return res.json(authPayload(user,studio,token))
+    }
+    const u=memoryUsers.find(x=>x.email===email)
+    if(!u||!verifyPassword(password,u.password_hash))return res.status(401).json({error:'Неверный email или пароль'})
+    const studio=memoryStudios.find(x=>x.id===u.studio_id)||demoStudio
+    const token=createSessionToken();memorySessions.set(tokenHash(token),{user_id:u.id,expiresAt:Date.now()+30*86400000})
+    res.json(authPayload(u,studio,token))
+  }catch(e){res.status(500).json({error:'Не удалось выполнить вход'})}
+})
+app.get('/api/auth/me',requireAuth,async(req,res)=>res.json({user:req.user,studio:req.studio}))
+app.post('/api/auth/logout',requireAuth,async(req,res)=>{
+  const token=String(req.headers.authorization||'').slice(7).trim()
+  if(pool)await pool.query('delete from sessions where token_hash=$1',[tokenHash(token)])
+  else memorySessions.delete(tokenHash(token))
+  res.json({ok:true})
+})
 
 app.get('/api/health', async (_req, res) => {
   let database = 'not_configured'
@@ -35,15 +136,20 @@ app.get('/api/health', async (_req, res) => {
   res.json({ ok: true, service: 'nexora-api', version: '0.2.0', database })
 })
 
-app.get('/api/studio', (_req, res) => res.json({ studio: demoStudio }))
+app.use('/api',(req,res,next)=>{
+  if(req.path==='/health'||req.path.startsWith('/auth/')||req.path.startsWith('/public/'))return next()
+  return requireAuth(req,res,next)
+})
 
-app.get('/api/studio/usage', async (_req,res) => {
+app.get('/api/studio', (req, res) => res.json({ studio: req.studio }))
+
+app.get('/api/studio/usage', async (req,res) => {
   if(!pool){
-    const activeProjects=memoryProjects.length
-    return res.json({studio:demoStudio,usage:{projects:activeProjects,clients:memoryClients.length,team:1},limits:{projects:demoStudio.projectLimit,clients:10000,team:5}})
+    const activeProjects=memoryProjects.filter(x=>x.studio_id===req.user.studio_id).length
+    return res.json({studio:demoStudio,usage:{projects:activeProjects,clients:memoryClients.filter(x=>x.studio_id===req.user.studio_id).length,team:memoryUsers.filter(x=>x.studio_id===req.user.studio_id).length},limits:{projects:demoStudio.projectLimit,clients:10000,team:5}})
   }
   const [projects,clients,team]=await Promise.all([
-    pool.query('select count(*)::int as count from projects where studio_id=$1',[demoStudio.id]),
+    pool.query('select count(*)::int as count from projects where studio_id=$1',[req.user.studio_id]),
     pool.query('select count(*)::int as count from clients where studio_id=$1',[demoStudio.id]),
     pool.query('select count(*)::int as count from users where studio_id=$1',[demoStudio.id])
   ])
@@ -52,7 +158,7 @@ app.get('/api/studio/usage', async (_req,res) => {
 
 app.get('/api/team', async (_req,res) => {
   if(!pool) return res.json({members:[{id:'demo-owner',name:demoStudio.ownerName,email:'owner@nexora.local',role:'owner',created_at:new Date().toISOString()}]})
-  const q=await pool.query('select id,name,email,role,created_at from users where studio_id=$1 order by created_at',[demoStudio.id])
+  const q=await pool.query('select id,name,email,role,created_at from users where studio_id=$1 order by created_at',[req.user.studio_id])
   res.json({members:q.rows})
 })
 
@@ -64,7 +170,7 @@ app.post('/api/team', async (req,res) => {
   const count=await pool.query('select count(*)::int as count from users where studio_id=$1',[demoStudio.id])
   if(count.rows[0].count>=5)return res.status(409).json({error:'Достигнут лимит участников тарифа'})
   try {
-    const q=await pool.query('insert into users(studio_id,name,email,role) values($1,$2,$3,$4) returning id,name,email,role,created_at',[demoStudio.id,name,email,role])
+    const q=await pool.query('insert into users(studio_id,name,email,role) values($1,$2,$3,$4) returning id,name,email,role,created_at',[req.user.studio_id,name,email,role])
     res.status(201).json({member:q.rows[0]})
   } catch(e) {
     if(e.code==='23505')return res.status(409).json({error:'Пользователь с таким email уже существует'})
@@ -73,9 +179,9 @@ app.post('/api/team', async (req,res) => {
 })
 
 
-app.get('/api/projects', async (_req, res) => {
-  if (!pool) return res.json({ projects: memoryProjects })
-  const { rows } = await pool.query('select id, name, slug, project_type, status, domain, settings, created_at, updated_at from projects order by updated_at desc')
+app.get('/api/projects', async (req, res) => {
+  if (!pool) return res.json({ projects: memoryProjects.filter(p=>p.studio_id===req.user.studio_id) })
+  const { rows } = await pool.query('select id, name, slug, project_type, status, domain, settings, created_at, updated_at from projects where studio_id=$1 order by updated_at desc',[req.user.studio_id])
   res.json({ projects: rows })
 })
 
@@ -86,19 +192,20 @@ app.post('/api/projects', async (req, res) => {
   if (!name) return res.status(400).json({ error: 'Название проекта обязательно' })
   if (!pool) {
   const template=templateDefinition(templateId)
-  const project={id:crypto.randomUUID(),name,slug:slugify(name),project_type:projectType,status:'draft',domain:null,settings:{miniApp:{enabled:projectType.includes('miniapp')}}}
+  const project={id:crypto.randomUUID(),studio_id:req.user.studio_id,name,slug:slugify(name),project_type:projectType,status:'draft',domain:null,settings:{miniApp:{enabled:projectType.includes('miniapp')}}}
   memoryProjects.unshift(project)
   memoryPages.set(project.id,[{id:crypto.randomUUID(),title:'Главная',slug:'home',published:false,content:{blocks:template.blocks}}])
   memoryCatalog.set(project.id,template.catalog.map(item=>({id:crypto.randomUUID(),project_id:project.id,...item})))
   return res.status(201).json({project})
 }
-  const usage=await pool.query('select count(*)::int as count from projects where studio_id=$1',[demoStudio.id])
-  if(usage.rows[0].count>=demoStudio.projectLimit)return res.status(409).json({error:'Достигнут лимит проектов вашего тарифа'})
+  const usage=await pool.query('select count(*)::int as count from projects where studio_id=$1',[req.user.studio_id])
+  const limit=Number(req.studio.project_limit||5)
+  if(usage.rows[0].count>=limit)return res.status(409).json({error:'Достигнут лимит проектов вашего тарифа'})
   const slug = slugify(name)
   const template=templateDefinition(templateId)
   const { rows } = await pool.query(
     'insert into projects (studio_id, name, slug, project_type, status, settings) values ($1,$2,$3,$4,$5,$6) returning *',
-    [demoStudio.id, name, slug, projectType, 'draft', JSON.stringify({miniApp:{enabled:projectType.includes('miniapp')}})]
+    [req.user.studio_id, name, slug, projectType, 'draft', JSON.stringify({miniApp:{enabled:projectType.includes('miniapp')}})]
   )
   await pool.query(
     'insert into pages(project_id,title,slug,content) values($1,$2,$3,$4)',
@@ -111,20 +218,20 @@ app.post('/api/projects', async (req, res) => {
 })
 
 app.get('/api/projects/:id', async (req,res)=>{const id=req.params.id;if(!pool){
-  const project=memoryProjects.find(p=>p.id===id||p.slug===id)
+  const project=memoryProjects.find(p=>(p.id===id||p.slug===id)&&p.studio_id===req.user.studio_id)
   if(!project) return res.status(404).json({error:'Проект не найден'})
   return res.json({project,pages:memoryPages.get(project.id)||[]})
-}const pr=await pool.query('select * from projects where id=$1 or slug=$1 limit 1',[id]);if(!pr.rows[0])return res.status(404).json({error:'Проект не найден'});const pg=await pool.query('select * from pages where project_id=$1 order by created_at',[pr.rows[0].id]);res.json({project:pr.rows[0],pages:pg.rows})});
+}const pr=await pool.query('select * from projects where studio_id=$2 and (id=$1 or slug=$1) limit 1',[id,req.user.studio_id]);if(!pr.rows[0])return res.status(404).json({error:'Проект не найден'});const pg=await pool.query('select * from pages where project_id=$1 order by created_at',[pr.rows[0].id]);res.json({project:pr.rows[0],pages:pg.rows})});
 app.patch('/api/projects/:id',async(req,res)=>{if(!pool){
-  const p=memoryProjects.find(x=>x.id===req.params.id||x.slug===req.params.id)
+  const p=memoryProjects.find(x=>(x.id===req.params.id||x.slug===req.params.id)&&x.studio_id===req.user.studio_id)
   if(!p)return res.status(404).json({error:'Проект не найден'})
   if(req.body?.name)p.name=String(req.body.name).trim()
   if(req.body?.domain!==undefined)p.domain=String(req.body.domain||'').trim()||null
   if(req.body?.settings)p.settings={...(p.settings||{}),...req.body.settings}
   return res.json({project:p})
-}const current=await pool.query('select * from projects where id=$1',[req.params.id]);if(!current.rows[0])return res.status(404).json({error:'Проект не найден'});const settings=req.body?.settings?{...(current.rows[0].settings||{}),...req.body.settings}:current.rows[0].settings;const q=await pool.query('update projects set name=coalesce($1,name),domain=case when $2 is null then domain else $2 end,settings=$3,updated_at=now() where id=$4 returning *',[req.body?.name,req.body?.domain===undefined?null:String(req.body.domain||'').trim()||null,JSON.stringify(settings),req.params.id]);res.json({project:q.rows[0]})});
-app.post('/api/projects/:id/pages',async(req,res)=>{const title=String(req.body?.title||'Новая страница'),slug=slugify(req.body?.slug||title);if(!pool){const project=memoryProjects.find(x=>x.id===req.params.id||x.slug===req.params.id);if(!project)return res.status(404).json({error:'Проект не найден'});const page={id:crypto.randomUUID(),title,slug,content:{blocks:[]},published:false};const pages=memoryPages.get(project.id)||[];pages.push(page);memoryPages.set(project.id,pages);return res.status(201).json({page})};const q=await pool.query('insert into pages(project_id,title,slug,content) values($1,$2,$3,$4) returning *',[req.params.id,title,slug,JSON.stringify({blocks:[]})]);res.status(201).json({page:q.rows[0]})});
-app.patch('/api/projects/:id/pages/:pageId',async(req,res)=>{if(!pool){const pages=memoryPages.get(req.params.id)||[];const p=pages.find(x=>x.id===req.params.pageId);if(!p)return res.status(404).json({error:'Страница не найдена'});if(req.body?.content)p.content=req.body.content;return res.json({page:p})}const q=await pool.query('update pages set content=coalesce($1,content),updated_at=now() where id=$2 and project_id=$3 returning *',[req.body?.content?JSON.stringify(req.body.content):null,req.params.pageId,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Страница не найдена'});res.json({page:q.rows[0]})});
+}const current=await pool.query('select * from projects where id=$1 and studio_id=$2',[req.params.id,req.user.studio_id]);if(!current.rows[0])return res.status(404).json({error:'Проект не найден'});const settings=req.body?.settings?{...(current.rows[0].settings||{}),...req.body.settings}:current.rows[0].settings;const q=await pool.query('update projects set name=coalesce($1,name),domain=case when $2 is null then domain else $2 end,settings=$3,updated_at=now() where id=$4 returning *',[req.body?.name,req.body?.domain===undefined?null:String(req.body.domain||'').trim()||null,JSON.stringify(settings),req.params.id]);res.json({project:q.rows[0]})});
+app.post('/api/projects/:id/pages',async(req,res)=>{const title=String(req.body?.title||'Новая страница'),slug=slugify(req.body?.slug||title);if(!pool){const project=memoryProjects.find(x=>(x.id===req.params.id||x.slug===req.params.id)&&x.studio_id===req.user.studio_id);if(!project)return res.status(404).json({error:'Проект не найден'});const page={id:crypto.randomUUID(),title,slug,content:{blocks:[]},published:false};const pages=memoryPages.get(project.id)||[];pages.push(page);memoryPages.set(project.id,pages);return res.status(201).json({page})};const q=await pool.query('insert into pages(project_id,title,slug,content) values($1,$2,$3,$4) returning *',[req.params.id,title,slug,JSON.stringify({blocks:[]})]);res.status(201).json({page:q.rows[0]})});
+app.patch('/api/projects/:id/pages/:pageId',async(req,res)=>{if(!pool){const project=memoryProjects.find(x=>x.id===req.params.id&&x.studio_id===req.user.studio_id);if(!project)return res.status(404).json({error:'Проект не найден'});const pages=memoryPages.get(req.params.id)||[];const p=pages.find(x=>x.id===req.params.pageId);if(!p)return res.status(404).json({error:'Страница не найдена'});if(req.body?.content)p.content=req.body.content;return res.json({page:p})}const ownership=await pool.query('select id from projects where id=$1 and studio_id=$2',[req.params.id,req.user.studio_id]);if(!ownership.rows[0])return res.status(404).json({error:'Проект не найден'});const q=await pool.query('update pages set content=coalesce($1,content),updated_at=now() where id=$2 and project_id=$3 returning *',[req.body?.content?JSON.stringify(req.body.content):null,req.params.pageId,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Страница не найдена'});res.json({page:q.rows[0]})});
 app.get('/api/public/:slug', async (req,res) => {
   const slug = String(req.params.slug || '').trim()
   if (!pool) {
@@ -319,8 +426,8 @@ app.delete('/api/projects/:id/catalog/:itemId', async (req,res) => {
 
 app.post('/api/projects/:id/publish',async(req,res)=>{if(!pool){const p=memoryProjects.find(x=>x.id===req.params.id||x.slug===req.params.id);if(!p)return res.status(404).json({error:'Проект не найден'});p.status='published';(memoryPages.get(p.id)||[]).forEach(x=>x.published=true);return res.json({published:true,project:p,url:'https://'+p.slug+'.nexora.site'})}const q=await pool.query("update projects set status='published',updated_at=now() where id=$1 returning *",[req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Проект не найден'});await pool.query('update pages set published=true,updated_at=now() where project_id=$1',[req.params.id]);res.json({published:true,project:q.rows[0],url:q.rows[0].domain?'https://'+q.rows[0].domain:'https://'+q.rows[0].slug+'.nexora.site'})});
 app.get('/api/leads', async (_req, res) => {
-  if (!pool) return res.json({ leads: memoryLeads })
-  const { rows } = await pool.query('select l.id, l.project_id, l.name, l.message, l.status, l.created_at, p.name as project_name from leads l left join projects p on p.id=l.project_id order by created_at desc limit 100')
+  if (!pool) return res.json({ leads: memoryLeads.filter(x=>x.studio_id===req.user.studio_id) })
+  const { rows } = await pool.query('select l.id, l.project_id, l.name, l.message, l.status, l.created_at, p.name as project_name from leads l left join projects p on p.id=l.project_id where p.studio_id=$1 order by created_at desc limit 100',[req.user.studio_id])
   res.json({ leads: rows })
 })
 
@@ -332,8 +439,8 @@ app.post('/api/bookings/:id/payment', async (req,res) => {
 })
 
 app.get('/api/bookings', async (_req, res) => {
-  if (!pool) return res.json({ bookings: memoryBookings })
-  const { rows } = await pool.query('select b.id, b.project_id, b.client_id, b.customer_name, b.customer_phone, b.starts_at, b.ends_at, b.service_name, b.status, p.name as project_name from bookings b left join projects p on p.id=b.project_id order by starts_at asc limit 100')
+  if (!pool) return res.json({ bookings: memoryBookings.filter(x=>x.studio_id===req.user.studio_id) })
+  const { rows } = await pool.query('select b.id, b.project_id, b.client_id, b.customer_name, b.customer_phone, b.starts_at, b.ends_at, b.service_name, b.status, p.name as project_name from bookings b left join projects p on p.id=b.project_id where p.studio_id=$1 order by starts_at asc limit 100',[req.user.studio_id])
   res.json({ bookings: rows })
 })
 
@@ -350,7 +457,7 @@ app.post('/api/bookings', async (req,res) => {
   if(!['pending','confirmed','completed','cancelled'].includes(status))return res.status(400).json({error:'Недопустимый статус'})
   if(Number.isNaN(Date.parse(startsAt))||Number.isNaN(Date.parse(endsAt))||new Date(endsAt)<=new Date(startsAt))return res.status(400).json({error:'Проверьте время начала и окончания'})
   if(!pool){
-    const project=memoryProjects.find(x=>x.id===projectId)
+    const project=memoryProjects.find(x=>x.id===projectId&&x.studio_id===req.user.studio_id)
     if(!project)return res.status(404).json({error:'Проект не найден'})
     const conflict=memoryBookings.find(x=>x.project_id===projectId&&x.status!=='cancelled'&&new Date(x.starts_at)<new Date(endsAt)&&new Date(x.ends_at||x.starts_at)<new Date(startsAt)===false)
     if(conflict&&new Date(conflict.starts_at)<new Date(endsAt)&&new Date(conflict.ends_at||new Date(new Date(conflict.starts_at).getTime()+3600000))>new Date(startsAt))return res.status(409).json({error:'Это время уже занято другой записью'})
@@ -360,7 +467,7 @@ app.post('/api/bookings', async (req,res) => {
     memoryBookings.push(booking)
     return res.status(201).json({booking})
   }
-  const project=(await pool.query('select id,name from projects where id=$1 limit 1',[projectId])).rows[0]
+  const project=(await pool.query('select id,name from projects where id=$1 and studio_id=$2 limit 1',[projectId,req.user.studio_id])).rows[0]
   if(!project)return res.status(404).json({error:'Проект не найден'})
   const conflict=(await pool.query("select id from bookings where project_id=$1 and status <> 'cancelled' and starts_at < $3 and ends_at > $2 limit 1",[projectId,startsAt,endsAt])).rows[0]
   if(conflict)return res.status(409).json({error:'Это время уже занято другой записью'})
@@ -530,7 +637,7 @@ app.patch('/api/clients/:id', async (req,res) => {
 
 app.get('/api/clients', async (_req, res) => {
   if (!pool) {
-    const rows=memoryClients.map(client=>{
+    const rows=memoryClients.filter(x=>x.studio_id===req.user.studio_id).map(client=>{
       const phone=client.phone||'',email=client.email||''
       const leads=memoryLeads.filter(x=>(phone&&x.phone===phone)||(email&&x.email===email))
       const bookings=memoryBookings.filter(x=>x.client_id===client.id||(phone&&x.customer_phone===phone))
@@ -545,8 +652,8 @@ app.get('/api/clients', async (_req, res) => {
     "(select count(distinct x.project_id)::int from (select project_id from leads where phone=c.phone or email=c.email union all select project_id from bookings where client_id=c.id or customer_phone=c.phone union all select project_id from orders where client_id=c.id) x) as project_count,"+
     "((select count(*) from leads where phone=c.phone or email=c.email)+(select count(*) from bookings where client_id=c.id or customer_phone=c.phone)+(select count(*) from orders where client_id=c.id))::int as contact_count,"+
     "greatest(c.created_at,(select max(created_at) from orders where client_id=c.id),(select max(created_at) from payments where client_id=c.id),(select max(starts_at) from bookings where client_id=c.id or customer_phone=c.phone)) as last_activity "+
-    "from clients c order by last_activity desc nulls last limit 500"
-  const { rows } = await pool.query(sql)
+    "from clients c where c.studio_id=$1 order by last_activity desc nulls last limit 500"
+  const { rows } = await pool.query(sql,[req.user.studio_id])
   res.json({ clients: rows })
 })
 
@@ -582,7 +689,7 @@ app.get('/api/projects/:id/analytics', async (req,res) => {
 
 app.get('/api/orders', async (_req,res) => {
   if (!pool) return res.json({orders: memoryOrders})
-  const {rows}=await pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name,c.name as client_name from orders o left join projects pr on pr.id=o.project_id left join clients c on c.id=o.client_id order by o.created_at desc limit 200')
+  const {rows}=await pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name,c.name as client_name from orders o left join projects pr on pr.id=o.project_id left join clients c on c.id=o.client_id where pr.studio_id=$1 order by o.created_at desc limit 200',[req.user.studio_id])
   res.json({orders:rows})
 })
 app.get('/api/orders/:id', async (req,res) => {
@@ -628,7 +735,7 @@ app.post('/api/orders', async (req,res) => {
   const number='ORD-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
   const status=String(req.body?.status||'pending').trim()
   if(!['pending','paid','cancelled','refunded'].includes(status)) return res.status(400).json({error:'Недопустимый статус заказа'})
-  if(!pool){const order={id:crypto.randomUUID(),project_id:projectId,client_id:clientId,number,status,total,currency,items:normalized,created_at:new Date().toISOString()};memoryOrders.unshift(order);return res.status(201).json({order})}
+  if(!pool){const order={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,client_id:clientId,number,status,total,currency,items:normalized,created_at:new Date().toISOString()};memoryOrders.unshift(order);return res.status(201).json({order})}
   const q=await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[projectId,clientId,number,status,total,currency,JSON.stringify(normalized)])
   res.status(201).json({order:q.rows[0]})
 })
@@ -656,8 +763,8 @@ app.post('/api/orders/:id/invoice', async (req,res) => {
 
 
 app.get('/api/payments', async (_req,res) => {
-  if (!pool) return res.json({payments:memoryPayments})
-  const {rows}=await pool.query('select p.id,p.project_id,p.client_id,p.booking_id,p.order_id,p.amount,p.currency,p.status,p.description,p.created_at,pr.name as project_name from payments p left join projects pr on pr.id=p.project_id order by p.created_at desc limit 200')
+  if (!pool) return res.json({payments:memoryPayments.filter(x=>x.studio_id===req.user.studio_id)})
+  const {rows}=await pool.query('select p.id,p.project_id,p.client_id,p.booking_id,p.order_id,p.amount,p.currency,p.status,p.description,p.created_at,pr.name as project_name from payments p left join projects pr on pr.id=p.project_id where pr.studio_id=$1 order by p.created_at desc limit 200',[req.user.studio_id])
   res.json({payments:rows})
 })
 app.post('/api/payments', async (req,res) => {
@@ -671,13 +778,13 @@ app.post('/api/payments', async (req,res) => {
   if(!['pending','paid','refunded','failed'].includes(status)) return res.status(400).json({error:'Недопустимый статус платежа'})
   if(!pool){
     if(orderId){
-      const order=memoryOrders.find(x=>x.id===orderId)
+      const order=memoryOrders.find(x=>x.id===orderId&&x.studio_id===req.user.studio_id)
       if(!order)return res.status(404).json({error:'Заказ не найден'})
       if(order.project_id!==projectId)return res.status(400).json({error:'Заказ относится к другому проекту'})
       if(Math.abs(Number(order.total||0)-amount)>0.01)return res.status(400).json({error:'Сумма платежа не совпадает с заказом'})
       if(status==='paid' && memoryPayments.some(x=>x.order_id===orderId&&x.status==='paid'))return res.status(409).json({error:'Заказ уже оплачен'})
     }
-    const payment={id:crypto.randomUUID(),project_id:projectId,client_id:req.body?.client_id||null,booking_id:req.body?.booking_id||null,order_id:orderId,amount,currency,status,description,created_at:new Date().toISOString()}
+    const payment={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,client_id:req.body?.client_id||null,booking_id:req.body?.booking_id||null,order_id:orderId,amount,currency,status,description,created_at:new Date().toISOString()}
     memoryPayments.unshift(payment)
     if(orderId && status==='paid'){
       const order=memoryOrders.find(x=>x.id===orderId)
