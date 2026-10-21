@@ -254,6 +254,25 @@ app.post('/api/leads/:id/convert', async (req,res) => {
   res.status(201).json({client:q.rows[0],existing:false})
 })
 
+app.get('/api/clients/:id', async (req,res) => {
+  const id=String(req.params.id)
+  if(!pool){
+    const client=memoryClients.find(x=>x.id===id)
+    if(!client)return res.status(404).json({error:'Клиент не найден'})
+    const phone=client.phone||'',email=client.email||''
+    return res.json({client,leads:memoryLeads.filter(x=>(phone&&x.phone===phone)||(email&&x.email===email)),bookings:memoryBookings.filter(x=>x.customer_phone===phone),payments:memoryPayments.filter(x=>x.client_id===id),invoices:memoryInvoices.filter(x=>x.client_id===id)})
+  }
+  const cq=await pool.query('select id,name,email,phone,created_at from clients where id=$1 limit 1',[id])
+  if(!cq.rows[0])return res.status(404).json({error:'Клиент не найден'})
+  const [leads,bookings,payments,invoices]=await Promise.all([
+    pool.query('select id,project_id,name,message,status,created_at from leads where phone=$1 or email=$2 order by created_at desc',[cq.rows[0].phone,cq.rows[0].email]),
+    pool.query('select id,project_id,customer_name,starts_at,status,service_name from bookings where client_id=$1 or customer_phone=$2 order by starts_at desc',[id,cq.rows[0].phone]),
+    pool.query('select id,project_id,amount,currency,status,description,created_at from payments where client_id=$1 order by created_at desc',[id]),
+    pool.query('select id,project_id,number,amount,currency,status,due_date,description,created_at from invoices where client_id=$1 order by created_at desc',[id])
+  ])
+  res.json({client:cq.rows[0],leads:leads.rows,bookings:bookings.rows,payments:payments.rows,invoices:invoices.rows})
+})
+
 app.get('/api/clients', async (_req, res) => {
   if (!pool) return res.json({ clients: demoClients() })
   const { rows } = await pool.query('select id, name, email, phone, created_at from clients order by created_at desc')
