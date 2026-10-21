@@ -136,10 +136,14 @@ app.get('/api/health', async (_req, res) => {
   res.json({ ok: true, service: 'nexora-api', version: '0.2.0', database })
 })
 
+function requireRole(req,res,roles){ if(!roles.includes(req.user.role)) { res.status(403).json({error:'Недостаточно прав для этой операции'}); return false } return true }
 app.use('/api',async(req,res,next)=>{
   if(req.path==='/health'||req.path.startsWith('/auth/')||req.path.startsWith('/public/'))return next()
   try{
     await requireAuth(req,res,async()=>{
+      if(req.user.role==='viewer' && req.method!=='GET') return res.status(403).json({error:'Режим просмотра: изменения недоступны'})
+      if(req.path.startsWith('/team') && !requireRole(req,res,['owner','admin'])) return
+      if((req.path.startsWith('/payments')||req.path.startsWith('/invoices')||req.path.startsWith('/orders')) && req.method!=='GET' && !requireRole(req,res,['owner','admin'])) return
       const parts=req.path.split('/').filter(Boolean)
       const type=parts[0],id=parts[1]
       if(!id)return next()
@@ -193,6 +197,34 @@ app.get('/api/team', async (req,res) => {
   if(!pool) return res.json({members:[{id:'demo-owner',name:demoStudio.ownerName,email:'owner@nexora.local',role:'owner',created_at:new Date().toISOString()}]})
   const q=await pool.query('select id,name,email,role,created_at from users where studio_id=$1 order by created_at',[req.user.studio_id])
   res.json({members:q.rows})
+})
+
+app.patch('/api/team/:id', async (req,res) => {
+  if(!requireRole(req,res,['owner','admin'])) return
+  const id=req.params.id, role=String(req.body?.role||'').trim()
+  if(!['admin','member','viewer'].includes(role)) return res.status(400).json({error:'Недопустимая роль'})
+  if(pool){
+    const q=await pool.query("update users set role=$1 where id=$2 and studio_id=$3 and role<>'owner' returning id,name,email,role,created_at",[role,id,req.user.studio_id])
+    if(!q.rows[0]) return res.status(404).json({error:'Участник не найден'})
+    return res.json({member:q.rows[0]})
+  }
+  const u=memoryUsers.find(x=>x.id===id&&x.studio_id===req.user.studio_id&&x.role!=='owner')
+  if(!u)return res.status(404).json({error:'Участник не найден'})
+  u.role=role
+  res.json({member:{id:u.id,name:u.name,email:u.email,role:u.role,created_at:u.created_at||new Date().toISOString()}})
+})
+app.delete('/api/team/:id', async (req,res) => {
+  if(!requireRole(req,res,['owner','admin'])) return
+  const id=req.params.id
+  if(pool){
+    const q=await pool.query("delete from users where id=$1 and studio_id=$2 and role<>'owner' returning id",[id,req.user.studio_id])
+    if(!q.rows[0])return res.status(404).json({error:'Участник не найден'})
+  } else {
+    const i=memoryUsers.findIndex(x=>x.id===id&&x.studio_id===req.user.studio_id&&x.role!=='owner')
+    if(i<0)return res.status(404).json({error:'Участник не найден'})
+    memoryUsers.splice(i,1)
+  }
+  res.json({ok:true})
 })
 
 app.post('/api/team', async (req,res) => {
