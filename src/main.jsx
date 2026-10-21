@@ -45,6 +45,9 @@ function App() {
   const [projectData, setProjectData] = useState(projects)
   const [apiState, setApiState] = useState('loading')
   const [crm, setCrm] = useState({ leads: [], clients: [], bookings: [], analytics: null })
+  const [selectedProject, setSelectedProject] = useState(null)
+  const [projectView, setProjectView] = useState('overview')
+  const [workspaceData, setWorkspaceData] = useState(null)
 
   useEffect(() => {
     let alive = true
@@ -89,8 +92,12 @@ function App() {
   )
 
   const go = (item) => {
-    setActive(item)
-    setMobileOpen(false)
+    setActive(item); setSelectedProject(null); setProjectView('overview'); setWorkspaceData(null); setMobileOpen(false)
+  }
+  const openProject = async (project) => {
+    if (!project.id) return
+    setSelectedProject(project); setProjectView('overview')
+    try { setWorkspaceData(await api.project(project.id)) } catch { setWorkspaceData({project,pages:[]}) }
   }
 
   return (
@@ -124,8 +131,8 @@ function App() {
         </header>
 
         <div className="content">
-          {active === 'Обзор' && <Dashboard projects={filteredProjects} onCreate={() => setShowCreate(true)} onNavigate={go}/>}
-          {active === 'Проекты' && <Projects projects={filteredProjects} onCreate={() => setShowCreate(true)} />}
+          {active === 'Обзор' && !selectedProject && <Dashboard projects={filteredProjects} onCreate={() => setShowCreate(true)} onNavigate={go} onOpenProject={openProject}/>}
+          {active === 'Проекты' && !selectedProject && <Projects projects={filteredProjects} onCreate={() => setShowCreate(true)} onOpenProject={openProject}/>}
           {active === 'Заявки' && <InboxPage leads={crm.leads} />}
           {active === 'Клиенты' && <Clients clients={crm.clients} />}
           {active === 'Бронирования' && <Bookings bookings={crm.bookings} />}
@@ -134,7 +141,8 @@ function App() {
           {active === 'Аналитика' && <Analytics metrics={crm.analytics} />}
           {active === 'Интеграции' && <Integrations />}
           {active === 'Шаблоны' && <Templates onCreate={() => setShowCreate(true)} />}
-          {active === 'Настройки' && <SettingsPage />}
+          {active === 'Настройки' && !selectedProject && <SettingsPage />}
+          {selectedProject && <ProjectWorkspace project={selectedProject} data={workspaceData} view={projectView} setView={setProjectView} onBack={() => { setSelectedProject(null); setWorkspaceData(null) }} onRefresh={async()=>setWorkspaceData(await api.project(selectedProject.id))} />}
         </div>
       </main>
 
@@ -147,7 +155,7 @@ function Header({ eyebrow, title, description, action }) {
   return <div className="page-head"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1>{description && <p>{description}</p>}</div>{action}</div>
 }
 
-function Dashboard({ projects, onCreate, onNavigate }) {
+function Dashboard({ projects, onCreate, onNavigate, onOpenProject }) {
   return <>
     <Header eyebrow="Среда студии" title="Доброе утро, Алексей 👋" description="Вот что происходит с вашими клиентскими проектами сегодня." action={<button className="primary" onClick={onCreate}><Plus size={17}/> Новый проект</button>}/>
     <div className="metrics">
@@ -173,8 +181,8 @@ function Metric({title,value,change,icon:Icon}) {
   return <div className="metric card"><div className="metric-top"><span>{title}</span><div className="metric-icon"><Icon size={17}/></div></div><div className="metric-value">{value}</div><div className="metric-foot"><b>{change}</b><span>к прошлому месяцу</span></div></div>
 }
 
-function ProjectTable({projects}) {
-  return <div className="table">{projects.map((p,i)=><div className="project-row" key={p.name}><div className={`project-logo ${p.color}`}>{p.name.slice(0,1)}</div><div className="project-name"><b>{p.name}</b><span>{p.type}</span></div><span className={`status ${p.status === 'Опубликован' ? 'success' : p.status === 'В работе' ? 'working' : 'draft'}`}><i/>{p.status}</span><div className="project-stat"><b>{p.leads}</b><span>заявок</span></div><div className="project-stat"><b>{p.revenue}</b><span>выручка</span></div><span className="updated">{p.updated}</span><button className="row-more"><MoreHorizontal size={17}/></button></div>)}</div>
+function ProjectTable({projects,onOpenProject}) {
+  return <div className="table">{projects.map((p,i)=><button className="project-row project-row-button" key={p.id||p.name} onClick={() => onOpenProject?.(p)}><div className={`project-logo ${p.color}`}>{p.name.slice(0,1)}</div><div className="project-name"><b>{p.name}</b><span>{p.type}</span></div><span className={`status ${p.status === 'Опубликован' ? 'success' : p.status === 'В работе' ? 'working' : 'draft'}`}><i/>{p.status}</span><div className="project-stat"><b>{p.leads}</b><span>заявок</span></div><div className="project-stat"><b>{p.revenue}</b><span>выручка</span></div><span className="updated">{p.updated}</span><button className="row-more"><MoreHorizontal size={17}/></button></button>)}</div>
 }
 
 function Activity() {
@@ -183,7 +191,7 @@ function Activity() {
 
 function Quick({icon:Icon,title,text,onClick}) { return <button className="quick-card card" onClick={onClick}><div className="quick-icon"><Icon size={19}/></div><div><b>{title}</b><span>{text}</span></div><ChevronRight size={17}/></button> }
 
-function Projects({projects,onCreate}) { return <><Header eyebrow="Рабочая область" title="Проекты" description="Все сайты, Mini Apps и клиентские пространства студии." action={<button className="primary" onClick={onCreate}><Plus size={17}/> Новый проект</button>}/><div className="filterbar"><button className="filter active">Все <b>24</b></button><button className="filter">Опубликованные <b>18</b></button><button className="filter">В работе <b>4</b></button><button className="filter">Черновики <b>2</b></button><button className="filter"><Filter size={15}/> Фильтры</button></div><section className="card projects-full"><ProjectTable projects={projects}/></section></> }
+function Projects({projects,onCreate,onOpenProject}) { return <><Header eyebrow="Рабочая область" title="Проекты" description="Все сайты, Mini Apps и клиентские пространства студии." action={<button className="primary" onClick={onCreate}><Plus size={17}/> Новый проект</button>}/><div className="filterbar"><button className="filter active">Все <b>24</b></button><button className="filter">Опубликованные <b>18</b></button><button className="filter">В работе <b>4</b></button><button className="filter">Черновики <b>2</b></button><button className="filter"><Filter size={15}/> Фильтры</button></div><section className="card projects-full"><ProjectTable projects={projects} onOpenProject={onOpenProject}/></section></> }
 
 function InboxPage({leads=[]}){const fallback=[['Марина Соколова','Хочу записаться на стрижку','Barber House','только что'],['Иван Петров','Есть ли свободное окно в субботу?','Urban Fitness','12 мин назад'],['Анна Лебедева','Интересует абонемент','Urban Fitness','38 мин назад'],['Михаил Орлов','Нужен сайт для кофейни','Nexora Studio','1 ч назад']]; const rows = leads.length ? leads.map(l => [l.name, l.message, l.project_name || 'Проект', l.status]) : fallback; return <><Header eyebrow="CRM" title="Заявки" description="Единый вход для обращений со всех сайтов и Mini Apps." action={<button className="primary"><Plus size={17}/> Новая заявка</button>}/><div className="inbox-layout"><section className="card"><div className="card-head"><div><h2>Входящие</h2><span>7 новых обращений</span></div><button className="filter"><Filter size={15}/> Фильтр</button></div>{rows.map((l,i)=><div className="lead-row" key={l[0]}><div className="lead-avatar">{l[0].split(' ').map(x=>x[0]).join('')}</div><div className="lead-main"><b>{l[0]}</b><span>{l[1]}</span></div><div className="lead-project">{l[2]}</div><time>{l[3]}</time><button className="row-more"><MoreHorizontal size={17}/></button></div>)}</section><div className="card pipeline"><h2>Воронка</h2><span>Текущий месяц</span><div className="funnel"><div><b>37</b><span>Новые</span></div><div><b>24</b><span>В работе</span></div><div><b>16</b><span>Успешно</span></div><div><b>€4 820</b><span>Выручка</span></div></div></div></div></>}
 
@@ -204,6 +212,24 @@ function Integrations(){const items=[['Telegram','Заявки, уведомле
 function Templates({onCreate}){const templates=[['Barber','Барбершоп','dark'],['Beauty','Салон красоты','blue'],['Fitness','Фитнес-студия','purple'],['Restaurant','Ресторан','orange'],['Coffee','Кофейня','green'],['Dental','Стоматология','pink']];return <><Header eyebrow="Библиотека" title="Шаблоны" description="Готовые стартовые проекты для быстрого запуска клиентов."/><div className="template-grid">{templates.map(([name,desc,color])=><div className="card template" key={name}><div className={`template-preview ${color}`}><span>{name}</span><div className="template-lines"><i/><i/><i/></div></div><div className="template-info"><div><h3>{name}</h3><span>{desc}</span></div><button className="filter" onClick={onCreate}>Использовать</button></div></div>)}</div></>}
 
 function SettingsPage(){return <><Header eyebrow="Рабочее пространство" title="Настройки" description="Брендинг, участники, уведомления и параметры студии."/><div className="settings-layout"><div className="settings-nav card">{['Профиль студии','Брендинг','Участники','Уведомления','Интеграции','Безопасность','Тариф и оплата'].map((x,i)=><button className={i===0?'selected':''} key={x}>{x}</button>)}</div><section className="card settings-form"><div className="setting-block"><h2>Профиль студии</h2><span>Основная информация рабочего пространства.</span><label>Название студии<input value="Nexora Studio" readOnly/></label><label>Рабочий email<input value="studio@nexora.local" readOnly/></label><label>Часовой пояс<select defaultValue="Europe/Helsinki"><option>Europe/Helsinki</option><option>Europe/Moscow</option><option>Europe/Berlin</option></select></label></div><div className="setting-block"><h2>Внешний вид</h2><span>Настройте стиль панели и клиентских проектов.</span><div className="theme-options"><button className="theme active"><span/>Светлая</button><button className="theme"><span/>Тёмная</button><button className="theme"><span/>Системная</button></div></div><div className="setting-actions"><button className="filter">Отменить</button><button className="primary">Сохранить изменения</button></div></section></div></>}
+
+function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
+  const current=data?.project||project, pages=data?.pages||[];
+  const [saving,setSaving]=useState(false), [name,setName]=useState(current.name||''), [domain,setDomain]=useState(current.domain||''), [headline,setHeadline]=useState('Ваш бизнес. Онлайн.');
+  useEffect(()=>{setName(current.name||'');setDomain(current.domain||'');const h=pages[0]?.content?.blocks?.find(b=>b.type==='hero')?.headline;setHeadline(h||'Ваш бизнес. Онлайн.')},[current.id,pages.length]);
+  const saveSettings=async()=>{setSaving(true);try{await api.updateProject(current.id,{name,domain});await onRefresh()}finally{setSaving(false)}};
+  const saveEditor=async()=>{setSaving(true);try{let page=pages[0];if(!page)page=(await api.createPage(current.id,{title:'Главная',slug:'home'})).page;await api.updatePage(current.id,page.id,{content:{blocks:[{type:'hero',headline},{type:'services',title:'Услуги',items:['Основная услуга','Популярная услуга','Премиум услуга']},{type:'contacts',title:'Контакты'}]}});await onRefresh()}finally{setSaving(false)}};
+  const publish=async()=>{setSaving(true);try{await api.publishProject(current.id);await onRefresh()}finally{setSaving(false)}};
+  return <div className="workspace-page">
+    <div className="workspace-head"><button className="filter" onClick={onBack}>← Проекты</button><div className="workspace-title"><div className="project-logo dark">{current.name?.slice(0,1)}</div><div><b>{current.name}</b><span>{current.project_type||'website'} · {current.status==='published'?'Опубликован':'Черновик'}</span></div></div><div className="workspace-actions"><button className="filter" onClick={()=>setView('preview')}><ExternalLink size={14}/> Предпросмотр</button><button className="primary" onClick={publish} disabled={saving}><Globe2 size={15}/> Опубликовать</button></div></div>
+    <div className="workspace-tabs">{[['overview','Обзор'],['pages','Страницы'],['editor','Редактор'],['preview','Предпросмотр'],['settings','Настройки']].map(([id,label])=><button key={id} className={view===id?'selected':''} onClick={()=>setView(id)}>{label}</button>)}</div>
+    {view==='overview'&&<div className="workspace-grid"><div className="card workspace-card"><div className="eyebrow">Проект</div><h2>Центр управления клиентским проектом</h2><p>Сайт, Mini App, контент, публикация и настройки клиента управляются из одного рабочего пространства.</p><div className="workspace-stat-grid"><div><b>{pages.length}</b><span>страниц</span></div><div><b>{current.status==='published'?'Опубликован':'Черновик'}</b><span>статус</span></div><div><b>{domain||'Не подключен'}</b><span>домен</span></div></div></div><div className="card workspace-card"><h3>Следующие шаги</h3><button className="workspace-step" onClick={()=>setView('pages')}><Globe2 size={17}/><span><b>Настроить страницы</b><small>Создать структуру сайта</small></span><ChevronRight size={16}/></button><button className="workspace-step" onClick={()=>setView('editor')}><Palette size={17}/><span><b>Открыть редактор</b><small>Изменить блоки и тексты</small></span><ChevronRight size={16}/></button><button className="workspace-step" onClick={publish}><CheckCircle2 size={17}/><span><b>Опубликовать</b><small>Сделать проект доступным</small></span><ChevronRight size={16}/></button></div></div>}
+    {view==='pages'&&<div className="card workspace-card"><div className="card-head"><div><h2>Страницы</h2><span>Структура сайта</span></div><button className="primary" onClick={async()=>{await api.createPage(current.id,{title:'Новая страница',slug:'new-page'});await onRefresh()}}><Plus size={15}/> Новая страница</button></div>{pages.map(p=><div className="page-row" key={p.id}><div className="page-icon"><Globe2 size={16}/></div><div><b>{p.title}</b><span>/{p.slug}</span></div><span className={p.published?'status success':'status draft'}><i/>{p.published?'Опубликована':'Черновик'}</span><button className="filter" onClick={()=>setView('editor')}>Редактировать</button></div>)}</div>}
+    {view==='editor'&&<div className="editor-layout"><aside className="card editor-sidebar"><div className="eyebrow">Редактор</div><h3>Главная</h3><p>Блоки страницы</p><div className="editor-block active"><Palette size={15}/><span>Hero / первый экран</span></div><div className="editor-block"><Layers3 size={15}/><span>Услуги / каталог</span></div><div className="editor-block"><Users size={15}/><span>Контакты / CTA</span></div></aside><section className="card editor-canvas"><div className="editor-toolbar"><b>Главная</b><span>Редактирование</span><button className="primary" onClick={saveEditor} disabled={saving}>{saving?'Сохраняем…':'Сохранить'}</button></div><div className="site-canvas"><div className="canvas-hero"><input value={headline} onChange={e=>setHeadline(e.target.value)}/><p>Удобный цифровой опыт для ваших клиентов.</p><button>Оставить заявку</button></div><div className="canvas-section"><h3>Услуги</h3><div className="canvas-cards"><div>Основная услуга</div><div>Популярная услуга</div><div>Премиум услуга</div></div></div><div className="canvas-section"><h3>Контакты</h3><p>Свяжитесь с нами удобным способом.</p></div></div></section></div>}
+    {view==='preview'&&<div className="card preview-shell"><div className="preview-top"><b>{current.name}</b><span>{domain||'preview.nexora.site'}</span></div><div className="public-preview"><div><small>ПРЕДПРОСМОТР</small><h1>{headline}</h1><p>Удобный цифровой опыт для ваших клиентов.</p><button>Оставить заявку</button></div><div className="preview-services"><span>Услуги</span><b>Основная услуга</b><b>Популярная услуга</b><b>Премиум услуга</b></div></div></div>}
+    {view==='settings'&&<div className="card workspace-card"><div className="eyebrow">Настройки проекта</div><h2>Основные параметры</h2><label className="workspace-label">Название проекта<input value={name} onChange={e=>setName(e.target.value)}/></label><label className="workspace-label">Домен<input placeholder="client.ru" value={domain} onChange={e=>setDomain(e.target.value)}/></label><div className="setting-actions"><button className="primary" onClick={saveSettings} disabled={saving}>{saving?'Сохраняем…':'Сохранить'}</button></div></div>}
+  </div>
+}
 
 function CreateProject({onClose,onCreate}){return <div className="modal-backdrop" onMouseDown={onClose}><div className="modal card" onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="eyebrow">Новый проект</span><h2>Что создаём?</h2></div><button className="icon-btn" onClick={onClose}><X size={18}/></button></div><div className="create-options"><button onClick={() => onCreate("site")}><div><Globe2 size={20}/></div><b>Сайт</b><span>Запустить сайт из шаблона</span><ChevronRight size={17}/></button><button onClick={() => onCreate("miniapp")}><div><Smartphone size={20}/></div><b>Telegram Mini App</b><span>Каталог, заявки и бронирования</span><ChevronRight size={17}/></button><button onClick={() => onCreate("site_miniapp")}><div><Layers3 size={20}/></div><b>Сайт + Mini App</b><span>Полный клиентский проект</span><ChevronRight size={17}/></button></div></div></div>}
  
