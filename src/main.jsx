@@ -283,7 +283,7 @@ function App() {
           {active === 'Заявки' && <InboxPage leads={crm.leads} />}
           {active === 'Клиенты' && !selectedClient && <Clients clients={crm.clients} onOpenClient={openClient} />}
           {active === 'Клиенты' && selectedClient && <ClientWorkspace data={clientData} projects={projectData} onRefresh={async () => { if (selectedClient?.id) setClientData(await api.client(selectedClient.id)); const [cl,ord,inv]=await Promise.all([api.clients(),api.orders(),api.invoices()]); setCrm(v=>({...v,clients:cl.clients||[],invoices:inv.invoices||[]})); setOrders(ord.orders||[]) }} onBack={() => { setSelectedClient(null); setClientData(null) }} />}
-          {active === 'Бронирования' && <Bookings bookings={crm.bookings} projects={projects} />}
+          {active === 'Бронирования' && <Bookings bookings={crm.bookings} projects={projectData} />}
           {active === 'Платежи' && <Payments payments={crm.payments} />}
           {active === 'Счета' && <Invoices invoices={crm.invoices} projects={projectData} />}
           {active === 'Заказы' && <Orders orders={orders} projects={projectData} />}
