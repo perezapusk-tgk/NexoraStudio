@@ -37,6 +37,42 @@ app.get('/api/health', async (_req, res) => {
 
 app.get('/api/studio', (_req, res) => res.json({ studio: demoStudio }))
 
+app.get('/api/studio/usage', async (_req,res) => {
+  if(!pool){
+    const activeProjects=memoryProjects.length
+    return res.json({studio:demoStudio,usage:{projects:activeProjects,clients:memoryClients.length,team:1},limits:{projects:demoStudio.projectLimit,clients:10000,team:5}})
+  }
+  const [projects,clients,team]=await Promise.all([
+    pool.query('select count(*)::int as count from projects where studio_id=$1',[demoStudio.id]),
+    pool.query('select count(*)::int as count from clients where studio_id=$1',[demoStudio.id]),
+    pool.query('select count(*)::int as count from users where studio_id=$1',[demoStudio.id])
+  ])
+  res.json({studio:demoStudio,usage:{projects:projects.rows[0].count,clients:clients.rows[0].count,team:team.rows[0].count},limits:{projects:demoStudio.projectLimit,clients:10000,team:5}})
+})
+
+app.get('/api/team', async (_req,res) => {
+  if(!pool) return res.json({members:[{id:'demo-owner',name:demoStudio.ownerName,email:'owner@nexora.local',role:'owner',created_at:new Date().toISOString()}]})
+  const q=await pool.query('select id,name,email,role,created_at from users where studio_id=$1 order by created_at',[demoStudio.id])
+  res.json({members:q.rows})
+})
+
+app.post('/api/team', async (req,res) => {
+  const name=String(req.body?.name||'').trim(),email=String(req.body?.email||'').trim().toLowerCase(),role=String(req.body?.role||'member').trim()
+  if(!name||!email)return res.status(400).json({error:'Имя и email обязательны'})
+  if(!['admin','member','viewer'].includes(role))return res.status(400).json({error:'Недопустимая роль'})
+  if(!pool)return res.status(201).json({member:{id:crypto.randomUUID(),name,email,role,created_at:new Date().toISOString()}})
+  const count=await pool.query('select count(*)::int as count from users where studio_id=$1',[demoStudio.id])
+  if(count.rows[0].count>=5)return res.status(409).json({error:'Достигнут лимит участников тарифа'})
+  try {
+    const q=await pool.query('insert into users(studio_id,name,email,role) values($1,$2,$3,$4) returning id,name,email,role,created_at',[demoStudio.id,name,email,role])
+    res.status(201).json({member:q.rows[0]})
+  } catch(e) {
+    if(e.code==='23505')return res.status(409).json({error:'Пользователь с таким email уже существует'})
+    throw e
+  }
+})
+
+
 app.get('/api/projects', async (_req, res) => {
   if (!pool) return res.json({ projects: memoryProjects })
   const { rows } = await pool.query('select id, name, slug, project_type, status, domain, settings, created_at, updated_at from projects order by updated_at desc')
@@ -56,6 +92,8 @@ app.post('/api/projects', async (req, res) => {
   memoryCatalog.set(project.id,template.catalog.map(item=>({id:crypto.randomUUID(),project_id:project.id,...item})))
   return res.status(201).json({project})
 }
+  const usage=await pool.query('select count(*)::int as count from projects where studio_id=$1',[demoStudio.id])
+  if(usage.rows[0].count>=demoStudio.projectLimit)return res.status(409).json({error:'Достигнут лимит проектов вашего тарифа'})
   const slug = slugify(name)
   const template=templateDefinition(templateId)
   const { rows } = await pool.query(
