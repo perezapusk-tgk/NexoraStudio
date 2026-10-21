@@ -263,6 +263,38 @@ app.get('/api/bookings', async (_req, res) => {
   res.json({ bookings: rows })
 })
 
+app.post('/api/bookings', async (req,res) => {
+  const body=req.body||{}
+  const projectId=String(body.project_id||'').trim()
+  const name=String(body.customer_name||'').trim()
+  const phone=String(body.customer_phone||'').trim()
+  const service=String(body.service_name||'').trim()
+  const startsAt=String(body.starts_at||'').trim()
+  const endsAt=String(body.ends_at||'').trim()
+  const status=String(body.status||'confirmed').trim()
+  if(!projectId||!name||!startsAt||!endsAt)return res.status(400).json({error:'Укажите проект, клиента и время начала и окончания'})
+  if(!['pending','confirmed','completed','cancelled'].includes(status))return res.status(400).json({error:'Недопустимый статус'})
+  if(Number.isNaN(Date.parse(startsAt))||Number.isNaN(Date.parse(endsAt))||new Date(endsAt)<=new Date(startsAt))return res.status(400).json({error:'Проверьте время начала и окончания'})
+  if(!pool){
+    const project=memoryProjects.find(x=>x.id===projectId)
+    if(!project)return res.status(404).json({error:'Проект не найден'})
+    const conflict=memoryBookings.find(x=>x.project_id===projectId&&x.status!=='cancelled'&&new Date(x.starts_at)<new Date(endsAt)&&new Date(x.ends_at||x.starts_at)<new Date(startsAt)===false)
+    if(conflict&&new Date(conflict.starts_at)<new Date(endsAt)&&new Date(conflict.ends_at||new Date(new Date(conflict.starts_at).getTime()+3600000))>new Date(startsAt))return res.status(409).json({error:'Это время уже занято другой записью'})
+    let client=phone?memoryClients.find(x=>x.phone===phone):null
+    if(!client){client={id:crypto.randomUUID(),name,email:'',phone,created_at:new Date().toISOString()};memoryClients.unshift(client)}
+    const booking={id:crypto.randomUUID(),project_id:projectId,project_name:project.name,client_id:client.id,customer_name:name,customer_phone:phone,starts_at:startsAt,ends_at:endsAt,service_name:service,status}
+    memoryBookings.push(booking)
+    return res.status(201).json({booking})
+  }
+  const project=(await pool.query('select id,name from projects where id=$1 limit 1',[projectId])).rows[0]
+  if(!project)return res.status(404).json({error:'Проект не найден'})
+  const conflict=(await pool.query("select id from bookings where project_id=$1 and status <> 'cancelled' and starts_at < $3 and ends_at > $2 limit 1",[projectId,startsAt,endsAt])).rows[0]
+  if(conflict)return res.status(409).json({error:'Это время уже занято другой записью'})
+  const client=phone?(await pool.query('select id from clients where phone=$1 limit 1',[phone])).rows[0]:null
+  const q=await pool.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,ends_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,client?.id||null,name,phone||null,startsAt,endsAt,service||null,status])
+  res.status(201).json({booking:{...q.rows[0],project_name:project.name}})
+})
+
 app.patch('/api/bookings/:id', async (req,res) => {
   const body=req.body||{}
   const hasStatus=body.status!==undefined
