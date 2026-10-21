@@ -295,6 +295,7 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
   const [saving,setSaving]=useState(false), [name,setName]=useState(''), [domain,setDomain]=useState('');
   const [tg,setTg]=useState({enabled:false,configured:false,botUsername:'',buttonText:'Открыть Mini App',url:''});
   const [telegramBusy,setTelegramBusy]=useState(false);
+  const [analytics,setAnalytics]=useState(null);
   const [pageId,setPageId]=useState(null), [blocks,setBlocks]=useState([]);
   const page=pages.find(p=>p.id===pageId)||pages[0];
   useEffect(()=>{
@@ -304,6 +305,8 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
     const p=pages.find(x=>x.id===pageId)||pages[0];
     if(p){setPageId(p.id);setBlocks(p.content?.blocks||[])}
   },[current.id,current.name,current.domain,pages.length,pageId,JSON.stringify(current.settings||{})]);
+
+  useEffect(()=>{api.projectAnalytics(current.id).then(r=>setAnalytics(r.metrics||null)).catch(()=>setAnalytics(null))},[current.id]);
 
   const updateBlock=(index,patch)=>setBlocks(v=>v.map((b,i)=>i===index?{...b,...patch}:b));
   const addBlock=(type)=>{
@@ -335,7 +338,7 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
     <div className="workspace-tabs">{[['overview','Обзор'],['pages','Страницы'],['catalog','Каталог'],['editor','Редактор'],['preview','Предпросмотр'],['settings','Настройки']].map(([id,label])=><button key={id} className={view===id?'selected':''} onClick={()=>setView(id)}>{label}</button>)}</div>
 
     {view==='overview'&&<div className="workspace-grid">
-      <div className="card workspace-card"><div className="eyebrow">Проект</div><h2>Центр управления клиентским проектом</h2><p>Сайт, Mini App, контент, публикация и настройки клиента управляются из одного рабочего пространства.</p><div className="workspace-stat-grid"><div><b>{pages.length}</b><span>страниц</span></div><div><b>{current.status==='published'?'Опубликован':'Черновик'}</b><span>статус</span></div><div><b>{domain||'Не подключен'}</b><span>домен</span></div></div></div>
+      <div className="card workspace-card"><div className="eyebrow">Проект</div><h2>Центр управления клиентским проектом</h2><p>Сайт, Mini App, контент, публикация и настройки клиента управляются из одного рабочего пространства.</p><div className="workspace-stat-grid"><div><b>{pages.length}</b><span>страниц</span></div><div><b>{current.status==='published'?'Опубликован':'Черновик'}</b><span>статус</span></div><div><b>{domain||'Не подключен'}</b><span>домен</span></div><div><b>{analytics?.visits??'—'}</b><span>визиты · 30 дней</span></div></div></div>
       <div className="card workspace-card"><h3>Следующие шаги</h3><button className="workspace-step" onClick={()=>setView('pages')}><Globe2 size={17}/><span><b>Настроить страницы</b><small>Создать структуру сайта</small></span><ChevronRight size={16}/></button><button className="workspace-step" onClick={()=>setView('editor')}><Palette size={17}/><span><b>Открыть редактор</b><small>Собрать страницу из блоков</small></span><ChevronRight size={16}/></button><button className="workspace-step" onClick={publish}><CheckCircle2 size={17}/><span><b>Опубликовать</b><small>Сделать проект доступным</small></span><ChevronRight size={16}/></button></div>
     </div>}
 
