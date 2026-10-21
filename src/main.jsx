@@ -1,3 +1,4 @@
+import React from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { api } from './api'
 import {
@@ -125,6 +126,16 @@ function AuthScreen({onAuthenticated}){
     }finally{setBusy(false)}
   }
   return <div className="auth-shell"><div className="auth-card card"><div className="brand auth-brand"><div className="brand-mark">N</div><div><strong>Nexora</strong><span>Studio OS</span></div></div><div className="eyebrow">{mode==='login'?'Вход в рабочее пространство':'Создание студии'}</div><h1>{mode==='login'?'С возвращением':'Запустите свою студию'}</h1><p>{mode==='login'?'Войдите, чтобы управлять клиентскими проектами, сайтами и Mini Apps.':'Создайте отдельное рабочее пространство. Данные студии изолированы от других аккаунтов.'}</p><form onSubmit={submit}>{mode==='register'&&<><label>Ваше имя<input required value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))} placeholder="Алексей"/></label><label>Название студии<input required value={form.studioName} onChange={e=>setForm(v=>({...v,studioName:e.target.value}))} placeholder="Nexora Studio"/></label></>}<label>Email<input required type="email" value={form.email} onChange={e=>setForm(v=>({...v,email:e.target.value}))} placeholder="you@studio.ru"/></label><label>Пароль<input required minLength="8" type="password" value={form.password} onChange={e=>setForm(v=>({...v,password:e.target.value}))} placeholder="Минимум 8 символов"/></label>{error&&<div className="form-error">{error}</div>}<button className="primary auth-submit" disabled={busy}>{busy?'Подождите…':mode==='login'?'Войти':'Создать студию'}</button></form><button className="auth-switch" onClick={()=>{setMode(v=>v==='login'?'register':'login');setError('')}}>{mode==='login'?'Нет аккаунта? Создать студию':'Уже есть аккаунт? Войти'}</button></div></div>
+}
+
+class AppErrorBoundary extends React.Component {
+  constructor(props){super(props);this.state={error:null}}
+  static getDerivedStateFromError(error){return {error}}
+  componentDidCatch(error,info){console.error('Nexora render error',error,info)}
+  render(){
+    if(this.state.error) return <div style={{minHeight:'100vh',display:'grid',placeItems:'center',padding:32,fontFamily:'Inter,system-ui',background:'#f6f7fb',color:'#111827'}}><div style={{maxWidth:720,background:'#fff',padding:28,borderRadius:18,boxShadow:'0 10px 40px rgba(0,0,0,.08)'}}><h1 style={{marginTop:0}}>Nexora Studio</h1><p>Интерфейс не смог загрузиться. Ошибка уже зафиксирована.</p><pre style={{whiteSpace:'pre-wrap',color:'#b42318'}}>{String(this.state.error?.message||this.state.error)}</pre><button onClick={()=>location.reload()} style={{padding:'10px 16px',borderRadius:10,border:0,cursor:'pointer'}}>Обновить</button></div></div>
+    return this.props.children
+  }
 }
 
 function Root(){
@@ -683,4 +694,4 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
 
 function CreateProject({onClose,onCreate}){return <div className="modal-backdrop" onMouseDown={onClose}><div className="modal card" onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="eyebrow">Новый проект</span><h2>Что создаём?</h2></div><button className="icon-btn" onClick={onClose}><X size={18}/></button></div><div className="create-options"><button onClick={() => onCreate("site")}><div><Globe2 size={20}/></div><b>Сайт</b><span>Запустить сайт из шаблона</span><ChevronRight size={17}/></button><button onClick={() => onCreate("miniapp")}><div><Smartphone size={20}/></div><b>Telegram Mini App</b><span>Каталог, заявки и бронирования</span><ChevronRight size={17}/></button><button onClick={() => onCreate("site_miniapp")}><div><Layers3 size={20}/></div><b>Сайт + Mini App</b><span>Полный клиентский проект</span><ChevronRight size={17}/></button></div></div></div>}
  
-createRoot(document.getElementById('root')).render(<Root />)
+createRoot(document.getElementById('root')).render(<AppErrorBoundary><Root /></AppErrorBoundary>)
