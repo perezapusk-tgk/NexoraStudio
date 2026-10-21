@@ -90,6 +90,24 @@ function PublicMiniApp({data,slug}){
   </div>
 }
 
+
+function AuthScreen({onAuthenticated}){
+  const [mode,setMode]=useState('login')
+  const [form,setForm]=useState({name:'',studioName:'',email:'',password:''})
+  const [busy,setBusy]=useState(false)
+  const [error,setError]=useState('')
+  const submit=async(e)=>{
+    e.preventDefault();setBusy(true);setError('')
+    try{
+      const result=mode==='login'?await api.authLogin({email:form.email,password:form.password}):await api.authRegister(form)
+      onAuthenticated(result)
+    }catch(err){
+      try{setError(JSON.parse(err.message)?.error||'Не удалось выполнить операцию')}catch{setError('Не удалось выполнить операцию')}
+    }finally{setBusy(false)}
+  }
+  return <div className="auth-shell"><div className="auth-card card"><div className="brand auth-brand"><div className="brand-mark">N</div><div><strong>Nexora</strong><span>Studio OS</span></div></div><div className="eyebrow">{mode==='login'?'Вход в рабочее пространство':'Создание студии'}</div><h1>{mode==='login'?'С возвращением':'Запустите свою студию'}</h1><p>{mode==='login'?'Войдите, чтобы управлять клиентскими проектами, сайтами и Mini Apps.':'Создайте отдельное рабочее пространство. Данные студии изолированы от других аккаунтов.'}</p><form onSubmit={submit}>{mode==='register'&&<><label>Ваше имя<input required value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))} placeholder="Алексей"/></label><label>Название студии<input required value={form.studioName} onChange={e=>setForm(v=>({...v,studioName:e.target.value}))} placeholder="Nexora Studio"/></label></>}<label>Email<input required type="email" value={form.email} onChange={e=>setForm(v=>({...v,email:e.target.value}))} placeholder="you@studio.ru"/></label><label>Пароль<input required minLength="8" type="password" value={form.password} onChange={e=>setForm(v=>({...v,password:e.target.value}))} placeholder="Минимум 8 символов"/></label>{error&&<div className="form-error">{error}</div>}<button className="primary auth-submit" disabled={busy}>{busy?'Подождите…':mode==='login'?'Войти':'Создать студию'}</button></form><button className="auth-switch" onClick={()=>{setMode(v=>v==='login'?'register':'login');setError('')}}>{mode==='login'?'Нет аккаунта? Создать студию':'Уже есть аккаунт? Войти'}</button></div></div>
+}
+
 function Root(){
   const path=window.location.pathname.split('/').filter(Boolean)
   if(path[0]==='published'&&path[1]) return <PublicApp mode="site" slug={path[1]}/>
@@ -98,6 +116,8 @@ function Root(){
 }
 
 function App() {
+  const [auth,setAuth]=useState(null)
+  const [authLoading,setAuthLoading]=useState(true)
   const [active, setActive] = useState('Обзор')
   const [mobileOpen, setMobileOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -113,6 +133,13 @@ function App() {
   const [clientData, setClientData] = useState(null)
 
   useEffect(() => {
+    let alive = true
+    api.authMe().then(session=>{ if(alive) setAuth(session) }).catch(()=>{ if(alive) setAuth(null) }).finally(()=>{ if(alive) setAuthLoading(false) })
+    return () => { alive = false }
+  }, [])
+
+  useEffect(() => {
+    if(!auth) return
     let alive = true
     api.projects().then(items => {
       if (!alive) return
@@ -139,7 +166,7 @@ function App() {
       })
     })
     return () => { alive = false }
-  }, [])
+  }, [auth])
 
   const createProject = async (projectType, templateId = '') => {
     const name = window.prompt('Название проекта')
@@ -173,11 +200,18 @@ function App() {
     try { setWorkspaceData(await api.project(project.id)) } catch { setWorkspaceData({project,pages:[]}) }
   }
 
+  if(authLoading) return <div className="auth-loading">Загрузка Nexora…</div>
+  if(!auth) return <AuthScreen onAuthenticated={setAuth}/>
+
+  const studioName=auth.studio?.name||'Nexora Studio'
+  const userName=auth.user?.name||'Пользователь'
+  const initials=userName.split(/\\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase()
+
   return (
     <div className="app">
       <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
         <div className="brand"><div className="brand-mark">N</div><div><strong>Nexora</strong><span>Studio OS</span></div></div>
-        <div className="workspace"><div className="workspace-avatar">NS</div><div><b>Nexora Studio</b><span>Рабочее пространство</span></div><ChevronRight size={15}/></div>
+        <div className="workspace"><div className="workspace-avatar">{initials||"NS"}</div><div><b>{studioName}</b><span>Рабочее пространство</span></div><ChevronRight size={15}/></div>
         <nav>
           <div className="nav-label">Рабочая область</div>
           {nav.slice(0, 5).map(([label, Icon]) => <button key={label} className={active === label ? 'nav-item active' : 'nav-item'} onClick={() => go(label)}><Icon size={18}/><span>{label}</span>{label === 'Заявки' && <em>7</em>}</button>)}
@@ -187,15 +221,15 @@ function App() {
           <button className={active === 'Настройки' ? 'nav-item active' : 'nav-item'} onClick={() => go('Настройки')}><Settings size={18}/><span>Настройки</span></button>
         </nav>
         <div className="sidebar-bottom">
-          <div className="plan"><div className="plan-icon"><Sparkles size={16}/></div><div><b>Pro Studio</b><span>24 из 50 проектов</span></div></div>
-          <div className="user"><div className="user-avatar">АК</div><div><b>Алексей</b><span>Владелец</span></div><MoreHorizontal size={17}/></div>
+          <div className="plan"><div className="plan-icon"><Sparkles size={16}/></div><div><b>{auth.studio?.plan||"Starter"} Studio</b><span>Рабочее пространство</span></div></div>
+          <button className="user user-logout" onClick={async()=>{await api.authLogout();setAuth(null)}}><div className="user-avatar">{initials||"NS"}</div><div><b>{userName}</b><span>{auth.user?.role||"owner"}</span></div><LogOut size={17}/></button>
         </div>
       </aside>
 
       <main className="main">
         <header className="topbar">
           <button className="mobile-menu" onClick={() => setMobileOpen(v => !v)}><Menu size={21}/></button>
-          <div className="crumb"><span>Nexora Studio</span><ChevronRight size={15}/><b>{active}</b></div>
+          <div className="crumb"><span>{studioName}</span><ChevronRight size={15}/><b>{active}</b></div>
           <div className="top-actions">
             <div className="search"><Search size={17}/><input placeholder="Поиск..." value={query} onChange={e => setQuery(e.target.value)}/><kbd>⌘ K</kbd></div>
             <button className="icon-btn"><Bell size={18}/><i/></button>
@@ -234,7 +268,7 @@ function Header({ eyebrow, title, description, action }) {
 
 function Dashboard({ projects, onCreate, onNavigate, onOpenProject }) {
   return <>
-    <Header eyebrow="Среда студии" title="Доброе утро, Алексей 👋" description="Вот что происходит с вашими клиентскими проектами сегодня." action={<button className="primary" onClick={onCreate}><Plus size={17}/> Новый проект</button>}/>
+    <Header eyebrow="Среда студии" title={`Доброе утро, ${userName} 👋`} description="Вот что происходит с вашими клиентскими проектами сегодня." action={<button className="primary" onClick={onCreate}><Plus size={17}/> Новый проект</button>}/>
     <div className="metrics">
       <Metric title="Активные проекты" value="24" change="+12%" icon={FolderKanban}/>
       <Metric title="Новые заявки" value="37" change="+18%" icon={Inbox}/>
