@@ -15,6 +15,7 @@ const nav = [
   ['Заявки', Inbox],
   ['Клиенты', Users],
   ['Бронирования', CalendarDays],
+  ['Платежи', CreditCard],
   ['Сайты', Globe2],
   ['Mini Apps', Smartphone],
   ['Аналитика', BarChart3],
@@ -83,7 +84,7 @@ function App() {
   const [showCreate, setShowCreate] = useState(false)
   const [projectData, setProjectData] = useState(projects)
   const [apiState, setApiState] = useState('loading')
-  const [crm, setCrm] = useState({ leads: [], clients: [], bookings: [], analytics: null })
+  const [crm, setCrm] = useState({ leads: [], clients: [], bookings: [], payments: [], analytics: null })
   const [selectedProject, setSelectedProject] = useState(null)
   const [projectView, setProjectView] = useState('overview')
   const [workspaceData, setWorkspaceData] = useState(null)
@@ -102,12 +103,13 @@ function App() {
       })))
       setApiState('online')
     }).catch(() => alive && setApiState('offline'))
-    Promise.allSettled([api.leads(), api.clients(), api.bookings(), api.analytics()]).then(([leads, clients, bookings, analytics]) => {
+    Promise.allSettled([api.leads(), api.clients(), api.bookings(), api.payments(), api.analytics()]).then(([leads, clients, bookings, payments, analytics]) => {
       if (!alive) return
       setCrm({
         leads: leads.status === 'fulfilled' ? (leads.value.leads || []) : [],
         clients: clients.status === 'fulfilled' ? (clients.value.clients || []) : [],
         bookings: bookings.status === 'fulfilled' ? (bookings.value.bookings || []) : [],
+        payments: payments.status === 'fulfilled' ? (payments.value.payments || []) : [],
         analytics: analytics.status === 'fulfilled' ? analytics.value.metrics : null
       })
     })
@@ -176,6 +178,7 @@ function App() {
           {active === 'Заявки' && <InboxPage leads={crm.leads} />}
           {active === 'Клиенты' && <Clients clients={crm.clients} />}
           {active === 'Бронирования' && <Bookings bookings={crm.bookings} />}
+          {active === 'Платежи' && <Payments payments={crm.payments} />}
           {active === 'Сайты' && <Sites onCreate={() => setShowCreate(true)} />}
           {active === 'Mini Apps' && <MiniApps projects={projectData} onCreate={() => setShowCreate(true)} onOpenProject={openProject} />}
           {active === 'Аналитика' && <Analytics metrics={crm.analytics} />}
@@ -255,6 +258,18 @@ function Bookings({bookings=[]}){
 }
 
 function Booking({name,project,service,status='pending'}){const labels={pending:'Новая',confirmed:'Подтверждено',completed:'Завершено',cancelled:'Отменено'};return <div className="booking"><b>{name}</b><span>{project}{service?' · '+service:''}</span><em className={status}>{labels[status]||status}</em></div>}
+
+function Payments({payments=[]}){
+  const fallback=[{id:'demo-pay-1',project_name:'Barber House',amount:85,currency:'EUR',status:'paid',description:'Стрижка + борода',created_at:'2026-10-21T12:10:00Z'},{id:'demo-pay-2',project_name:'Urban Fitness',amount:120,currency:'EUR',status:'paid',description:'Абонемент',created_at:'2026-10-20T16:30:00Z'}];
+  const [items,setItems]=useState(payments.length?payments:fallback),[filter,setFilter]=useState('all');
+  useEffect(()=>setItems(payments.length?payments:fallback),[payments]);
+  const visible=filter==='all'?items:items.filter(x=>x.status===filter);
+  const total=items.filter(x=>x.status==='paid').reduce((sum,x)=>sum+Number(x.amount||0),0);
+  const fmt=x=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:x.currency||'EUR'}).format(Number(x.amount||0));
+  const setStatus=async(id,status)=>{try{await api.updatePayment(id,status);setItems(v=>v.map(x=>x.id===id?{...x,status}:x))}catch{window.alert('Не удалось изменить статус платежа')}};
+  const labels={pending:'Ожидает',paid:'Оплачен',refunded:'Возврат',failed:'Ошибка'};
+  return <><Header eyebrow="Финансы" title="Платежи" description="Оплаты, возвраты и финансовые операции клиентских проектов."/><div className="metrics compact"><Metric title="Получено" value={new Intl.NumberFormat('ru-RU',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(total)} change="оплаченные операции" icon={CircleDollarSign}/><Metric title="Операций" value={String(items.length)} change="всего" icon={CreditCard}/><Metric title="Ожидает" value={String(items.filter(x=>x.status==='pending').length)} change="к оплате" icon={Clock3}/><Metric title="Возвраты" value={String(items.filter(x=>x.status==='refunded').length)} change="операции" icon={BarChart3}/></div><section className="card calendar-card"><div className="card-head"><div><h2>Операции</h2><span>Платежи по всем проектам</span></div><div className="calendar-actions">{[['all','Все'],['pending','Ожидают'],['paid','Оплачены'],['refunded','Возвраты'],['failed','Ошибки']].map(([id,label])=><button key={id} className={filter===id?'filter active':'filter'} onClick={()=>setFilter(id)}>{label}</button>)}</div></div>{visible.length===0?<div className="empty-editor"><CreditCard size={24}/><b>Операций нет</b><span>Платежи появятся после первой оплаты.</span></div>:<div className="inbox-list">{visible.map((p,i)=><div className="inbox-row" key={p.id||i}><div className="inbox-avatar"><CreditCard size={17}/></div><div className="inbox-main"><b>{p.project_name||'Проект'}</b><span>{p.description||'Оплата'} · {new Date(p.created_at).toLocaleString('ru-RU')}</span></div><strong>{fmt(p)}</strong><span className={'status '+(p.status==='paid'?'success':p.status==='refunded'?'draft':'working')}><i/>{labels[p.status]||p.status}</span>{p.id&&<select value={p.status||'pending'} onChange={e=>setStatus(p.id,e.target.value)}><option value="pending">Ожидает</option><option value="paid">Оплачен</option><option value="refunded">Возврат</option><option value="failed">Ошибка</option></select>}</div>)}</div>}</section></>
+}
 
 function Sites({onCreate}){return <><Header eyebrow="Публикация" title="Сайты" description="Публичные сайты клиентов и их домены." action={<button className="primary" onClick={onCreate}><Plus size={17}/> Создать сайт</button>}/><div className="site-grid">{projects.filter(p=>p.type.includes('Сайт')).map((p,i)=><div className="card site-card" key={p.name}><div className={`site-preview p${i}`}><div className="preview-bar"><span/><span/><span/></div><div className="preview-content"><strong>{p.name}</strong><small>Современный сайт бизнеса</small></div></div><div className="site-info"><div><h3>{p.name}</h3><span>{p.name.toLowerCase().replaceAll(' ','')}.nexora.site</span></div><span className="status success"><i/> Опубликован</span></div><div className="site-actions"><button className="filter"><ExternalLink size={14}/> Открыть</button><button className="filter">Редактор</button></div></div>)}</div></>}
 
