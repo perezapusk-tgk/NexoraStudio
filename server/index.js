@@ -19,7 +19,8 @@ const memoryPages = new Map(memoryProjects.map(p => [p.id, [{id:'page-'+p.id,tit
   {type:'contacts',title:'Контакты',text:'Свяжитесь с нами удобным способом.'}
 ]}}]]))
 const memoryCatalog = new Map(memoryProjects.map(p => [p.id, demoCatalog(p.id)]))
-const memoryLeads = [...demoLeads()]\nconst memoryClients = [...demoClients()]
+const memoryLeads = [...demoLeads()]
+const memoryClients = [...demoClients()]
 const memoryBookings = [...demoBookings()]
 const memoryEvents = []
 
