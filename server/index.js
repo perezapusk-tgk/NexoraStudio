@@ -24,6 +24,7 @@ const memoryClients = [...demoClients()]
 const memoryBookings = [...demoBookings()]
 const memoryPayments = [...demoPayments()]
 const memoryInvoices = [...demoInvoices()]
+const memoryOrders = []
 const memoryEvents = []
 
 app.get('/api/health', async (_req, res) => {
@@ -309,6 +310,46 @@ app.get('/api/projects/:id/analytics', async (req,res) => {
 })
 
 
+app.get('/api/orders', async (_req,res) => {
+  if (!pool) return res.json({orders: memoryOrders})
+  const {rows}=await pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name,c.name as client_name from orders o left join projects pr on pr.id=o.project_id left join clients c on c.id=o.client_id order by o.created_at desc limit 200')
+  res.json({orders:rows})
+})
+app.post('/api/orders', async (req,res) => {
+  const projectId=String(req.body?.project_id||'').trim()
+  const items=Array.isArray(req.body?.items)?req.body.items:[]
+  const currency=String(req.body?.currency||'EUR').trim().toUpperCase()
+  const clientId=req.body?.client_id||null
+  if(!projectId || !items.length) return res.status(400).json({error:'Проект и товары обязательны'})
+  let total=0
+  const normalized=[]
+  for(const item of items){
+    const catalogId=String(item.catalog_id||item.id||'').trim()
+    const quantity=Math.max(1,Number(item.quantity||1))
+    let source=null
+    if(pool){const q=await pool.query('select id,name,price,currency from catalog_items where id=$1 and project_id=$2 limit 1',[catalogId,projectId]);source=q.rows[0]}
+    else source=(memoryCatalog.get(projectId)||[]).find(x=>x.id===catalogId)
+    if(!source) return res.status(400).json({error:'Товар не найден: '+catalogId})
+    const price=Number(source.price||0)
+    total+=price*quantity
+    normalized.push({catalog_id:source.id,name:source.name,price,quantity})
+  }
+  const number='ORD-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
+  const status=String(req.body?.status||'pending').trim()
+  if(!['pending','paid','cancelled','refunded'].includes(status)) return res.status(400).json({error:'Недопустимый статус заказа'})
+  if(!pool){const order={id:crypto.randomUUID(),project_id:projectId,client_id:clientId,number,status,total,currency,items:normalized,created_at:new Date().toISOString()};memoryOrders.unshift(order);return res.status(201).json({order})}
+  const q=await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[projectId,clientId,number,status,total,currency,JSON.stringify(normalized)])
+  res.status(201).json({order:q.rows[0]})
+})
+app.patch('/api/orders/:id', async (req,res) => {
+  const status=String(req.body?.status||'').trim()
+  if(!['pending','paid','cancelled','refunded'].includes(status)) return res.status(400).json({error:'Недопустимый статус заказа'})
+  if(!pool){const x=memoryOrders.find(v=>v.id===req.params.id);if(!x)return res.status(404).json({error:'Заказ не найден'});x.status=status;return res.json({order:x})}
+  const q=await pool.query('update orders set status=$1 where id=$2 returning *',[status,req.params.id])
+  if(!q.rows[0])return res.status(404).json({error:'Заказ не найден'})
+  res.json({order:q.rows[0]})
+})
+
 app.get('/api/payments', async (_req,res) => {
   if (!pool) return res.json({payments:memoryPayments})
   const {rows}=await pool.query('select p.id,p.project_id,p.client_id,p.booking_id,p.amount,p.currency,p.status,p.description,p.created_at,pr.name as project_name from payments p left join projects pr on pr.id=p.project_id order by p.created_at desc limit 200')
@@ -426,3 +467,6 @@ function demoBookings(){ return [{id:'b1',customer_name:'Александр К.'
 function demoPayments(){ return [{id:'pay1',project_id:'p1',project_name:'Barber House',amount:85,currency:'EUR',status:'paid',description:'Стрижка + борода',created_at:'2026-10-21T12:10:00Z'},{id:'pay2',project_id:'p3',project_name:'Urban Fitness',amount:120,currency:'EUR',status:'paid',description:'Абонемент',created_at:'2026-10-20T16:30:00Z'}] }
 function demoInvoices(){ return [{id:'inv1',project_id:'p1',number:'INV-20261021-AB12CD',amount:85,currency:'EUR',status:'paid',description:'Стрижка + борода',due_date:'2026-10-28',created_at:'2026-10-21T12:12:00Z'},{id:'inv2',project_id:'p3',number:'INV-20261020-EF34GH',amount:120,currency:'EUR',status:'sent',description:'Абонемент',due_date:'2026-10-27',created_at:'2026-10-20T16:32:00Z'}] }
 function demoClients(){ return [{id:'c1',name:'Barber House',email:'client@example.com',phone:'+358 40 000 0000'},{id:'c2',name:'Nordic Beauty',email:'hello@example.com',phone:'+358 40 000 0001'}] }
+
+
+function demoOrders(){ return [] }
