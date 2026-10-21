@@ -1043,7 +1043,7 @@ app.post('/api/leads/:id/convert', async (req,res) => {
     memoryClients.unshift(client)
     return res.status(201).json({client,existing:false})
   }
-  const leadQ=await pool.query('select l.*,p.studio_id from leads l left join projects p on p.id=l.project_id where l.id=$1 limit 1'
+  const leadQ=await pool.query('select l.*,p.studio_id from leads l left join projects p on p.id=l.project_id where l.id=$1 limit 1',[id])
   if(!leadQ.rows[0])return res.status(404).json({error:'Заявка не найдена'})
   const lead=leadQ.rows[0]
   const existingQ=await pool.query('select id,name,email,phone,created_at from clients where studio_id=$3 and ((phone=$1 and $1 is not null) or (email=$2 and $2 is not null)) limit 1',[lead.phone,lead.email,lead.studio_id])
