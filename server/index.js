@@ -60,7 +60,7 @@ async function requireAuth(req,res,next){
   if(!token) return res.status(401).json({error:'Требуется авторизация'})
   try {
     if(pool){
-      const q=await pool.query(`select u.id,u.name,u.email,u.role,u.studio_id,s.name as studio_name,s.owner_name,s.plan,s.project_limit
+      const q=await pool.query(`select u.id,u.name,u.email,u.role,u.studio_id,s.name as studio_name,s.owner_name,s.plan,s.project_limit,s.billing_currency
         from sessions se join users u on u.id=se.user_id join studios s on s.id=u.studio_id
         where se.token_hash=$1 and se.expires_at>now()`,[tokenHash(token)])
       if(!q.rows[0]) return res.status(401).json({error:'Сессия истекла или недействительна'})
@@ -253,7 +253,7 @@ app.post('/api/billing/plan', async (req,res)=>{
   if(current?.plan===plan)return res.json({ok:true,plan:planConfig(plan),message:'Этот тариф уже активен'})
   if(process.env.BILLING_MODE!=='manual')return res.status(402).json({error:'Для реального переключения тарифа требуется подключить платёжного провайдера. Сейчас доступен безопасный режим без списания средств.'})
   const currency=current?.billing_currency||'RUB'
-  const amount=currency==='USD'?Number((PLAN_CONFIG[plan].price*1.09).toFixed(2)):Number((PLAN_CONFIG[plan].price*105).toFixed(2))
+  const amount=currency==='USD'?Number(PLAN_CONFIG[plan].price.toFixed(2)):Number((PLAN_CONFIG[plan].price*100).toFixed(2))
   if(!pool){
     const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
     studio.plan=plan;studio.projectLimit=PLAN_CONFIG[plan].projectLimit;studio.project_limit=PLAN_CONFIG[plan].projectLimit;studio.subscription_status='active';studio.subscription_started_at=new Date().toISOString()
@@ -264,6 +264,105 @@ app.post('/api/billing/plan', async (req,res)=>{
   res.json({ok:true,mode:'manual',plan:planConfig(plan),currency,amount})
 })
 app.get('/api/billing/plans',(req,res)=>res.json({plans:Object.entries(PLAN_CONFIG).map(([id,p])=>({id,...p}))}))
+
+function billingAmount(plan,currency){
+  const base=planConfig(plan).price
+  return currency==='USD'?Number(base.toFixed(2)):Number((base*100).toFixed(2))
+}
+function billingAppUrl(){
+  return String(process.env.APP_URL||process.env.FRONTEND_URL||'http://localhost:5173').replace(/\\/$/,'')
+}
+async function createStripeCheckout({studioId,plan,amount,currency}){
+  const secret=String(process.env.STRIPE_SECRET_KEY||'').trim()
+  if(!secret) throw new Error('STRIPE_SECRET_KEY не настроен')
+  const body=new URLSearchParams()
+  body.set('mode','payment')
+  body.set('success_url',billingAppUrl()+'/?billing=success&provider=stripe&session_id={CHECKOUT_SESSION_ID}')
+  body.set('cancel_url',billingAppUrl()+'/?billing=cancelled')
+  body.set('line_items[0][price_data][currency]','usd')
+  body.set('line_items[0][price_data][product_data][name]','Nexora Studio '+planConfig(plan).name+' — 30 дней')
+  body.set('line_items[0][price_data][unit_amount]',String(Math.round(amount*100)))
+  body.set('line_items[0][quantity]','1')
+  body.set('metadata[studio_id]',studioId)
+  body.set('metadata[plan]',plan)
+  const r=await fetch('https://api.stripe.com/v1/checkout/sessions',{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/x-www-form-urlencoded'},body})
+  const data=await r.json()
+  if(!r.ok) throw new Error(data?.error?.message||'Stripe не смог создать оплату')
+  return {id:data.id,url:data.url}
+}
+async function createYookassaCheckout({studioId,plan,amount}){
+  const shopId=String(process.env.YOOKASSA_SHOP_ID||'').trim()
+  const secret=String(process.env.YOOKASSA_SECRET_KEY||'').trim()
+  if(!shopId||!secret) throw new Error('YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY не настроены')
+  const idempotence=crypto.randomUUID()
+  const r=await fetch('https://api.yookassa.ru/v3/payments',{method:'POST',headers:{Authorization:'Basic '+Buffer.from(shopId+':'+secret).toString('base64'),'Content-Type':'application/json','Idempotence-Key':idempotence},body:JSON.stringify({
+    amount:{value:amount.toFixed(2),currency:'RUB'},
+    capture:true,
+    confirmation:{type:'redirect',return_url:billingAppUrl()+'/?billing=success&provider=yookassa'},
+    description:'Nexora Studio '+planConfig(plan).name+' — 30 дней',
+    metadata:{studio_id:studioId,plan}
+  })})
+  const data=await r.json()
+  if(!r.ok) throw new Error(data?.description||'ЮKassa не смогла создать оплату')
+  return {id:data.id,url:data?.confirmation?.confirmation_url}
+}
+app.post('/api/billing/checkout', async (req,res)=>{
+  if(!requireRole(req,res,['owner','admin'])) return
+  const plan=String(req.body?.plan||'').toLowerCase()
+  if(!PLAN_CONFIG[plan]) return res.status(400).json({error:'Неизвестный тариф'})
+  const studio=pool?(await pool.query('select plan,billing_currency from studios where id=$1',[req.user.studio_id])).rows[0]:(memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio)
+  if(studio?.plan===plan) return res.json({ok:true,already_active:true,plan:planConfig(plan)})
+  const currency=studio?.billing_currency||'RUB'
+  const amount=billingAmount(plan,currency)
+  if(plan==='free'){
+    if(!pool){const s=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio;s.plan='free';s.projectLimit=1;s.project_limit=1;return res.json({ok:true,mode:'free',plan:planConfig(plan),currency})}
+    await pool.query('update studios set plan=$1,project_limit=$2,subscription_status=$3,billing_provider=null,subscription_started_at=now(),subscription_renews_at=null,updated_at=now() where id=$4',['free',1,'active',req.user.studio_id])
+    return res.json({ok:true,mode:'free',plan:planConfig(plan),currency})
+  }
+  if(process.env.BILLING_MODE==='manual'){
+    if(!pool){const s=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio;s.plan=plan;s.projectLimit=planConfig(plan).projectLimit;s.project_limit=s.projectLimit;s.subscription_status='active';s.subscription_started_at=new Date().toISOString();return res.json({ok:true,mode:'manual',plan:planConfig(plan),currency,amount})}
+    await pool.query('update studios set plan=$1,project_limit=$2,subscription_status=$3,subscription_started_at=now(),subscription_renews_at=now()+interval \'30 days\',billing_provider=$4,updated_at=now() where id=$5',[plan,planConfig(plan).projectLimit,'active','manual',req.user.studio_id])
+    await pool.query('insert into billing_transactions(studio_id,plan,amount,currency,status,provider,paid_at) values($1,$2,$3,$4,$5,$6,now())',[req.user.studio_id,plan,amount,currency,'paid','manual'])
+    return res.json({ok:true,mode:'manual',plan:planConfig(plan),currency,amount})
+  }
+  try{
+    const checkout=currency==='USD'
+      ? await createStripeCheckout({studioId:req.user.studio_id,plan,amount,currency})
+      : await createYookassaCheckout({studioId:req.user.studio_id,plan,amount})
+    if(!checkout.url) throw new Error('Платёжный провайдер не вернул ссылку оплаты')
+    if(pool) {
+      await pool.query('insert into billing_transactions(studio_id,plan,amount,currency,status,provider,provider_payment_id,checkout_url) values($1,$2,$3,$4,$5,$6,$7,$8)',[req.user.studio_id,plan,amount,currency,'pending',currency==='USD'?'stripe':'yookassa',checkout.id,checkout.url])
+    }
+    res.json({ok:true,mode:'checkout',provider:currency==='USD'?'stripe':'yookassa',checkout_url:checkout.url,provider_payment_id:checkout.id,plan:planConfig(plan),currency,amount})
+  }catch(e){res.status(503).json({error:e.message||'Не удалось создать платёж'})}
+})
+app.post('/api/billing/confirm', async (req,res)=>{
+  if(!requireRole(req,res,['owner','admin'])) return
+  const provider=String(req.body?.provider||'').toLowerCase()
+  const paymentId=String(req.body?.payment_id||'').trim()
+  if(!['stripe','yookassa'].includes(provider)||!paymentId) return res.status(400).json({error:'Нужны provider и payment_id'})
+  if(!pool) return res.status(400).json({error:'Подтверждение реального платежа доступно только с базой данных'})
+  const tx=(await pool.query('select * from billing_transactions where studio_id=$1 and provider=$2 and provider_payment_id=$3 order by created_at desc limit 1',[req.user.studio_id,provider,paymentId])).rows[0]
+  if(!tx) return res.status(404).json({error:'Платёж не найден'})
+  let paid=false
+  if(provider==='stripe'){
+    const secret=String(process.env.STRIPE_SECRET_KEY||'').trim()
+    if(!secret) return res.status(503).json({error:'STRIPE_SECRET_KEY не настроен'})
+    const r=await fetch('https://api.stripe.com/v1/checkout/sessions/'+encodeURIComponent(paymentId),{headers:{Authorization:'Bearer '+secret}})
+    const data=await r.json()
+    paid=r.ok&&data.payment_status==='paid'
+  }else{
+    const shopId=String(process.env.YOOKASSA_SHOP_ID||'').trim(),secret=String(process.env.YOOKASSA_SECRET_KEY||'').trim()
+    if(!shopId||!secret) return res.status(503).json({error:'YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY не настроены'})
+    const r=await fetch('https://api.yookassa.ru/v3/payments/'+encodeURIComponent(paymentId),{headers:{Authorization:'Basic '+Buffer.from(shopId+':'+secret).toString('base64')}})
+    const data=await r.json()
+    paid=r.ok&&data.status==='succeeded'&&data.paid===true
+  }
+  if(!paid) return res.status(409).json({error:'Оплата ещё не подтверждена'})
+  await pool.query('update billing_transactions set status=$1,paid_at=now() where id=$2',['paid',tx.id])
+  await pool.query('update studios set plan=$1,project_limit=$2,subscription_status=$3,billing_provider=$4,subscription_started_at=now(),subscription_renews_at=now()+interval \'30 days\',updated_at=now() where id=$5',[tx.plan,planConfig(tx.plan).projectLimit,'active',provider,req.user.studio_id])
+  res.json({ok:true,plan:planConfig(tx.plan),currency:tx.currency,amount:Number(tx.amount),provider})
+})
 
 app.get('/api/studio/usage', async (req,res) => {
   if(!pool){
