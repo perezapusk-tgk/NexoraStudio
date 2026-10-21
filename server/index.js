@@ -11,6 +11,8 @@ const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env
 app.use(cors())
 app.use(express.json())
 
+const PLAN_CONFIG = { free:{name:'Free',price:0,projectLimit:1,teamLimit:1,clientLimit:100}, starter:{name:'Starter',price:9,projectLimit:10,teamLimit:3,clientLimit:1000}, pro:{name:'Pro',price:19,projectLimit:50,teamLimit:5,clientLimit:10000}, agency:{name:'Agency',price:39,projectLimit:200,teamLimit:15,clientLimit:50000} }
+const planConfig=plan=>PLAN_CONFIG[String(plan||'starter').toLowerCase()]||PLAN_CONFIG.starter
 const demoStudio = { id: '00000000-0000-0000-0000-000000000001', name: 'Nexora Studio', ownerName: 'Алексей', plan: 'pro', projectLimit: 50 }
 const memoryProjects = demoProjects()
 const memoryPages = new Map(memoryProjects.map(p => [p.id, [{id:'page-'+p.id,title:'Главная',slug:'home',published:p.status==='published',content:{blocks:[
@@ -50,7 +52,7 @@ const createSessionToken=()=>crypto.randomBytes(32).toString('hex')
 const createInviteToken=()=>crypto.randomBytes(32).toString('hex')
 const tokenHash=token=>crypto.createHash('sha256').update(token).digest('hex')
 const inviteUrl=token=>{const base=String(process.env.APP_URL||process.env.FRONTEND_URL||'http://localhost:5173').replace(/\/$/,'');return base+'/?invite='+encodeURIComponent(token)}
-const authPayload=(u,studio,token)=>({token,user:{id:u.id,name:u.name,email:u.email,role:u.role},studio:{id:studio.id,name:studio.name,ownerName:studio.owner_name||studio.ownerName,plan:studio.plan,projectLimit:studio.project_limit||studio.projectLimit}})
+const authPayload=(u,studio,token)=>({token,user:{id:u.id,name:u.name,email:u.email,role:u.role},studio:{id:studio.id,name:studio.name,ownerName:studio.owner_name||studio.ownerName,plan:studio.plan,projectLimit:studio.project_limit||studio.projectLimit,planConfig:planConfig(studio.plan)}})
 
 async function requireAuth(req,res,next){
   const header=String(req.headers.authorization||'')
@@ -217,18 +219,19 @@ app.use('/api',async(req,res,next)=>{
 })
 
 app.get('/api/studio', (req, res) => res.json({ studio: req.studio }))
+app.get('/api/billing/plans',(req,res)=>res.json({plans:Object.entries(PLAN_CONFIG).map(([id,p])=>({id,...p}))}))
 
 app.get('/api/studio/usage', async (req,res) => {
   if(!pool){
     const activeProjects=memoryProjects.filter(x=>x.studio_id===req.user.studio_id).length
-    return res.json({studio:demoStudio,usage:{projects:activeProjects,clients:memoryClients.filter(x=>x.studio_id===req.user.studio_id).length,team:memoryUsers.filter(x=>x.studio_id===req.user.studio_id).length},limits:{projects:demoStudio.projectLimit,clients:10000,team:5}})
+    const cfg=planConfig(demoStudio.plan); return res.json({studio:demoStudio,usage:{projects:activeProjects,clients:memoryClients.filter(x=>x.studio_id===req.user.studio_id).length,team:memoryUsers.filter(x=>x.studio_id===req.user.studio_id).length},limits:{projects:demoStudio.projectLimit,clients:cfg.clientLimit,team:cfg.teamLimit},plan:cfg})
   }
   const [projects,clients,team]=await Promise.all([
     pool.query('select count(*)::int as count from projects where studio_id=$1',[req.user.studio_id]),
     pool.query('select count(*)::int as count from clients where studio_id=$1',[req.user.studio_id]),
     pool.query('select count(*)::int as count from users where studio_id=$1',[req.user.studio_id])
   ])
-  res.json({studio:req.studio,usage:{projects:projects.rows[0].count,clients:clients.rows[0].count,team:team.rows[0].count},limits:{projects:req.studio.project_limit||5,clients:10000,team:5}})
+  const cfg=planConfig(req.studio.plan); res.json({studio:req.studio,usage:{projects:projects.rows[0].count,clients:clients.rows[0].count,team:team.rows[0].count},limits:{projects:req.studio.project_limit||cfg.projectLimit,clients:cfg.clientLimit,team:cfg.teamLimit},plan:cfg})
 })
 
 app.get('/api/team', async (req,res) => {
@@ -255,7 +258,7 @@ app.post('/api/team', async (req,res) => {
         pool.query('select count(*)::int as count from users where studio_id=$1',[req.user.studio_id]),
         pool.query("select count(*)::int as count from team_invitations where studio_id=$1 and accepted_at is null and expires_at>now()",[req.user.studio_id])
       ])
-      if(users.rows[0].count+invites.rows[0].count>=5)return res.status(409).json({error:'Достигнут лимит участников тарифа'})
+      if(users.rows[0].count+invites.rows[0].count>=planConfig(req.studio.plan).teamLimit)return res.status(409).json({error:'Достигнут лимит участников тарифа'})
       if((await pool.query('select id from users where lower(email)=lower($1)',[email])).rows[0])return res.status(409).json({error:'Пользователь с таким email уже существует'})
       if((await pool.query("select id from team_invitations where studio_id=$1 and lower(email)=lower($2) and accepted_at is null and expires_at>now()",[req.user.studio_id,email])).rows[0])return res.status(409).json({error:'Для этого email уже есть активное приглашение'})
       const raw=createInviteToken()
@@ -264,7 +267,7 @@ app.post('/api/team', async (req,res) => {
     }
     const activeUsers=memoryUsers.filter(x=>x.studio_id===req.user.studio_id).length
     const activeInvites=memoryInvitations.filter(x=>x.studio_id===req.user.studio_id&&!x.accepted_at&&x.expires_at>Date.now()).length
-    if(activeUsers+activeInvites>=5)return res.status(409).json({error:'Достигнут лимит участников тарифа'})
+    if(activeUsers+activeInvites>=planConfig(req.studio.plan).teamLimit)return res.status(409).json({error:'Достигнут лимит участников тарифа'})
     if(memoryUsers.some(x=>x.email===email))return res.status(409).json({error:'Пользователь с таким email уже существует'})
     if(memoryInvitations.some(x=>x.studio_id===req.user.studio_id&&x.email===email&&!x.accepted_at&&x.expires_at>Date.now()))return res.status(409).json({error:'Для этого email уже есть активное приглашение'})
     const raw=createInviteToken(),inv={id:crypto.randomUUID(),studio_id:req.user.studio_id,email,role,token_hash:tokenHash(raw),token:raw,expires_at:Date.now()+7*86400000,created_at:Date.now(),accepted_at:null}
