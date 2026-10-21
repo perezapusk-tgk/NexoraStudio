@@ -22,6 +22,7 @@ const memoryCatalog = new Map(memoryProjects.map(p => [p.id, demoCatalog(p.id)])
 const memoryLeads = [...demoLeads()]
 const memoryClients = [...demoClients()]
 const memoryBookings = [...demoBookings()]
+const memoryPayments = [...demoPayments()]
 const memoryEvents = []
 
 app.get('/api/health', async (_req, res) => {
@@ -280,6 +281,32 @@ app.get('/api/projects/:id/analytics', async (req,res) => {
   res.json({metrics:q.rows[0]})
 })
 
+app.get('/api/payments', async (_req,res) => {
+  if (!pool) return res.json({payments:memoryPayments})
+  const {rows}=await pool.query('select p.id,p.project_id,p.client_id,p.booking_id,p.amount,p.currency,p.status,p.description,p.created_at,pr.name as project_name from payments p left join projects pr on pr.id=p.project_id order by p.created_at desc limit 200')
+  res.json({payments:rows})
+})
+app.post('/api/payments', async (req,res) => {
+  const projectId=String(req.body?.project_id||'').trim()
+  const amount=Number(req.body?.amount)
+  const currency=String(req.body?.currency||'EUR').trim().toUpperCase()
+  const description=String(req.body?.description||'').trim()
+  if(!projectId || !Number.isFinite(amount) || amount<=0) return res.status(400).json({error:'Проект и сумма обязательны'})
+  const status=String(req.body?.status||'paid').trim()
+  if(!['pending','paid','refunded','failed'].includes(status)) return res.status(400).json({error:'Недопустимый статус платежа'})
+  if(!pool){const payment={id:crypto.randomUUID(),project_id:projectId,client_id:req.body?.client_id||null,booking_id:req.body?.booking_id||null,amount,currency,status,description,created_at:new Date().toISOString()};memoryPayments.unshift(payment);return res.status(201).json({payment})}
+  const q=await pool.query('insert into payments(project_id,client_id,booking_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7) returning *',[projectId,req.body?.client_id||null,req.body?.booking_id||null,amount,currency,status,description||null])
+  res.status(201).json({payment:q.rows[0]})
+})
+app.patch('/api/payments/:id', async (req,res) => {
+  const status=String(req.body?.status||'').trim()
+  if(!['pending','paid','refunded','failed'].includes(status)) return res.status(400).json({error:'Недопустимый статус платежа'})
+  if(!pool){const p=memoryPayments.find(x=>x.id===req.params.id);if(!p)return res.status(404).json({error:'Платёж не найден'});p.status=status;return res.json({payment:p})}
+  const q=await pool.query('update payments set status=$1 where id=$2 returning *',[status,req.params.id])
+  if(!q.rows[0])return res.status(404).json({error:'Платёж не найден'})
+  res.json({payment:q.rows[0]})
+})
+
 app.get('/api/analytics/overview', async (_req, res) => {
   if (!pool) return res.json({ metrics: { visits: 28460 + memoryEvents.length, leads: memoryLeads.length, bookings: memoryBookings.length, revenue: 18420 } })
   const { rows } = await pool.query(`
@@ -339,4 +366,5 @@ function demoCatalog(projectId){ return [
 ] }
 function demoLeads(){ return [{id:'l1',name:'Марина Соколова',message:'Хочу записаться на стрижку',status:'new'},{id:'l2',name:'Иван Петров',message:'Есть ли свободное окно в субботу?',status:'in_progress'}] }
 function demoBookings(){ return [{id:'b1',customer_name:'Александр К.',starts_at:'2026-10-21T10:00:00',status:'confirmed'},{id:'b2',customer_name:'Елена М.',starts_at:'2026-10-21T11:00:00',status:'confirmed'}] }
+function demoPayments(){ return [{id:'pay1',project_id:'p1',project_name:'Barber House',amount:85,currency:'EUR',status:'paid',description:'Стрижка + борода',created_at:'2026-10-21T12:10:00Z'},{id:'pay2',project_id:'p3',project_name:'Urban Fitness',amount:120,currency:'EUR',status:'paid',description:'Абонемент',created_at:'2026-10-20T16:30:00Z'}] }
 function demoClients(){ return [{id:'c1',name:'Barber House',email:'client@example.com',phone:'+358 40 000 0000'},{id:'c2',name:'Nordic Beauty',email:'hello@example.com',phone:'+358 40 000 0001'}] }
