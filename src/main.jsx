@@ -168,7 +168,7 @@ function Dashboard({ projects, onCreate, onNavigate, onOpenProject }) {
     <div className="grid-main">
       <section className="card projects-card">
         <div className="card-head"><div><h2>Последние проекты</h2><span>Обновления по клиентским пространствам</span></div><button className="text-btn" onClick={() => onNavigate('Проекты')}>Все проекты <ArrowUpRight size={15}/></button></div>
-        <ProjectTable projects={projects.slice(0, 4)}/>
+        <ProjectTable projects={projects.slice(0, 4)} onOpenProject={onOpenProject}/>
       </section>
       <Activity />
     </div>
