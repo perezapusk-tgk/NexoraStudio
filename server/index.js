@@ -358,8 +358,24 @@ app.get('/api/clients/:id', async (req,res) => {
 })
 
 app.get('/api/clients', async (_req, res) => {
-  if (!pool) return res.json({ clients: demoClients() })
-  const { rows } = await pool.query('select id, name, email, phone, created_at from clients order by created_at desc')
+  if (!pool) {
+    const rows=memoryClients.map(client=>{
+      const phone=client.phone||'',email=client.email||''
+      const leads=memoryLeads.filter(x=>(phone&&x.phone===phone)||(email&&x.email===email))
+      const bookings=memoryBookings.filter(x=>x.client_id===client.id||(phone&&x.customer_phone===phone))
+      const orders=memoryOrders.filter(x=>x.client_id===client.id)
+      const projects=new Set([...orders.map(x=>x.project_id),...bookings.map(x=>x.project_id)].filter(Boolean))
+      const dates=[...leads,...bookings,...orders].map(x=>new Date(x.created_at||x.starts_at||0).getTime()).filter(Boolean)
+      return {...client,project_count:projects.size,contact_count:leads.length+bookings.length+orders.length,last_activity:dates.length?new Date(Math.max(...dates)).toISOString():client.created_at}
+    })
+    return res.json({clients:rows})
+  }
+  const sql="select c.id,c.name,c.email,c.phone,c.created_at,"+
+    "(select count(distinct x.project_id)::int from (select project_id from leads where phone=c.phone or email=c.email union all select project_id from bookings where client_id=c.id or customer_phone=c.phone union all select project_id from orders where client_id=c.id) x) as project_count,"+
+    "((select count(*) from leads where phone=c.phone or email=c.email)+(select count(*) from bookings where client_id=c.id or customer_phone=c.phone)+(select count(*) from orders where client_id=c.id))::int as contact_count,"+
+    "greatest(c.created_at,(select max(created_at) from orders where client_id=c.id),(select max(created_at) from payments where client_id=c.id),(select max(starts_at) from bookings where client_id=c.id or customer_phone=c.phone)) as last_activity "+
+    "from clients c order by last_activity desc nulls last limit 500"
+  const { rows } = await pool.query(sql)
   res.json({ clients: rows })
 })
 
