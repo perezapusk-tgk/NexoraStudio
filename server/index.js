@@ -19,7 +19,7 @@ const memoryPages = new Map(memoryProjects.map(p => [p.id, [{id:'page-'+p.id,tit
   {type:'contacts',title:'Контакты',text:'Свяжитесь с нами удобным способом.'}
 ]}}]]))
 const memoryCatalog = new Map(memoryProjects.map(p => [p.id, demoCatalog(p.id)]))
-const memoryLeads = [...demoLeads()]
+const memoryLeads = [...demoLeads()]\nconst memoryClients = [...demoClients()]
 const memoryBookings = [...demoBookings()]
 const memoryEvents = []
 
@@ -210,6 +210,45 @@ app.get('/api/bookings', async (_req, res) => {
   if (!pool) return res.json({ bookings: memoryBookings })
   const { rows } = await pool.query('select b.id, b.project_id, b.customer_name, b.starts_at, b.status, p.name as project_name from bookings b left join projects p on p.id=b.project_id order by starts_at asc limit 100')
   res.json({ bookings: rows })
+})
+
+app.patch('/api/leads/:id', async (req,res) => {
+  const id=String(req.params.id)
+  const status=String(req.body?.status||'').trim()
+  if(!status)return res.status(400).json({error:'Статус обязателен'})
+  const allowed=['new','in_progress','won','lost']
+  if(!allowed.includes(status))return res.status(400).json({error:'Недопустимый статус'})
+  if(!pool){
+    const lead=memoryLeads.find(x=>x.id===id)
+    if(!lead)return res.status(404).json({error:'Заявка не найдена'})
+    lead.status=status
+    return res.json({lead})
+  }
+  const q=await pool.query('update leads set status=$1 where id=$2 returning *',[status,id])
+  if(!q.rows[0])return res.status(404).json({error:'Заявка не найдена'})
+  res.json({lead:q.rows[0]})
+})
+
+app.post('/api/leads/:id/convert', async (req,res) => {
+  const id=String(req.params.id)
+  if(!pool){
+    const lead=memoryLeads.find(x=>x.id===id)
+    if(!lead)return res.status(404).json({error:'Заявка не найдена'})
+    const existing=demoClients().find(x=>(lead.phone&&x.phone===lead.phone)||(lead.email&&x.email===lead.email))
+    if(existing)return res.json({client:existing,existing:true})
+    const client={id:crypto.randomUUID(),name:lead.name,email:lead.email||'',phone:lead.phone||'',created_at:new Date().toISOString(),source_lead_id:id}
+    lead.status='won'
+    memoryClients.unshift(client)
+    return res.status(201).json({client,existing:false})
+  }
+  const leadQ=await pool.query('select * from leads where id=$1 limit 1',[id])
+  if(!leadQ.rows[0])return res.status(404).json({error:'Заявка не найдена'})
+  const lead=leadQ.rows[0]
+  const existingQ=await pool.query('select id,name,email,phone,created_at from clients where (phone=$1 and $1 is not null) or (email=$2 and $2 is not null) limit 1',[lead.phone,lead.email])
+  if(existingQ.rows[0])return res.json({client:existingQ.rows[0],existing:true})
+  const q=await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id,name,email,phone,created_at',[demoStudio.id,lead.name,lead.email||null,lead.phone||null])
+  await pool.query("update leads set status='won' where id=$1",[id])
+  res.status(201).json({client:q.rows[0],existing:false})
 })
 
 app.get('/api/clients', async (_req, res) => {
