@@ -5,7 +5,7 @@ import {
   Smartphone, BarChart3, Plug, Zap, Settings, Plus, Search, Bell,
   ArrowUpRight, MoreHorizontal, ChevronRight, CheckCircle2, Clock3,
   CircleDollarSign, ExternalLink, Filter, Send, CreditCard, Palette,
-  ShieldCheck, Bot, Sparkles, X, Menu, LogOut, UserRound, Layers3
+  ShieldCheck, Bot, Sparkles, X, Menu, LogOut, UserRound, Layers3, Receipt
 } from 'lucide-react'
 import './styles.css'
 
@@ -16,6 +16,7 @@ const nav = [
   ['Клиенты', Users],
   ['Бронирования', CalendarDays],
   ['Платежи', CreditCard],
+  ['Счета', Receipt],
   ['Сайты', Globe2],
   ['Mini Apps', Smartphone],
   ['Аналитика', BarChart3],
@@ -84,7 +85,7 @@ function App() {
   const [showCreate, setShowCreate] = useState(false)
   const [projectData, setProjectData] = useState(projects)
   const [apiState, setApiState] = useState('loading')
-  const [crm, setCrm] = useState({ leads: [], clients: [], bookings: [], payments: [], analytics: null })
+  const [crm, setCrm] = useState({ leads: [], clients: [], bookings: [], payments: [], invoices: [], analytics: null })
   const [selectedProject, setSelectedProject] = useState(null)
   const [projectView, setProjectView] = useState('overview')
   const [workspaceData, setWorkspaceData] = useState(null)
@@ -103,13 +104,14 @@ function App() {
       })))
       setApiState('online')
     }).catch(() => alive && setApiState('offline'))
-    Promise.allSettled([api.leads(), api.clients(), api.bookings(), api.payments(), api.analytics()]).then(([leads, clients, bookings, payments, analytics]) => {
+    Promise.allSettled([api.leads(), api.clients(), api.bookings(), api.payments(), api.invoices(), api.analytics()]).then(([leads, clients, bookings, payments, analytics]) => {
       if (!alive) return
       setCrm({
         leads: leads.status === 'fulfilled' ? (leads.value.leads || []) : [],
         clients: clients.status === 'fulfilled' ? (clients.value.clients || []) : [],
         bookings: bookings.status === 'fulfilled' ? (bookings.value.bookings || []) : [],
         payments: payments.status === 'fulfilled' ? (payments.value.payments || []) : [],
+        invoices: invoices.status === 'fulfilled' ? (invoices.value.invoices || []) : [],
         analytics: analytics.status === 'fulfilled' ? analytics.value.metrics : null
       })
     })
@@ -179,6 +181,7 @@ function App() {
           {active === 'Клиенты' && <Clients clients={crm.clients} />}
           {active === 'Бронирования' && <Bookings bookings={crm.bookings} />}
           {active === 'Платежи' && <Payments payments={crm.payments} />}
+          {active === 'Счета' && <Invoices invoices={crm.invoices} projects={projectData} />}
           {active === 'Сайты' && <Sites onCreate={() => setShowCreate(true)} />}
           {active === 'Mini Apps' && <MiniApps projects={projectData} onCreate={() => setShowCreate(true)} onOpenProject={openProject} />}
           {active === 'Аналитика' && <Analytics metrics={crm.analytics} />}
@@ -242,6 +245,25 @@ function InboxPage({leads=[]}) {
   const setStatus=async(id,status)=>{try{await api.updateLead(id,status);setItems(v=>v.map(x=>x.id===id?{...x,status}:x))}catch{window.alert('Не удалось изменить статус')}}
   const convert=async(id)=>{try{const r=await api.convertLead(id);setItems(v=>v.map(x=>x.id===id?{...x,status:'won'}:x));window.alert(r.existing?'Клиент уже существует':'Заявка превращена в клиента')}catch{window.alert('Не удалось создать клиента')}}
   return <><Header eyebrow="CRM" title="Заявки" description="Входящие обращения клиентов из сайтов и Mini Apps."/><div className="card inbox-list">{items.length===0?<div className="empty-editor"><Inbox size={24}/><b>Заявок пока нет</b><span>Новые обращения появятся здесь.</span></div>:items.map(l=><div className="inbox-row" key={l.id}><div className="inbox-avatar">{String(l.name||'?').slice(0,1)}</div><div className="inbox-main"><b>{l.name||'Без имени'}</b><span>{l.message||'Новое обращение'}</span></div><select value={l.status||'new'} onChange={e=>setStatus(l.id,e.target.value)}><option value="new">Новая</option><option value="in_progress">В работе</option><option value="won">Клиент</option><option value="lost">Закрыта</option></select><button className="filter" onClick={()=>convert(l.id)} disabled={l.status==='won'}>{l.status==='won'?'Клиент создан':'В клиента'}</button></div>)}</div></>
+}
+
+function Invoices({invoices=[],projects=[]}) {
+  const fallback=[{id:'inv1',number:'INV-20261021-AB12CD',project_name:'Barber House',amount:85,currency:'EUR',status:'paid',description:'Стрижка + борода',due_date:'2026-10-28'},{id:'inv2',number:'INV-20261020-EF34GH',project_name:'Urban Fitness',amount:120,currency:'EUR',status:'sent',description:'Абонемент',due_date:'2026-10-27'}];
+  const rows=invoices.length?invoices:fallback;
+  const [filter,setFilter]=useState('all'),[items,setItems]=useState(rows),[creating,setCreating]=useState(false),[form,setForm]=useState({project_id:projects[0]?.id||'',amount:'',description:'',due_date:''});
+  useEffect(()=>{setItems(invoices.length?invoices:fallback)},[invoices]);
+  useEffect(()=>{if(!form.project_id&&projects[0]?.id)setForm(v=>({...v,project_id:projects[0].id}))},[projects,form.project_id]);
+  const visible=filter==='all'?items:items.filter(x=>x.status===filter);
+  const statusLabel={draft:'Черновик',sent:'Отправлен',paid:'Оплачен',overdue:'Просрочен',cancelled:'Отменён'};
+  const create=async()=>{try{const r=await api.createInvoice({...form,amount:Number(form.amount),status:'draft'});setItems(v=>[r.invoice,...v]);setCreating(false);setForm(v=>({...v,amount:'',description:'',due_date:''}))}catch{window.alert('Не удалось создать счёт')}};
+  const setStatus=async(id,status)=>{try{await api.updateInvoice(id,status);setItems(v=>v.map(x=>x.id===id?{...x,status}:x))}catch{window.alert('Не удалось изменить статус счёта')}};
+  const total=items.filter(x=>x.status==='paid').reduce((sum,x)=>sum+Number(x.amount||0),0);
+  return <><Header eyebrow="Финансы" title="Счета" description="Выставляйте счета клиентам и контролируйте оплату." action={<button className="primary" onClick={()=>setCreating(true)}><Plus size={17}/> Новый счёт</button>}/>
+    <div className="metrics compact"><Metric title="Оплачено" value={new Intl.NumberFormat('ru-RU',{style:'currency',currency:'EUR'}).format(total)} change="по счетам" icon={CheckCircle2}/><Metric title="Всего" value={String(items.length)} change="счетов" icon={Receipt}/><Metric title="Ожидают" value={String(items.filter(x=>x.status==='sent').length)} change="отправлены клиентам" icon={Clock3}/><Metric title="Просрочено" value={String(items.filter(x=>x.status==='overdue').length)} change="требуют внимания" icon={CircleDollarSign}/></div>
+    <section className="card calendar-card"><div className="card-head"><div><h2>Реестр счетов</h2><span>Счёт → клиент → оплата</span></div><div className="calendar-actions">{[['all','Все'],['draft','Черновики'],['sent','Отправлены'],['paid','Оплачены'],['overdue','Просрочены']].map(([id,label])=><button key={id} className={filter===id?'filter active':'filter'} onClick={()=>setFilter(id)}>{label}</button>)}</div></div>
+      {visible.length===0?<div className="empty-editor"><Receipt size={24}/><b>Счетов пока нет</b><span>Создайте первый счёт для клиента.</span></div>:visible.map((x,i)=><div className="slot invoice-row" key={x.id||i}><div className="invoice-number"><b>{x.number}</b><span>{x.description||'Без описания'}</span></div><div className="invoice-project"><b>{x.project_name||'Проект'}</b><span>{x.due_date?'до '+new Date(x.due_date).toLocaleDateString('ru-RU'):''}</span></div><strong>{new Intl.NumberFormat('ru-RU',{style:'currency',currency:x.currency||'EUR'}).format(Number(x.amount||0))}</strong>{x.id&&<select className="booking-status" value={x.status||'draft'} onChange={e=>setStatus(x.id,e.target.value)}>{Object.entries(statusLabel).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select>}</div>)}</section>
+    {creating&&<div className="modal-backdrop" onMouseDown={()=>setCreating(false)}><div className="modal card" onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="eyebrow">Финансы</span><h2>Новый счёт</h2></div><button className="icon-btn" onClick={()=>setCreating(false)}><X size={18}/></button></div><div className="block-form"><label>Проект<select value={form.project_id} onChange={e=>setForm(v=>({...v,project_id:e.target.value}))}>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Сумма<input type="number" min="0.01" step="0.01" value={form.amount} onChange={e=>setForm(v=>({...v,amount:e.target.value}))}/></label><label>Описание<input value={form.description} onChange={e=>setForm(v=>({...v,description:e.target.value}))} placeholder="Например, абонемент"/></label><label>Срок оплаты<input type="date" value={form.due_date} onChange={e=>setForm(v=>({...v,due_date:e.target.value}))}/></label></div><div className="setting-actions"><button className="filter" onClick={()=>setCreating(false)}>Отмена</button><button className="primary" onClick={create} disabled={!form.project_id||!form.amount}>Создать счёт</button></div></div></div>}
+  </>;
 }
 
 function Clients({clients=[]}){const rows=clients.length?clients:['Barber House','Nordic Beauty','Urban Fitness','Mokka Coffee','North Studio','Luna Dental'];return <><Header eyebrow="CRM" title="Клиенты" description="Управляйте клиентами и связанными проектами из одного места." action={<button className="primary"><Plus size={17}/> Добавить клиента</button>}/><div className="client-grid">{rows.map((x,i)=><div className="card client-card" key={x}><div className={`client-logo c${i}`}>{(typeof x === 'string' ? x : x.name).slice(0,1)}</div><div><h3>{typeof x === 'string' ? x : x.name}</h3><span>{i%2?'2 проекта':'3 проекта'} · {i+2} контакта</span></div><button className="row-more"><MoreHorizontal size={17}/></button><div className="client-bottom"><span>Последняя активность</span><b>{i+1} дн. назад</b></div></div>)}</div></>}
