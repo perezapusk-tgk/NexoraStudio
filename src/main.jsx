@@ -293,13 +293,17 @@ function CatalogManager({projectId}){
 function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
   const current=data?.project||project, pages=data?.pages||[];
   const [saving,setSaving]=useState(false), [name,setName]=useState(''), [domain,setDomain]=useState('');
+  const [tg,setTg]=useState({enabled:false,configured:false,botUsername:'',buttonText:'Открыть Mini App',url:''});
+  const [telegramBusy,setTelegramBusy]=useState(false);
   const [pageId,setPageId]=useState(null), [blocks,setBlocks]=useState([]);
   const page=pages.find(p=>p.id===pageId)||pages[0];
   useEffect(()=>{
     setName(current.name||''); setDomain(current.domain||'');
+    const mini=current.settings?.miniApp||{};
+    setTg({enabled:mini.enabled===true || String(current.project_type||'').includes('miniapp'),configured:mini.configured===true,botUsername:mini.botUsername||'',buttonText:mini.buttonText||'Открыть Mini App',url:mini.url||''});
     const p=pages.find(x=>x.id===pageId)||pages[0];
     if(p){setPageId(p.id);setBlocks(p.content?.blocks||[])}
-  },[current.id,current.name,current.domain,pages.length,pageId]);
+  },[current.id,current.name,current.domain,pages.length,pageId,JSON.stringify(current.settings||{})]);
 
   const updateBlock=(index,patch)=>setBlocks(v=>v.map((b,i)=>i===index?{...b,...patch}:b));
   const addBlock=(type)=>{
@@ -318,7 +322,8 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
     try{await api.updatePage(current.id,page.id,{content:{blocks}});await onRefresh()}
     finally{setSaving(false)}
   };
-  const saveSettings=async()=>{setSaving(true);try{await api.updateProject(current.id,{name,domain});await onRefresh()}finally{setSaving(false)}};
+  const saveSettings=async()=>{setSaving(true);try{await api.updateProject(current.id,{name,domain,settings:{miniApp:{enabled:tg.enabled,buttonText:tg.buttonText}}});await onRefresh()}finally{setSaving(false)}};
+  const configureTelegram=async()=>{setTelegramBusy(true);try{const result=await api.configureTelegram(current.id,{button_text:tg.buttonText});setTg(v=>({...v,enabled:true,configured:true,botUsername:result.bot?.username||v.botUsername,url:result.url||v.url}));await onRefresh();window.alert('Telegram Mini App подключён к боту @'+(result.bot?.username||'bot'))}catch(error){window.alert(error.message||'Не удалось подключить Telegram')}finally{setTelegramBusy(false)}};
   const publish=async()=>{setSaving(true);try{await api.publishProject(current.id);await onRefresh()}finally{setSaving(false)}};
 
   return <div className="workspace-page">
@@ -358,7 +363,16 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
 
     {view==='preview'&&<div className="card preview-shell"><div className="preview-top"><b>{current.name}</b><span>{domain||'preview.nexora.site'}</span></div><div className="public-preview">{blocks.map((b,i)=><div key={i} className={b.type==='hero'?'preview-hero':'preview-section'}>{b.type==='hero'?<><small>ПРЕДПРОСМОТР</small><h1>{b.headline}</h1><p>{b.subheadline}</p><button>{b.cta}</button></>:b.type==='services'?<><span>{b.title}</span><div className="preview-services">{(b.items||[]).map(x=><b key={x}>{x}</b>)}</div></>:<><h2>{b.title}</h2><p>{b.text}</p></>}</div>)}{!blocks.length&&<div className="empty-editor"><b>Нет блоков</b><span>Добавьте блоки в редакторе.</span></div>}</div></div>}
 
-    {view==='settings'&&<div className="card workspace-card"><div className="eyebrow">Настройки проекта</div><h2>Основные параметры</h2><label className="workspace-label">Название проекта<input value={name} onChange={e=>setName(e.target.value)}/></label><label className="workspace-label">Домен<input placeholder="client.ru" value={domain} onChange={e=>setDomain(e.target.value)}/></label><div className="setting-actions"><button className="primary" onClick={saveSettings} disabled={saving}>{saving?'Сохраняем…':'Сохранить'}</button></div></div>}
+    {view==='settings'&&<div className="workspace-settings">
+      <div className="card workspace-card"><div className="eyebrow">Настройки проекта</div><h2>Основные параметры</h2><label className="workspace-label">Название проекта<input value={name} onChange={e=>setName(e.target.value)}/></label><label className="workspace-label">Домен<input placeholder="client.ru" value={domain} onChange={e=>setDomain(e.target.value)}/></label><div className="setting-actions"><button className="primary" onClick={saveSettings} disabled={saving}>{saving?'Сохраняем…':'Сохранить'}</button></div></div>
+      <div className="card workspace-card telegram-settings"><div className="eyebrow">Telegram</div><div className="setting-title-row"><div><h2>Mini App</h2><p>Открывается прямо из меню Telegram-бота и использует каталог, заявки и бронирования проекта.</p></div><label className="toggle"><input type="checkbox" checked={tg.enabled} onChange={e=>setTg(v=>({...v,enabled:e.target.checked}))}/><span></span></label></div>
+        <div className="telegram-status"><span className={tg.configured?'status success':'status draft'}><i/>{tg.configured?'Подключён':'Не подключён'}</span>{tg.botUsername&&<b>@{tg.botUsername}</b>}</div>
+        <label className="workspace-label">Текст кнопки в Telegram<input maxLength="64" value={tg.buttonText} onChange={e=>setTg(v=>({...v,buttonText:e.target.value}))}/></label>
+        {tg.url&&<label className="workspace-label">URL Mini App<input readOnly value={tg.url}/></label>}
+        <div className="setting-actions"><button className="filter" onClick={saveSettings} disabled={saving}>Сохранить настройки</button><button className="primary" onClick={configureTelegram} disabled={telegramBusy || !tg.enabled}>{telegramBusy?'Подключаем…':'Подключить к Telegram'}</button></div>
+        <small className="settings-note">Токен бота хранится только на сервере. Если TELEGRAM_BOT_TOKEN ещё не задан, подключение вернёт понятную ошибку.</small>
+      </div>
+    </div>}
   </div>
 }
 
