@@ -461,19 +461,7 @@ app.patch('/api/invoices/:id', async (req,res) => {
   res.json({invoice:q.rows[0]})
 })
 
-app.get('/api/analytics/overview', async (_req, res) => {
-  if (!pool) return res.json({ metrics: { visits: 28460 + memoryEvents.length, leads: memoryLeads.length, bookings: memoryBookings.length, revenue: memoryPayments.filter(p=>p.status==='paid').reduce((sum,p)=>sum+Number(p.amount||0),0) } })
-  const { rows } = await pool.query(`
-    select
-      count(*) filter (where event_type='page_view')::int as visits,
-      count(*) filter (where event_type='lead')::int as leads,
-      count(*) filter (where event_type='booking')::int as bookings,
-      coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue
-    from analytics_events
-    where created_at >= now() - interval '30 days'
-  `)
-  res.json({ metrics: rows[0] })
-})
+app.get('/api/analytics/overview', async (_req, res) => {\n  if (!pool) {\n    const base=memoryEvents.filter(e=>e.created_at && new Date(e.created_at)>=new Date(Date.now()-30*86400000))\n    const series=Array.from({length:14},(_,idx)=>{const d=new Date(Date.now()-(13-idx)*86400000);const key=d.toISOString().slice(0,10);const day=base.filter(e=>String(e.created_at).slice(0,10)===key);return {day:key,visits:day.filter(e=>e.event_type==='page_view').length,leads:day.filter(e=>e.event_type==='lead').length,bookings:day.filter(e=>e.event_type==='booking').length,revenue:day.filter(e=>e.event_type==='payment').reduce((s,e)=>s+Number(e.value||0),0)}})\n    const revenue=memoryPayments.filter(p=>p.status==='paid').reduce((sum,p)=>sum+Number(p.amount||0),0)\n    return res.json({metrics:{visits:28460+base.filter(e=>e.event_type==='page_view').length,leads:memoryLeads.length,bookings:memoryBookings.length,revenue,series}})\n  }\n  const q=await pool.query(`select count(*) filter (where event_type='page_view')::int as visits,count(*) filter (where event_type='lead')::int as leads,count(*) filter (where event_type='booking')::int as bookings,coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue from analytics_events where created_at >= now() - interval '30 days'`)\n  const s=await pool.query(`select to_char(date_trunc('day',created_at),'YYYY-MM-DD') as day,count(*) filter (where event_type='page_view')::int as visits,count(*) filter (where event_type='lead')::int as leads,count(*) filter (where event_type='booking')::int as bookings,coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue from analytics_events where created_at >= now() - interval '30 days' group by 1 order by 1`)\n  res.json({metrics:{...q.rows[0],series:s.rows}})\n})
 
 app.get('/api/templates', (_req, res) => res.json({ templates: [
   { id:'barber', name:'Barber', category:'Барбершоп' },
