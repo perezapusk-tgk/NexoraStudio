@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { api } from './api'
 import {
   LayoutDashboard, FolderKanban, Inbox, Users, CalendarDays, Globe2,
   Smartphone, BarChart3, Plug, Zap, Settings, Plus, Search, Bell,
@@ -41,9 +42,38 @@ function App() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  const [projectData, setProjectData] = useState(projects)
+  const [apiState, setApiState] = useState('loading')
+
+  useEffect(() => {
+    let alive = true
+    api.projects().then(items => {
+      if (!alive) return
+      if (Array.isArray(items) && items.length) setProjectData(items.map(p => ({
+        name: p.name || p.title || 'Без названия',
+        type: p.project_type === 'miniapp' ? 'Mini App' : p.project_type === 'site' ? 'Сайт' : 'Сайт + Mini App',
+        status: p.status === 'published' ? 'Опубликован' : p.status === 'draft' ? 'Черновик' : 'В работе',
+        color: 'dark', leads: Number(p.leads || 0), bookings: Number(p.bookings || 0), revenue: p.revenue || '€0', updated: 'только что'
+      })))
+      setApiState('online')
+    }).catch(() => alive && setApiState('offline'))
+    return () => { alive = false }
+  }, [])
+
+  const createProject = async (projectType) => {
+    const name = window.prompt('Название проекта')
+    if (!name?.trim()) return
+    try {
+      const created = await api.createProject({ name: name.trim(), projectType })
+      const mapped = { name: created.name, type: projectType === 'miniapp' ? 'Mini App' : projectType === 'site' ? 'Сайт' : 'Сайт + Mini App', status: 'Черновик', color: 'dark', leads: 0, bookings: 0, revenue: '€0', updated: 'только что' }
+      setProjectData(v => [mapped, ...v])
+      setShowCreate(false)
+      setActive('Проекты')
+    } catch { window.alert('Не удалось создать проект. Проверьте API.') }
+  }
 
   const filteredProjects = useMemo(
-    () => projects.filter(p => p.name.toLowerCase().includes(query.toLowerCase())),
+    () => projectData.filter(p => p.name.toLowerCase().includes(query.toLowerCase())),
     [query]
   )
 
@@ -97,7 +127,7 @@ function App() {
         </div>
       </main>
 
-      {showCreate && <CreateProject onClose={() => setShowCreate(false)} />}
+      {showCreate && <CreateProject onClose={() => setShowCreate(false)} onCreate={createProject} />}
     </div>
   )
 }
@@ -164,6 +194,6 @@ function Templates({onCreate}){const templates=[['Barber','Барбершоп','
 
 function SettingsPage(){return <><Header eyebrow="Рабочее пространство" title="Настройки" description="Брендинг, участники, уведомления и параметры студии."/><div className="settings-layout"><div className="settings-nav card">{['Профиль студии','Брендинг','Участники','Уведомления','Интеграции','Безопасность','Тариф и оплата'].map((x,i)=><button className={i===0?'selected':''} key={x}>{x}</button>)}</div><section className="card settings-form"><div className="setting-block"><h2>Профиль студии</h2><span>Основная информация рабочего пространства.</span><label>Название студии<input value="Nexora Studio" readOnly/></label><label>Рабочий email<input value="studio@nexora.local" readOnly/></label><label>Часовой пояс<select defaultValue="Europe/Helsinki"><option>Europe/Helsinki</option><option>Europe/Moscow</option><option>Europe/Berlin</option></select></label></div><div className="setting-block"><h2>Внешний вид</h2><span>Настройте стиль панели и клиентских проектов.</span><div className="theme-options"><button className="theme active"><span/>Светлая</button><button className="theme"><span/>Тёмная</button><button className="theme"><span/>Системная</button></div></div><div className="setting-actions"><button className="filter">Отменить</button><button className="primary">Сохранить изменения</button></div></section></div></>}
 
-function CreateProject({onClose}){return <div className="modal-backdrop" onMouseDown={onClose}><div className="modal card" onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="eyebrow">Новый проект</span><h2>Что создаём?</h2></div><button className="icon-btn" onClick={onClose}><X size={18}/></button></div><div className="create-options"><button><div><Globe2 size={20}/></div><b>Сайт</b><span>Запустить сайт из шаблона</span><ChevronRight size={17}/></button><button><div><Smartphone size={20}/></div><b>Telegram Mini App</b><span>Каталог, заявки и бронирования</span><ChevronRight size={17}/></button><button><div><Layers3 size={20}/></div><b>Сайт + Mini App</b><span>Полный клиентский проект</span><ChevronRight size={17}/></button></div></div></div>}
+function CreateProject({onClose,onCreate}){return <div className="modal-backdrop" onMouseDown={onClose}><div className="modal card" onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="eyebrow">Новый проект</span><h2>Что создаём?</h2></div><button className="icon-btn" onClick={onClose}><X size={18}/></button></div><div className="create-options"><button onClick={() => onCreate("site")}><div><Globe2 size={20}/></div><b>Сайт</b><span>Запустить сайт из шаблона</span><ChevronRight size={17}/></button><button onClick={() => onCreate("miniapp")}><div><Smartphone size={20}/></div><b>Telegram Mini App</b><span>Каталог, заявки и бронирования</span><ChevronRight size={17}/></button><button onClick={() => onCreate("site_miniapp")}><div><Layers3 size={20}/></div><b>Сайт + Mini App</b><span>Полный клиентский проект</span><ChevronRight size={17}/></button></div></div></div>}
  
 createRoot(document.getElementById('root')).render(<App />)
