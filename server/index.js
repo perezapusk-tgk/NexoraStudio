@@ -335,6 +335,12 @@ app.patch('/api/bookings/:id', async (req,res) => {
   if(!pool){
     const booking=memoryBookings.find(x=>x.id===req.params.id)
     if(!booking)return res.status(404).json({error:'Бронирование не найдено'})
+    const nextStart=startsAt!==undefined?new Date(startsAt):new Date(booking.starts_at)
+    const nextEnd=endsAt!==undefined?new Date(endsAt):new Date(booking.ends_at||new Date(nextStart.getTime()+3600000))
+    if(startsAt!==undefined||endsAt!==undefined){
+      const conflict=memoryBookings.find(x=>x.id!==booking.id&&x.project_id===booking.project_id&&x.status!=='cancelled'&&new Date(x.starts_at)<nextEnd&&new Date(x.ends_at||new Date(new Date(x.starts_at).getTime()+3600000))>nextStart)
+      if(conflict)return res.status(409).json({error:'Это время уже занято другой записью'})
+    }
     if(hasStatus)booking.status=status
     if(startsAt!==undefined)booking.starts_at=startsAt
     if(endsAt!==undefined)booking.ends_at=endsAt
@@ -343,7 +349,28 @@ app.patch('/api/bookings/:id', async (req,res) => {
     if(serviceName!==undefined)booking.service_name=serviceName
     return res.json({booking})
   }
-  const fields=[],values=[],add=(sql,v)=>{fields.push(sql.replace('$N','
+  const current=(await pool.query('select * from bookings where id=$1 limit 1',[req.params.id])).rows[0]
+  if(!current)return res.status(404).json({error:'Бронирование не найдено'})
+  const nextStart=startsAt!==undefined?startsAt:current.starts_at
+  const nextEnd=endsAt!==undefined?endsAt:(current.ends_at||new Date(new Date(nextStart).getTime()+3600000).toISOString())
+  if(startsAt!==undefined||endsAt!==undefined){
+    const conflict=(await pool.query("select id from bookings where project_id=$1 and id<>$2 and status <> 'cancelled' and starts_at < $4 and ends_at > $3 limit 1",[current.project_id,current.id,nextStart,nextEnd])).rows[0]
+    if(conflict)return res.status(409).json({error:'Это время уже занято другой записью'})
+  }
+  const fields=[],values=[]
+  const add=(column,value)=>{fields.push(column+'=$'+(values.length+1));values.push(value)}
+  if(hasStatus)add('status',status)
+  if(startsAt!==undefined)add('starts_at',startsAt)
+  if(endsAt!==undefined)add('ends_at',endsAt)
+  if(customerName!==undefined)add('customer_name',customerName)
+  if(customerPhone!==undefined)add('customer_phone',customerPhone)
+  if(serviceName!==undefined)add('service_name',serviceName)
+  if(!fields.length)return res.status(400).json({error:'Нет изменений'})
+  values.push(req.params.id)
+  const q=await pool.query('update bookings set '+fields.join(', ')+' where id=$'+values.length+' returning *',values)
+  res.json({booking:q.rows[0]})
+})
+
 app.post('/api/bookings/:id/payment', async (req,res) => {
   const id=req.params.id
   const amount=Number(req.body?.amount)
