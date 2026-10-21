@@ -77,3 +77,18 @@
 .public-modal-backdrop{position:fixed;inset:0;background:rgba(15,17,20,.48);display:grid;place-items:center;padding:18px;z-index:30}
 .public-modal{position:relative;width:min(440px,100%);padding:25px;display:flex;flex-direction:column;gap:12px;box-shadow:0 24px 70px rgba(0,0,0,.18)}
 .public-modal h2{margin:0 0 5px}.public-modal label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600}.public-modal input,.public-modal textarea{border:1px solid #dfe3e8;border-radius:10px;padding:10px 11px;background:#fff;font:inherit;outline:none}.public-modal textarea{min-height:82px;resize:vertical}.public-close{position:absolute;right:12px;top:12px;border:0;background:#f1f2f4;border-radius:8px;width:30px;height:30px;display:grid;place-items:center;cursor:pointer}.public-success{text-align:center;padding:25px 8px}.public-success svg{margin-bottom:8px}.public-success h2{margin:5px 0}.public-success p{font-size:13px;color:#737c8c;line-height:1.5}.public-success button{border:0;background:#17191d;color:#fff;border-radius:10px;padding:10px 16px;font-weight:700}
+
+.workspace-settings{display:grid;gap:16px;max-width:980px}
+.telegram-settings{border:1px solid var(--line,#e7e9ee)}
+.setting-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+.setting-title-row h2{margin:0 0 6px}
+.setting-title-row p{margin:0;max-width:620px;color:var(--muted,#6b7280);line-height:1.55}
+.toggle{position:relative;display:inline-flex;flex:0 0 auto}
+.toggle input{position:absolute;opacity:0;pointer-events:none}
+.toggle span{display:block;width:46px;height:26px;border-radius:999px;background:#d9dde5;cursor:pointer;transition:.18s}
+.toggle span:after{content:"";display:block;width:20px;height:20px;margin:3px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.16);transition:.18s}
+.toggle input:checked+span{background:#111827}
+.toggle input:checked+span:after{transform:translateX(20px)}
+.telegram-status{display:flex;align-items:center;gap:10px;margin:16px 0 2px}
+.telegram-status>b{font-size:13px}
+.settings-note{display:block;color:var(--muted,#6b7280);line-height:1.5;margin-top:2px}
