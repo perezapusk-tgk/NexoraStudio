@@ -39,6 +39,7 @@ export const api = {
   bookings: () => request('/bookings'),
   createBooking: (payload) => request('/bookings',{method:'POST',body:JSON.stringify(payload)}),
   updateBooking: (id,payload) => request('/bookings/' + id,{method:'PATCH',body:JSON.stringify(typeof payload==='string'?{status:payload}:payload)}),
+  bookingPayment: (id,payload) => request('/bookings/' + id + '/payment',{method:'POST',body:JSON.stringify(payload)}),
   payments: () => request('/payments'),
   invoices: () => request('/invoices'),
   orders: () => request('/orders'),
