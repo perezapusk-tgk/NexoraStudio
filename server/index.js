@@ -102,6 +102,30 @@ app.get('/api/public/:slug', async (req,res) => {
   res.json({project,pages:pages.rows,catalog:catalog.rows})
 })
 
+app.post('/api/projects/:id/domain/check', async (req,res) => {
+  const raw=String(req.body?.domain||'').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,'').replace(/\.$/,'')
+  if(!raw || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(raw)) return res.status(400).json({error:'Введите корректный домен, например client.ru'})
+  const project=!pool?memoryProjects.find(p=>p.id===req.params.id||p.slug===req.params.id):(await pool.query('select * from projects where id=$1 or slug=$1 limit 1',[req.params.id])).rows[0]
+  if(!project)return res.status(404).json({error:'Проект не найден'})
+  const others=!pool?memoryProjects.find(p=>p.id!==project.id&&String(p.domain||'').toLowerCase()===raw):(await pool.query('select id,name from projects where lower(domain)=lower($1) and id<>$2 limit 1',[raw,project.id])).rows[0]
+  const dnsTarget=project.slug+'.nexora.site'
+  if(others)return res.status(409).json({available:false,domain:raw,error:'Этот домен уже подключён к другому проекту'})
+  return res.json({available:true,domain:raw,verified:false,dns:{type:'CNAME',host:raw,value:dnsTarget},message:'Домен свободен. После добавления DNS записи можно завершить подключение.'})
+})
+
+app.post('/api/projects/:id/domain/connect', async (req,res) => {
+  const raw=String(req.body?.domain||'').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,'').replace(/\.$/,'')
+  if(!raw)return res.status(400).json({error:'Домен обязателен'})
+  const project=!pool?memoryProjects.find(p=>p.id===req.params.id||p.slug===req.params.id):(await pool.query('select * from projects where id=$1 or slug=$1 limit 1',[req.params.id])).rows[0]
+  if(!project)return res.status(404).json({error:'Проект не найден'})
+  const taken=!pool?memoryProjects.find(p=>p.id!==project.id&&String(p.domain||'').toLowerCase()===raw):(await pool.query('select id from projects where lower(domain)=lower($1) and id<>$2 limit 1',[raw,project.id])).rows[0]
+  if(taken)return res.status(409).json({error:'Этот домен уже подключён'})
+  const settings={...(project.settings||{}),domain:{...(project.settings||{}).domain||{},domain:raw,verified:false,status:'pending',dnsTarget:project.slug+'.nexora.site'}}
+  if(!pool){project.domain=raw;project.settings=settings;return res.json({project,domain:settings.domain})}
+  const q=await pool.query('update projects set domain=$1,settings=$2,updated_at=now() where id=$3 returning *',[raw,JSON.stringify(settings),project.id])
+  res.json({project:q.rows[0],domain:settings.domain})
+})
+
 app.post('/api/projects/:id/telegram/configure', async (req,res) => {
   const token = String(process.env.TELEGRAM_BOT_TOKEN || '').trim()
   if (!token) return res.status(503).json({ error: 'TELEGRAM_BOT_TOKEN не настроен на сервере' })
