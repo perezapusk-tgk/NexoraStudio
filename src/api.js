@@ -39,6 +39,7 @@ export const api = {
   payments: () => request('/payments'),
   invoices: () => request('/invoices'),
   orders: () => request('/orders'),
+  order: (id) => request('/orders/' + id),
   createOrder: (payload) => request('/orders',{method:'POST',body:JSON.stringify(payload)}),
   updateOrder: (id,status) => request('/orders/' + id,{method:'PATCH',body:JSON.stringify({status})}),
   createInvoice: (payload) => request('/invoices',{method:'POST',body:JSON.stringify(payload)}),
