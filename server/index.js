@@ -514,6 +514,27 @@ app.get('/api/orders', async (_req,res) => {
   const {rows}=await pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name,c.name as client_name from orders o left join projects pr on pr.id=o.project_id left join clients c on c.id=o.client_id order by o.created_at desc limit 200')
   res.json({orders:rows})
 })
+app.get('/api/orders/:id', async (req,res) => {
+  const id=String(req.params.id)
+  if(!pool){
+    const order=memoryOrders.find(x=>x.id===id)
+    if(!order)return res.status(404).json({error:'Заказ не найден'})
+    const client=order.client_id?memoryClients.find(x=>x.id===order.client_id):null
+    const payments=memoryPayments.filter(x=>x.order_id===id)
+    const invoice=memoryInvoices.find(x=>x.description===('Счёт по заказу '+order.number))
+    const timeline=[{type:'order',text:'Заказ создан',date:order.created_at},...payments.map(p=>({type:'payment',text:'Платёж · '+Number(p.amount||0)+' '+(p.currency||order.currency||'EUR'),date:p.created_at}))]
+    return res.json({order,client,payments,invoice,timeline})
+  }
+  const oq=await pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name,c.name as client_name,c.phone,c.email from orders o left join projects pr on pr.id=o.project_id left join clients c on c.id=o.client_id where o.id=$1 limit 1',[id])
+  if(!oq.rows[0])return res.status(404).json({error:'Заказ не найден'})
+  const [payments,invoices]=await Promise.all([
+    pool.query('select id,amount,currency,status,description,created_at from payments where order_id=$1 order by created_at desc',[id]),
+    pool.query('select id,number,amount,currency,status,due_date,description,created_at from invoices where description=$1 order by created_at desc limit 1',['Счёт по заказу '+oq.rows[0].number])
+  ])
+  const timeline=[{type:'order',text:'Заказ создан',date:oq.rows[0].created_at},...payments.rows.map(p=>({type:'payment',text:'Платёж · '+p.amount+' '+p.currency,date:p.created_at}))]
+  res.json({order:oq.rows[0],client:oq.rows[0].client_id?{id:oq.rows[0].client_id,name:oq.rows[0].client_name,phone:oq.rows[0].phone,email:oq.rows[0].email}:null,payments:payments.rows,invoice:invoices.rows[0]||null,timeline})
+})
+
 app.post('/api/orders', async (req,res) => {
   const projectId=String(req.body?.project_id||'').trim()
   const items=Array.isArray(req.body?.items)?req.body.items:[]
