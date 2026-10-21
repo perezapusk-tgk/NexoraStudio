@@ -264,10 +264,559 @@ app.get('/api/bookings', async (_req, res) => {
 })
 
 app.patch('/api/bookings/:id', async (req,res) => {
+  const body=req.body||{}
+  const hasStatus=body.status!==undefined
+  const status=hasStatus?String(body.status||'').trim():''
+  if(hasStatus&&!['pending','confirmed','completed','cancelled'].includes(status)) return res.status(400).json({error:'Недопустимый статус бронирования'})
+  const startsAt=body.starts_at!==undefined?String(body.starts_at||'').trim():undefined
+  const endsAt=body.ends_at!==undefined?String(body.ends_at||'').trim():undefined
+  const customerName=body.customer_name!==undefined?String(body.customer_name||'').trim():undefined
+  const customerPhone=body.customer_phone!==undefined?String(body.customer_phone||'').trim():undefined
+  const serviceName=body.service_name!==undefined?String(body.service_name||'').trim():undefined
+  if(startsAt&&Number.isNaN(Date.parse(startsAt))) return res.status(400).json({error:'Некорректное время начала'})
+  if(endsAt&&Number.isNaN(Date.parse(endsAt))) return res.status(400).json({error:'Некорректное время окончания'})
+  if(startsAt&&endsAt&&new Date(endsAt)<=new Date(startsAt)) return res.status(400).json({error:'Время окончания должно быть позже начала'})
+  if(!pool){
+    const booking=memoryBookings.find(x=>x.id===req.params.id)
+    if(!booking)return res.status(404).json({error:'Бронирование не найдено'})
+    if(hasStatus)booking.status=status
+    if(startsAt!==undefined)booking.starts_at=startsAt
+    if(endsAt!==undefined)booking.ends_at=endsAt
+    if(customerName!==undefined)booking.customer_name=customerName
+    if(customerPhone!==undefined)booking.customer_phone=customerPhone
+    if(serviceName!==undefined)booking.service_name=serviceName
+    return res.json({booking})
+  }
+  const fields=[],values=[],add=(sql,v)=>{fields.push(sql.replace('$N','
+app.post('/api/bookings/:id/payment', async (req,res) => {
+  const id=req.params.id
+  const amount=Number(req.body?.amount)
+  const currency=String(req.body?.currency||'EUR').trim().toUpperCase()
+  if(!Number.isFinite(amount)||amount<=0)return res.status(400).json({error:'Укажите корректную сумму оплаты'})
+  let booking
+  if(!pool) booking=memoryBookings.find(x=>x.id===id)
+  else booking=(await pool.query('select * from bookings where id=$1 limit 1',[id])).rows[0]
+  if(!booking)return res.status(404).json({error:'Бронирование не найдено'})
+  const projectId=booking.project_id||null
+  if(!projectId)return res.status(400).json({error:'У бронирования не указан проект'})
+  const description='Оплата бронирования'+(booking.service_name?' · '+booking.service_name:'')
+  if(!pool){const payment={id:crypto.randomUUID(),project_id:projectId,client_id:booking.client_id||null,booking_id:id,order_id:null,amount,currency,status:'paid',description,created_at:new Date().toISOString()};memoryPayments.unshift(payment);booking.status='completed';memoryEvents.push({slug:booking.project_slug,event_type:'payment',path:'/booking',value:amount,created_at:new Date().toISOString()});return res.status(201).json({payment,booking})}
+  const q=await pool.query('insert into payments(project_id,client_id,booking_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7) returning *',[projectId,booking.client_id||null,id,amount,currency,'paid',description])
+  await pool.query("update bookings set status='completed' where id=$1",[id])
+  await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[projectId,'payment','/booking',amount,JSON.stringify({booking_id:id})])
+  res.status(201).json({payment:q.rows[0],booking:{...booking,status:'completed'}})
+})
+
+
+app.patch('/api/leads/:id', async (req,res) => {
+  const id=String(req.params.id)
   const status=String(req.body?.status||'').trim()
-  if(!['pending','confirmed','completed','cancelled'].includes(status)) return res.status(400).json({error:'Недопустимый статус бронирования'})
-  if(!pool){const booking=memoryBookings.find(x=>x.id===req.params.id);if(!booking)return res.status(404).json({error:'Бронирование не найдено'});booking.status=status;return res.json({booking})}
-  const q=await pool.query('update bookings set status=$1 where id=$2 returning *',[status,req.params.id])
+  if(!status)return res.status(400).json({error:'Статус обязателен'})
+  const allowed=['new','in_progress','won','lost']
+  if(!allowed.includes(status))return res.status(400).json({error:'Недопустимый статус'})
+  if(!pool){
+    const lead=memoryLeads.find(x=>x.id===id)
+    if(!lead)return res.status(404).json({error:'Заявка не найдена'})
+    lead.status=status
+    return res.json({lead})
+  }
+  const q=await pool.query('update leads set status=$1 where id=$2 returning *',[status,id])
+  if(!q.rows[0])return res.status(404).json({error:'Заявка не найдена'})
+  res.json({lead:q.rows[0]})
+})
+
+app.post('/api/leads/:id/convert', async (req,res) => {
+  const id=String(req.params.id)
+  if(!pool){
+    const lead=memoryLeads.find(x=>x.id===id)
+    if(!lead)return res.status(404).json({error:'Заявка не найдена'})
+    const existing=demoClients().find(x=>(lead.phone&&x.phone===lead.phone)||(lead.email&&x.email===lead.email))
+    if(existing)return res.json({client:existing,existing:true})
+    const client={id:crypto.randomUUID(),name:lead.name,email:lead.email||'',phone:lead.phone||'',created_at:new Date().toISOString(),source_lead_id:id}
+    lead.status='won'
+    memoryClients.unshift(client)
+    return res.status(201).json({client,existing:false})
+  }
+  const leadQ=await pool.query('select * from leads where id=$1 limit 1',[id])
+  if(!leadQ.rows[0])return res.status(404).json({error:'Заявка не найдена'})
+  const lead=leadQ.rows[0]
+  const existingQ=await pool.query('select id,name,email,phone,created_at from clients where (phone=$1 and $1 is not null) or (email=$2 and $2 is not null) limit 1',[lead.phone,lead.email])
+  if(existingQ.rows[0])return res.json({client:existingQ.rows[0],existing:true})
+  const q=await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id,name,email,phone,created_at',[demoStudio.id,lead.name,lead.email||null,lead.phone||null])
+  await pool.query("update leads set status='won' where id=$1",[id])
+  res.status(201).json({client:q.rows[0],existing:false})
+})
+
+app.get('/api/clients/:id', async (req,res) => {
+  const id=String(req.params.id)
+  if(!pool){
+    const client=memoryClients.find(x=>x.id===id)
+    if(!client)return res.status(404).json({error:'Клиент не найден'})
+    const phone=client.phone||'',email=client.email||''
+    return res.json({
+      client,
+      leads:memoryLeads.filter(x=>(phone&&x.phone===phone)||(email&&x.email===email)),
+      bookings:memoryBookings.filter(x=>x.customer_phone===phone),
+      payments:memoryPayments.filter(x=>x.client_id===id),
+      invoices:memoryInvoices.filter(x=>x.client_id===id),
+      orders:memoryOrders.filter(x=>x.client_id===id)
+    })
+  }
+  const cq=await pool.query('select id,name,email,phone,created_at from clients where id=$1 limit 1',[id])
+  if(!cq.rows[0])return res.status(404).json({error:'Клиент не найден'})
+  const [leads,bookings,payments,invoices,orders]=await Promise.all([
+    pool.query('select id,project_id,name,message,status,created_at from leads where phone=$1 or email=$2 order by created_at desc',[cq.rows[0].phone,cq.rows[0].email]),
+    pool.query('select id,project_id,customer_name,starts_at,status,service_name from bookings where client_id=$1 or customer_phone=$2 order by starts_at desc',[id,cq.rows[0].phone]),
+    pool.query('select id,project_id,amount,currency,status,description,order_id,created_at from payments where client_id=$1 order by created_at desc',[id]),
+    pool.query('select id,project_id,number,amount,currency,status,due_date,description,created_at from invoices where client_id=$1 order by created_at desc',[id]),
+    pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name from orders o left join projects pr on pr.id=o.project_id where o.client_id=$1 order by o.created_at desc',[id])
+  ])
+  res.json({client:cq.rows[0],leads:leads.rows,bookings:bookings.rows,payments:payments.rows,invoices:invoices.rows,orders:orders.rows})
+})
+
+app.get('/api/clients', async (_req, res) => {
+  if (!pool) {
+    const rows=memoryClients.map(client=>{
+      const phone=client.phone||'',email=client.email||''
+      const leads=memoryLeads.filter(x=>(phone&&x.phone===phone)||(email&&x.email===email))
+      const bookings=memoryBookings.filter(x=>x.client_id===client.id||(phone&&x.customer_phone===phone))
+      const orders=memoryOrders.filter(x=>x.client_id===client.id)
+      const projects=new Set([...orders.map(x=>x.project_id),...bookings.map(x=>x.project_id)].filter(Boolean))
+      const dates=[...leads,...bookings,...orders].map(x=>new Date(x.created_at||x.starts_at||0).getTime()).filter(Boolean)
+      return {...client,project_count:projects.size,contact_count:leads.length+bookings.length+orders.length,last_activity:dates.length?new Date(Math.max(...dates)).toISOString():client.created_at}
+    })
+    return res.json({clients:rows})
+  }
+  const sql="select c.id,c.name,c.email,c.phone,c.created_at,"+
+    "(select count(distinct x.project_id)::int from (select project_id from leads where phone=c.phone or email=c.email union all select project_id from bookings where client_id=c.id or customer_phone=c.phone union all select project_id from orders where client_id=c.id) x) as project_count,"+
+    "((select count(*) from leads where phone=c.phone or email=c.email)+(select count(*) from bookings where client_id=c.id or customer_phone=c.phone)+(select count(*) from orders where client_id=c.id))::int as contact_count,"+
+    "greatest(c.created_at,(select max(created_at) from orders where client_id=c.id),(select max(created_at) from payments where client_id=c.id),(select max(starts_at) from bookings where client_id=c.id or customer_phone=c.phone)) as last_activity "+
+    "from clients c order by last_activity desc nulls last limit 500"
+  const { rows } = await pool.query(sql)
+  res.json({ clients: rows })
+})
+
+app.get('/api/projects/:id/analytics', async (req,res) => {
+  const id=req.params.id
+  if(!pool){
+    const project=memoryProjects.find(p=>p.id===id||p.slug===id)
+    if(!project)return res.status(404).json({error:'Проект не найден'})
+    const slug=project.slug
+    const events=memoryEvents.filter(e=>e.slug===slug)
+    const leads=memoryLeads.filter(l=>l.project_slug===slug)
+    const bookings=memoryBookings.filter(b=>b.project_slug===slug)
+    return res.json({metrics:{visits:events.filter(e=>e.event_type==='page_view').length,leads:leads.length,bookings:bookings.length,revenue:memoryPayments.filter(p=>p.project_id===project.id&&p.status==='paid').reduce((a,p)=>a+Number(p.amount||0),0)}})
+  }
+  const project=await pool.query('select id from projects where id=$1 or slug=$1 limit 1',[id])
+  if(!project.rows[0])return res.status(404).json({error:'Проект не найден'})
+  const q=await pool.query(`select
+    count(*) filter (where event_type='page_view')::int as visits,
+    count(*) filter (where event_type='lead')::int as leads,
+    count(*) filter (where event_type='booking')::int as bookings,
+    coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue
+    from analytics_events where project_id=$1 and created_at >= now() - interval '30 days'`,[project.rows[0].id])
+  const series=await pool.query(`select to_char(date_trunc('day',created_at),'YYYY-MM-DD') as day,
+    count(*) filter (where event_type='page_view')::int as visits,
+    count(*) filter (where event_type='lead')::int as leads,
+    count(*) filter (where event_type='booking')::int as bookings,
+    coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue
+    from analytics_events where project_id=$1 and created_at >= now() - interval '30 days'
+    group by 1 order by 1`,[project.rows[0].id])
+  res.json({metrics:q.rows[0],series:series.rows})
+})
+
+
+app.get('/api/orders', async (_req,res) => {
+  if (!pool) return res.json({orders: memoryOrders})
+  const {rows}=await pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name,c.name as client_name from orders o left join projects pr on pr.id=o.project_id left join clients c on c.id=o.client_id order by o.created_at desc limit 200')
+  res.json({orders:rows})
+})
+app.post('/api/orders', async (req,res) => {
+  const projectId=String(req.body?.project_id||'').trim()
+  const items=Array.isArray(req.body?.items)?req.body.items:[]
+  const currency=String(req.body?.currency||'EUR').trim().toUpperCase()
+  const clientId=req.body?.client_id||null
+  if(!projectId || !items.length) return res.status(400).json({error:'Проект и товары обязательны'})
+  let total=0
+  const normalized=[]
+  for(const item of items){
+    const catalogId=String(item.catalog_id||item.id||'').trim()
+    const quantity=Math.max(1,Number(item.quantity||1))
+    let source=null
+    if(pool){const q=await pool.query('select id,name,price,currency from catalog_items where id=$1 and project_id=$2 limit 1',[catalogId,projectId]);source=q.rows[0]}
+    else source=(memoryCatalog.get(projectId)||[]).find(x=>x.id===catalogId)
+    if(!source) return res.status(400).json({error:'Товар не найден: '+catalogId})
+    const price=Number(source.price||0)
+    total+=price*quantity
+    normalized.push({catalog_id:source.id,name:source.name,price,quantity})
+  }
+  const number='ORD-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
+  const status=String(req.body?.status||'pending').trim()
+  if(!['pending','paid','cancelled','refunded'].includes(status)) return res.status(400).json({error:'Недопустимый статус заказа'})
+  if(!pool){const order={id:crypto.randomUUID(),project_id:projectId,client_id:clientId,number,status,total,currency,items:normalized,created_at:new Date().toISOString()};memoryOrders.unshift(order);return res.status(201).json({order})}
+  const q=await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[projectId,clientId,number,status,total,currency,JSON.stringify(normalized)])
+  res.status(201).json({order:q.rows[0]})
+})
+app.patch('/api/orders/:id', async (req,res) => {
+  const status=String(req.body?.status||'').trim()
+  if(!['pending','paid','cancelled','refunded'].includes(status)) return res.status(400).json({error:'Недопустимый статус заказа'})
+  if(!pool){const x=memoryOrders.find(v=>v.id===req.params.id);if(!x)return res.status(404).json({error:'Заказ не найден'});x.status=status;return res.json({order:x})}
+  const q=await pool.query('update orders set status=$1 where id=$2 returning *',[status,req.params.id])
+  if(!q.rows[0])return res.status(404).json({error:'Заказ не найден'})
+  res.json({order:q.rows[0]})
+})
+app.post('/api/orders/:id/invoice', async (req,res) => {
+  const id=req.params.id
+  let order
+  if(!pool) order=memoryOrders.find(x=>x.id===id)
+  else { const q=await pool.query('select * from orders where id=$1 limit 1',[id]); order=q.rows[0] }
+  if(!order) return res.status(404).json({error:'Заказ не найден'})
+  if(Number(order.total||0)<=0) return res.status(400).json({error:'У заказа некорректная сумма'})
+  const number='INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
+  const description='Счёт по заказу '+order.number
+  if(!pool){ const invoice={id:crypto.randomUUID(),project_id:order.project_id,client_id:order.client_id||null,number,amount:Number(order.total),currency:order.currency||'EUR',status:'sent',due_date:null,description,created_at:new Date().toISOString()}; memoryInvoices.unshift(invoice); return res.status(201).json({invoice}) }
+  const q=await pool.query('insert into invoices(project_id,client_id,number,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7) returning *',[order.project_id,order.client_id||null,number,order.total,order.currency||'EUR','sent',description])
+  res.status(201).json({invoice:q.rows[0]})
+})
+
+
+app.get('/api/payments', async (_req,res) => {
+  if (!pool) return res.json({payments:memoryPayments})
+  const {rows}=await pool.query('select p.id,p.project_id,p.client_id,p.booking_id,p.order_id,p.amount,p.currency,p.status,p.description,p.created_at,pr.name as project_name from payments p left join projects pr on pr.id=p.project_id order by p.created_at desc limit 200')
+  res.json({payments:rows})
+})
+app.post('/api/payments', async (req,res) => {
+  const projectId=String(req.body?.project_id||'').trim()
+  const amount=Number(req.body?.amount)
+  const currency=String(req.body?.currency||'EUR').trim().toUpperCase()
+  const description=String(req.body?.description||'').trim()
+  const status=String(req.body?.status||'paid').trim()
+  const orderId=req.body?.order_id||null
+  if(!projectId || !Number.isFinite(amount) || amount<=0) return res.status(400).json({error:'Проект и сумма обязательны'})
+  if(!['pending','paid','refunded','failed'].includes(status)) return res.status(400).json({error:'Недопустимый статус платежа'})
+  if(!pool){
+    if(orderId){
+      const order=memoryOrders.find(x=>x.id===orderId)
+      if(!order)return res.status(404).json({error:'Заказ не найден'})
+      if(order.project_id!==projectId)return res.status(400).json({error:'Заказ относится к другому проекту'})
+      if(Math.abs(Number(order.total||0)-amount)>0.01)return res.status(400).json({error:'Сумма платежа не совпадает с заказом'})
+      if(status==='paid' && memoryPayments.some(x=>x.order_id===orderId&&x.status==='paid'))return res.status(409).json({error:'Заказ уже оплачен'})
+    }
+    const payment={id:crypto.randomUUID(),project_id:projectId,client_id:req.body?.client_id||null,booking_id:req.body?.booking_id||null,order_id:orderId,amount,currency,status,description,created_at:new Date().toISOString()}
+    memoryPayments.unshift(payment)
+    if(orderId && status==='paid'){
+      const order=memoryOrders.find(x=>x.id===orderId)
+      if(order) order.status='paid'
+      memoryEvents.push({slug:memoryProjects.find(x=>x.id===projectId)?.slug,event_type:'payment',path:'/payment',value:amount,created_at:new Date().toISOString()})
+    }
+    return res.status(201).json({payment})
+  }
+  if(orderId){
+    const oq=await pool.query('select id,project_id,total,status from orders where id=$1 limit 1',[orderId])
+    if(!oq.rows[0])return res.status(404).json({error:'Заказ не найден'})
+    if(oq.rows[0].project_id!==projectId)return res.status(400).json({error:'Заказ относится к другому проекту'})
+    if(Math.abs(Number(oq.rows[0].total||0)-amount)>0.01)return res.status(400).json({error:'Сумма платежа не совпадает с заказом'})
+    if(status==='paid' && oq.rows[0].status==='paid')return res.status(409).json({error:'Заказ уже оплачен'})
+    const dup=await pool.query("select id from payments where order_id=$1 and status='paid' limit 1",[orderId])
+    if(status==='paid' && dup.rows[0])return res.status(409).json({error:'Заказ уже оплачен'})
+  }
+  const q=await pool.query('insert into payments(project_id,client_id,booking_id,order_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,req.body?.booking_id||null,orderId,amount,currency,status,description||null])
+  if(orderId && status==='paid'){
+    await pool.query("update orders set status='paid' where id=$1",[orderId])
+    await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[projectId,'payment','/payment',amount,JSON.stringify({order_id:orderId,payment_id:q.rows[0].id})])
+  }
+  res.status(201).json({payment:q.rows[0]})
+})app.get('/api/analytics/overview', async (_req, res) => {
+  if (!pool) {
+    const since=new Date(Date.now()-30*86400000)
+    const base=memoryEvents.filter(e=>e.created_at && new Date(e.created_at)>=since)
+    const paidOrders=memoryOrders.filter(o=>o.status==='paid' && new Date(o.created_at)>=since)
+    const allOrders=memoryOrders.filter(o=>new Date(o.created_at)>=since)
+    const revenue=memoryPayments.filter(p=>p.status==='paid' && new Date(p.created_at)>=since).reduce((sum,p)=>sum+Number(p.amount||0),0)
+    const series=Array.from({length:14},(_,idx)=>{const d=new Date(Date.now()-(13-idx)*86400000);const key=d.toISOString().slice(0,10);const day=base.filter(e=>String(e.created_at).slice(0,10)===key);return {day:key,visits:day.filter(e=>e.event_type==='page_view').length,leads:day.filter(e=>e.event_type==='lead').length,bookings:day.filter(e=>e.event_type==='booking').length,revenue:day.filter(e=>e.event_type==='payment').reduce((s,e)=>s+Number(e.value||0),0)}})
+    return res.json({metrics:{visits:28460+base.filter(e=>e.event_type==='page_view').length,leads:memoryLeads.length,bookings:memoryBookings.length,revenue,orders:allOrders.length,paidOrders:paidOrders.length,averageOrder:allOrders.length?allOrders.reduce((s,o)=>s+Number(o.total||0),0)/allOrders.length:0,paymentConversion:allOrders.length?paidOrders.length/allOrders.length*100:0,series}})
+  }
+  const q=await pool.query(`select
+    count(*) filter (where event_type='page_view')::int as visits,
+    count(*) filter (where event_type='lead')::int as leads,
+    count(*) filter (where event_type='booking')::int as bookings,
+    coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue
+    from analytics_events where created_at >= now() - interval '30 days'`)
+  const oq=await pool.query(`select count(*)::int as orders,count(*) filter (where status='paid')::int as paid_orders,coalesce(avg(total),0)::numeric as average_order from orders where created_at >= now() - interval '30 days'`)
+  const s=await pool.query(`select to_char(date_trunc('day',created_at),'YYYY-MM-DD') as day,count(*) filter (where event_type='page_view')::int as visits,count(*) filter (where event_type='lead')::int as leads,count(*) filter (where event_type='booking')::int as bookings,coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue from analytics_events where created_at >= now() - interval '30 days' group by 1 order by 1`)
+  const metrics={...q.rows[0],orders:oq.rows[0].orders,paidOrders:oq.rows[0].paid_orders,averageOrder:oq.rows[0].average_order,paymentConversion:oq.rows[0].orders?Number(oq.rows[0].paid_orders)/Number(oq.rows[0].orders)*100:0,series:s.rows}
+  res.json({metrics})
+})
++(values.length+1)));values.push(v)}
+  if(hasStatus)add('status=$N',status)
+  if(startsAt!==undefined)add('starts_at=$N',startsAt)
+  if(endsAt!==undefined)add('ends_at=$N',endsAt)
+  if(customerName!==undefined)add('customer_name=$N',customerName)
+  if(customerPhone!==undefined)add('customer_phone=$N',customerPhone)
+  if(serviceName!==undefined)add('service_name=$N',serviceName)
+  if(!fields.length)return res.status(400).json({error:'Нет изменений'})
+  values.push(req.params.id)
+  const q=await pool.query('update bookings set '+fields.join(', ')+' where id=
+app.post('/api/bookings/:id/payment', async (req,res) => {
+  const id=req.params.id
+  const amount=Number(req.body?.amount)
+  const currency=String(req.body?.currency||'EUR').trim().toUpperCase()
+  if(!Number.isFinite(amount)||amount<=0)return res.status(400).json({error:'Укажите корректную сумму оплаты'})
+  let booking
+  if(!pool) booking=memoryBookings.find(x=>x.id===id)
+  else booking=(await pool.query('select * from bookings where id=$1 limit 1',[id])).rows[0]
+  if(!booking)return res.status(404).json({error:'Бронирование не найдено'})
+  const projectId=booking.project_id||null
+  if(!projectId)return res.status(400).json({error:'У бронирования не указан проект'})
+  const description='Оплата бронирования'+(booking.service_name?' · '+booking.service_name:'')
+  if(!pool){const payment={id:crypto.randomUUID(),project_id:projectId,client_id:booking.client_id||null,booking_id:id,order_id:null,amount,currency,status:'paid',description,created_at:new Date().toISOString()};memoryPayments.unshift(payment);booking.status='completed';memoryEvents.push({slug:booking.project_slug,event_type:'payment',path:'/booking',value:amount,created_at:new Date().toISOString()});return res.status(201).json({payment,booking})}
+  const q=await pool.query('insert into payments(project_id,client_id,booking_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7) returning *',[projectId,booking.client_id||null,id,amount,currency,'paid',description])
+  await pool.query("update bookings set status='completed' where id=$1",[id])
+  await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[projectId,'payment','/booking',amount,JSON.stringify({booking_id:id})])
+  res.status(201).json({payment:q.rows[0],booking:{...booking,status:'completed'}})
+})
+
+
+app.patch('/api/leads/:id', async (req,res) => {
+  const id=String(req.params.id)
+  const status=String(req.body?.status||'').trim()
+  if(!status)return res.status(400).json({error:'Статус обязателен'})
+  const allowed=['new','in_progress','won','lost']
+  if(!allowed.includes(status))return res.status(400).json({error:'Недопустимый статус'})
+  if(!pool){
+    const lead=memoryLeads.find(x=>x.id===id)
+    if(!lead)return res.status(404).json({error:'Заявка не найдена'})
+    lead.status=status
+    return res.json({lead})
+  }
+  const q=await pool.query('update leads set status=$1 where id=$2 returning *',[status,id])
+  if(!q.rows[0])return res.status(404).json({error:'Заявка не найдена'})
+  res.json({lead:q.rows[0]})
+})
+
+app.post('/api/leads/:id/convert', async (req,res) => {
+  const id=String(req.params.id)
+  if(!pool){
+    const lead=memoryLeads.find(x=>x.id===id)
+    if(!lead)return res.status(404).json({error:'Заявка не найдена'})
+    const existing=demoClients().find(x=>(lead.phone&&x.phone===lead.phone)||(lead.email&&x.email===lead.email))
+    if(existing)return res.json({client:existing,existing:true})
+    const client={id:crypto.randomUUID(),name:lead.name,email:lead.email||'',phone:lead.phone||'',created_at:new Date().toISOString(),source_lead_id:id}
+    lead.status='won'
+    memoryClients.unshift(client)
+    return res.status(201).json({client,existing:false})
+  }
+  const leadQ=await pool.query('select * from leads where id=$1 limit 1',[id])
+  if(!leadQ.rows[0])return res.status(404).json({error:'Заявка не найдена'})
+  const lead=leadQ.rows[0]
+  const existingQ=await pool.query('select id,name,email,phone,created_at from clients where (phone=$1 and $1 is not null) or (email=$2 and $2 is not null) limit 1',[lead.phone,lead.email])
+  if(existingQ.rows[0])return res.json({client:existingQ.rows[0],existing:true})
+  const q=await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id,name,email,phone,created_at',[demoStudio.id,lead.name,lead.email||null,lead.phone||null])
+  await pool.query("update leads set status='won' where id=$1",[id])
+  res.status(201).json({client:q.rows[0],existing:false})
+})
+
+app.get('/api/clients/:id', async (req,res) => {
+  const id=String(req.params.id)
+  if(!pool){
+    const client=memoryClients.find(x=>x.id===id)
+    if(!client)return res.status(404).json({error:'Клиент не найден'})
+    const phone=client.phone||'',email=client.email||''
+    return res.json({
+      client,
+      leads:memoryLeads.filter(x=>(phone&&x.phone===phone)||(email&&x.email===email)),
+      bookings:memoryBookings.filter(x=>x.customer_phone===phone),
+      payments:memoryPayments.filter(x=>x.client_id===id),
+      invoices:memoryInvoices.filter(x=>x.client_id===id),
+      orders:memoryOrders.filter(x=>x.client_id===id)
+    })
+  }
+  const cq=await pool.query('select id,name,email,phone,created_at from clients where id=$1 limit 1',[id])
+  if(!cq.rows[0])return res.status(404).json({error:'Клиент не найден'})
+  const [leads,bookings,payments,invoices,orders]=await Promise.all([
+    pool.query('select id,project_id,name,message,status,created_at from leads where phone=$1 or email=$2 order by created_at desc',[cq.rows[0].phone,cq.rows[0].email]),
+    pool.query('select id,project_id,customer_name,starts_at,status,service_name from bookings where client_id=$1 or customer_phone=$2 order by starts_at desc',[id,cq.rows[0].phone]),
+    pool.query('select id,project_id,amount,currency,status,description,order_id,created_at from payments where client_id=$1 order by created_at desc',[id]),
+    pool.query('select id,project_id,number,amount,currency,status,due_date,description,created_at from invoices where client_id=$1 order by created_at desc',[id]),
+    pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name from orders o left join projects pr on pr.id=o.project_id where o.client_id=$1 order by o.created_at desc',[id])
+  ])
+  res.json({client:cq.rows[0],leads:leads.rows,bookings:bookings.rows,payments:payments.rows,invoices:invoices.rows,orders:orders.rows})
+})
+
+app.get('/api/clients', async (_req, res) => {
+  if (!pool) {
+    const rows=memoryClients.map(client=>{
+      const phone=client.phone||'',email=client.email||''
+      const leads=memoryLeads.filter(x=>(phone&&x.phone===phone)||(email&&x.email===email))
+      const bookings=memoryBookings.filter(x=>x.client_id===client.id||(phone&&x.customer_phone===phone))
+      const orders=memoryOrders.filter(x=>x.client_id===client.id)
+      const projects=new Set([...orders.map(x=>x.project_id),...bookings.map(x=>x.project_id)].filter(Boolean))
+      const dates=[...leads,...bookings,...orders].map(x=>new Date(x.created_at||x.starts_at||0).getTime()).filter(Boolean)
+      return {...client,project_count:projects.size,contact_count:leads.length+bookings.length+orders.length,last_activity:dates.length?new Date(Math.max(...dates)).toISOString():client.created_at}
+    })
+    return res.json({clients:rows})
+  }
+  const sql="select c.id,c.name,c.email,c.phone,c.created_at,"+
+    "(select count(distinct x.project_id)::int from (select project_id from leads where phone=c.phone or email=c.email union all select project_id from bookings where client_id=c.id or customer_phone=c.phone union all select project_id from orders where client_id=c.id) x) as project_count,"+
+    "((select count(*) from leads where phone=c.phone or email=c.email)+(select count(*) from bookings where client_id=c.id or customer_phone=c.phone)+(select count(*) from orders where client_id=c.id))::int as contact_count,"+
+    "greatest(c.created_at,(select max(created_at) from orders where client_id=c.id),(select max(created_at) from payments where client_id=c.id),(select max(starts_at) from bookings where client_id=c.id or customer_phone=c.phone)) as last_activity "+
+    "from clients c order by last_activity desc nulls last limit 500"
+  const { rows } = await pool.query(sql)
+  res.json({ clients: rows })
+})
+
+app.get('/api/projects/:id/analytics', async (req,res) => {
+  const id=req.params.id
+  if(!pool){
+    const project=memoryProjects.find(p=>p.id===id||p.slug===id)
+    if(!project)return res.status(404).json({error:'Проект не найден'})
+    const slug=project.slug
+    const events=memoryEvents.filter(e=>e.slug===slug)
+    const leads=memoryLeads.filter(l=>l.project_slug===slug)
+    const bookings=memoryBookings.filter(b=>b.project_slug===slug)
+    return res.json({metrics:{visits:events.filter(e=>e.event_type==='page_view').length,leads:leads.length,bookings:bookings.length,revenue:memoryPayments.filter(p=>p.project_id===project.id&&p.status==='paid').reduce((a,p)=>a+Number(p.amount||0),0)}})
+  }
+  const project=await pool.query('select id from projects where id=$1 or slug=$1 limit 1',[id])
+  if(!project.rows[0])return res.status(404).json({error:'Проект не найден'})
+  const q=await pool.query(`select
+    count(*) filter (where event_type='page_view')::int as visits,
+    count(*) filter (where event_type='lead')::int as leads,
+    count(*) filter (where event_type='booking')::int as bookings,
+    coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue
+    from analytics_events where project_id=$1 and created_at >= now() - interval '30 days'`,[project.rows[0].id])
+  const series=await pool.query(`select to_char(date_trunc('day',created_at),'YYYY-MM-DD') as day,
+    count(*) filter (where event_type='page_view')::int as visits,
+    count(*) filter (where event_type='lead')::int as leads,
+    count(*) filter (where event_type='booking')::int as bookings,
+    coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue
+    from analytics_events where project_id=$1 and created_at >= now() - interval '30 days'
+    group by 1 order by 1`,[project.rows[0].id])
+  res.json({metrics:q.rows[0],series:series.rows})
+})
+
+
+app.get('/api/orders', async (_req,res) => {
+  if (!pool) return res.json({orders: memoryOrders})
+  const {rows}=await pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name,c.name as client_name from orders o left join projects pr on pr.id=o.project_id left join clients c on c.id=o.client_id order by o.created_at desc limit 200')
+  res.json({orders:rows})
+})
+app.post('/api/orders', async (req,res) => {
+  const projectId=String(req.body?.project_id||'').trim()
+  const items=Array.isArray(req.body?.items)?req.body.items:[]
+  const currency=String(req.body?.currency||'EUR').trim().toUpperCase()
+  const clientId=req.body?.client_id||null
+  if(!projectId || !items.length) return res.status(400).json({error:'Проект и товары обязательны'})
+  let total=0
+  const normalized=[]
+  for(const item of items){
+    const catalogId=String(item.catalog_id||item.id||'').trim()
+    const quantity=Math.max(1,Number(item.quantity||1))
+    let source=null
+    if(pool){const q=await pool.query('select id,name,price,currency from catalog_items where id=$1 and project_id=$2 limit 1',[catalogId,projectId]);source=q.rows[0]}
+    else source=(memoryCatalog.get(projectId)||[]).find(x=>x.id===catalogId)
+    if(!source) return res.status(400).json({error:'Товар не найден: '+catalogId})
+    const price=Number(source.price||0)
+    total+=price*quantity
+    normalized.push({catalog_id:source.id,name:source.name,price,quantity})
+  }
+  const number='ORD-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
+  const status=String(req.body?.status||'pending').trim()
+  if(!['pending','paid','cancelled','refunded'].includes(status)) return res.status(400).json({error:'Недопустимый статус заказа'})
+  if(!pool){const order={id:crypto.randomUUID(),project_id:projectId,client_id:clientId,number,status,total,currency,items:normalized,created_at:new Date().toISOString()};memoryOrders.unshift(order);return res.status(201).json({order})}
+  const q=await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[projectId,clientId,number,status,total,currency,JSON.stringify(normalized)])
+  res.status(201).json({order:q.rows[0]})
+})
+app.patch('/api/orders/:id', async (req,res) => {
+  const status=String(req.body?.status||'').trim()
+  if(!['pending','paid','cancelled','refunded'].includes(status)) return res.status(400).json({error:'Недопустимый статус заказа'})
+  if(!pool){const x=memoryOrders.find(v=>v.id===req.params.id);if(!x)return res.status(404).json({error:'Заказ не найден'});x.status=status;return res.json({order:x})}
+  const q=await pool.query('update orders set status=$1 where id=$2 returning *',[status,req.params.id])
+  if(!q.rows[0])return res.status(404).json({error:'Заказ не найден'})
+  res.json({order:q.rows[0]})
+})
+app.post('/api/orders/:id/invoice', async (req,res) => {
+  const id=req.params.id
+  let order
+  if(!pool) order=memoryOrders.find(x=>x.id===id)
+  else { const q=await pool.query('select * from orders where id=$1 limit 1',[id]); order=q.rows[0] }
+  if(!order) return res.status(404).json({error:'Заказ не найден'})
+  if(Number(order.total||0)<=0) return res.status(400).json({error:'У заказа некорректная сумма'})
+  const number='INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
+  const description='Счёт по заказу '+order.number
+  if(!pool){ const invoice={id:crypto.randomUUID(),project_id:order.project_id,client_id:order.client_id||null,number,amount:Number(order.total),currency:order.currency||'EUR',status:'sent',due_date:null,description,created_at:new Date().toISOString()}; memoryInvoices.unshift(invoice); return res.status(201).json({invoice}) }
+  const q=await pool.query('insert into invoices(project_id,client_id,number,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7) returning *',[order.project_id,order.client_id||null,number,order.total,order.currency||'EUR','sent',description])
+  res.status(201).json({invoice:q.rows[0]})
+})
+
+
+app.get('/api/payments', async (_req,res) => {
+  if (!pool) return res.json({payments:memoryPayments})
+  const {rows}=await pool.query('select p.id,p.project_id,p.client_id,p.booking_id,p.order_id,p.amount,p.currency,p.status,p.description,p.created_at,pr.name as project_name from payments p left join projects pr on pr.id=p.project_id order by p.created_at desc limit 200')
+  res.json({payments:rows})
+})
+app.post('/api/payments', async (req,res) => {
+  const projectId=String(req.body?.project_id||'').trim()
+  const amount=Number(req.body?.amount)
+  const currency=String(req.body?.currency||'EUR').trim().toUpperCase()
+  const description=String(req.body?.description||'').trim()
+  const status=String(req.body?.status||'paid').trim()
+  const orderId=req.body?.order_id||null
+  if(!projectId || !Number.isFinite(amount) || amount<=0) return res.status(400).json({error:'Проект и сумма обязательны'})
+  if(!['pending','paid','refunded','failed'].includes(status)) return res.status(400).json({error:'Недопустимый статус платежа'})
+  if(!pool){
+    if(orderId){
+      const order=memoryOrders.find(x=>x.id===orderId)
+      if(!order)return res.status(404).json({error:'Заказ не найден'})
+      if(order.project_id!==projectId)return res.status(400).json({error:'Заказ относится к другому проекту'})
+      if(Math.abs(Number(order.total||0)-amount)>0.01)return res.status(400).json({error:'Сумма платежа не совпадает с заказом'})
+      if(status==='paid' && memoryPayments.some(x=>x.order_id===orderId&&x.status==='paid'))return res.status(409).json({error:'Заказ уже оплачен'})
+    }
+    const payment={id:crypto.randomUUID(),project_id:projectId,client_id:req.body?.client_id||null,booking_id:req.body?.booking_id||null,order_id:orderId,amount,currency,status,description,created_at:new Date().toISOString()}
+    memoryPayments.unshift(payment)
+    if(orderId && status==='paid'){
+      const order=memoryOrders.find(x=>x.id===orderId)
+      if(order) order.status='paid'
+      memoryEvents.push({slug:memoryProjects.find(x=>x.id===projectId)?.slug,event_type:'payment',path:'/payment',value:amount,created_at:new Date().toISOString()})
+    }
+    return res.status(201).json({payment})
+  }
+  if(orderId){
+    const oq=await pool.query('select id,project_id,total,status from orders where id=$1 limit 1',[orderId])
+    if(!oq.rows[0])return res.status(404).json({error:'Заказ не найден'})
+    if(oq.rows[0].project_id!==projectId)return res.status(400).json({error:'Заказ относится к другому проекту'})
+    if(Math.abs(Number(oq.rows[0].total||0)-amount)>0.01)return res.status(400).json({error:'Сумма платежа не совпадает с заказом'})
+    if(status==='paid' && oq.rows[0].status==='paid')return res.status(409).json({error:'Заказ уже оплачен'})
+    const dup=await pool.query("select id from payments where order_id=$1 and status='paid' limit 1",[orderId])
+    if(status==='paid' && dup.rows[0])return res.status(409).json({error:'Заказ уже оплачен'})
+  }
+  const q=await pool.query('insert into payments(project_id,client_id,booking_id,order_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,req.body?.booking_id||null,orderId,amount,currency,status,description||null])
+  if(orderId && status==='paid'){
+    await pool.query("update orders set status='paid' where id=$1",[orderId])
+    await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[projectId,'payment','/payment',amount,JSON.stringify({order_id:orderId,payment_id:q.rows[0].id})])
+  }
+  res.status(201).json({payment:q.rows[0]})
+})app.get('/api/analytics/overview', async (_req, res) => {
+  if (!pool) {
+    const since=new Date(Date.now()-30*86400000)
+    const base=memoryEvents.filter(e=>e.created_at && new Date(e.created_at)>=since)
+    const paidOrders=memoryOrders.filter(o=>o.status==='paid' && new Date(o.created_at)>=since)
+    const allOrders=memoryOrders.filter(o=>new Date(o.created_at)>=since)
+    const revenue=memoryPayments.filter(p=>p.status==='paid' && new Date(p.created_at)>=since).reduce((sum,p)=>sum+Number(p.amount||0),0)
+    const series=Array.from({length:14},(_,idx)=>{const d=new Date(Date.now()-(13-idx)*86400000);const key=d.toISOString().slice(0,10);const day=base.filter(e=>String(e.created_at).slice(0,10)===key);return {day:key,visits:day.filter(e=>e.event_type==='page_view').length,leads:day.filter(e=>e.event_type==='lead').length,bookings:day.filter(e=>e.event_type==='booking').length,revenue:day.filter(e=>e.event_type==='payment').reduce((s,e)=>s+Number(e.value||0),0)}})
+    return res.json({metrics:{visits:28460+base.filter(e=>e.event_type==='page_view').length,leads:memoryLeads.length,bookings:memoryBookings.length,revenue,orders:allOrders.length,paidOrders:paidOrders.length,averageOrder:allOrders.length?allOrders.reduce((s,o)=>s+Number(o.total||0),0)/allOrders.length:0,paymentConversion:allOrders.length?paidOrders.length/allOrders.length*100:0,series}})
+  }
+  const q=await pool.query(`select
+    count(*) filter (where event_type='page_view')::int as visits,
+    count(*) filter (where event_type='lead')::int as leads,
+    count(*) filter (where event_type='booking')::int as bookings,
+    coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue
+    from analytics_events where created_at >= now() - interval '30 days'`)
+  const oq=await pool.query(`select count(*)::int as orders,count(*) filter (where status='paid')::int as paid_orders,coalesce(avg(total),0)::numeric as average_order from orders where created_at >= now() - interval '30 days'`)
+  const s=await pool.query(`select to_char(date_trunc('day',created_at),'YYYY-MM-DD') as day,count(*) filter (where event_type='page_view')::int as visits,count(*) filter (where event_type='lead')::int as leads,count(*) filter (where event_type='booking')::int as bookings,coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue from analytics_events where created_at >= now() - interval '30 days' group by 1 order by 1`)
+  const metrics={...q.rows[0],orders:oq.rows[0].orders,paidOrders:oq.rows[0].paid_orders,averageOrder:oq.rows[0].average_order,paymentConversion:oq.rows[0].orders?Number(oq.rows[0].paid_orders)/Number(oq.rows[0].orders)*100:0,series:s.rows}
+  res.json({metrics})
+})
++values.length+' returning *',values)
   if(!q.rows[0])return res.status(404).json({error:'Бронирование не найдено'})
   res.json({booking:q.rows[0]})
 })
