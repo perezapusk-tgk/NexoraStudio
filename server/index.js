@@ -340,6 +340,74 @@ app.post('/api/billing/checkout', async (req,res)=>{
     res.json({ok:true,mode:'checkout',provider:currency==='USD'?'stripe':'yookassa',checkout_url:checkout.url,provider_payment_id:checkout.id,plan:planConfig(plan),currency,amount})
   }catch(e){res.status(503).json({error:e.message||'Не удалось создать платёж'})}
 })
+async function stripeRequest(path,method='GET',params=null){
+  const secret=String(process.env.STRIPE_SECRET_KEY||'').trim()
+  if(!secret) throw new Error('STRIPE_SECRET_KEY не настроен')
+  const headers={Authorization:'Bearer '+secret}
+  let url='https://api.stripe.com'+path,body
+  if(method==='POST'){
+    headers['Content-Type']='application/x-www-form-urlencoded'
+    const form=new URLSearchParams()
+    for(const [k,v] of Object.entries(params||{})) form.set(k,String(v))
+    body=form
+  }
+  const r=await fetch(url,{method,headers,body})
+  const data=await r.json()
+  if(!r.ok) throw new Error(data?.error?.message||'Stripe API error')
+  return data
+}
+app.get('/api/connect/status', async (req,res)=>{
+  if(!pool){
+    const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
+    return res.json({connected:Boolean(studio.stripe_connect_account_id),account_id:studio.stripe_connect_account_id||null,status:studio.stripe_connect_status||'not_connected'})
+  }
+  const q=await pool.query('select stripe_connect_account_id,stripe_connect_status from studios where id=$1',[req.user.studio_id])
+  const row=q.rows[0]||{}
+  if(!row.stripe_connect_account_id)return res.json({connected:false,account_id:null,status:'not_connected'})
+  try{
+    const account=await stripeRequest('/v1/accounts/'+encodeURIComponent(row.stripe_connect_account_id))
+    return res.json({connected:true,account_id:account.id,status:account.charges_enabled&&account.payouts_enabled?'active':'pending',charges_enabled:!!account.charges_enabled,payouts_enabled:!!account.payouts_enabled,details_submitted:!!account.details_submitted})
+  }catch(e){return res.json({connected:true,account_id:row.stripe_connect_account_id,status:'pending'})}
+})
+app.post('/api/connect/account', async (req,res)=>{
+  if(!requireRole(req,res,['owner','admin'])) return
+  try{
+    const email=String(req.body?.email||req.user.email||'').trim()
+    if(pool){
+      const existing=(await pool.query('select stripe_connect_account_id from studios where id=$1',[req.user.studio_id])).rows[0]
+      if(existing?.stripe_connect_account_id)return res.json({account_id:existing.stripe_connect_account_id,existing:true})
+    }
+    const account=await stripeRequest('/v1/accounts','POST',{
+      'business_profile[product_description]':'Payments for websites and Telegram Mini Apps managed through Nexora Studio',
+      'controller[stripe_dashboard][type]':'express',
+      'controller[fees][payer]':'stripe',
+      'controller[losses][payments]':'stripe',
+      'capabilities[card_payments][requested]':'true',
+      'capabilities[transfers][requested]':'true',
+      'email':email
+    })
+    if(pool)await pool.query("update studios set stripe_connect_account_id=$1,stripe_connect_status='pending',updated_at=now() where id=$2",[account.id,req.user.studio_id])
+    else {const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio;studio.stripe_connect_account_id=account.id;studio.stripe_connect_status='pending'}
+    res.status(201).json({account_id:account.id,status:'pending'})
+  }catch(e){res.status(503).json({error:e.message||'Не удалось создать Stripe Connect account'})}
+})
+app.post('/api/connect/onboard', async (req,res)=>{
+  if(!requireRole(req,res,['owner','admin'])) return
+  try{
+    let accountId
+    if(pool)accountId=(await pool.query('select stripe_connect_account_id from studios where id=$1',[req.user.studio_id])).rows[0]?.stripe_connect_account_id
+    else accountId=(memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio).stripe_connect_account_id
+    if(!accountId)return res.status(409).json({error:'Сначала создайте Stripe Connect account'})
+    const base=billingAppUrl()
+    const link=await stripeRequest('/v1/account_links','POST',{
+      account:accountId,
+      refresh_url:base+'/?connect=refresh',
+      return_url:base+'/?connect=complete',
+      type:'account_onboarding'
+    })
+    res.json({url:link.url,account_id:accountId})
+  }catch(e){res.status(503).json({error:e.message||'Не удалось создать ссылку Stripe Connect'})}
+})
 app.post('/api/billing/stripe/webhook', async (req,res)=>{
   const signing=String(process.env.STRIPE_WEBHOOK_SECRET||'').trim()
   if(!signing)return res.status(503).json({error:'STRIPE_WEBHOOK_SECRET не настроен'})
