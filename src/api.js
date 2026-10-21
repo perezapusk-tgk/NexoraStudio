@@ -30,7 +30,7 @@ export const api = {
   removeTeamMember: (id) => request('/team/'+id,{method:'DELETE'}),
   revokeTeamInvitation: (id) => request('/team/invitations/'+id,{method:'DELETE'}),
   resendTeamInvitation: (id) => request('/team/invitations/'+id+'/resend',{method:'POST'}),
-  acceptInvite: (payload) => { const r=request('/auth/accept-invite',{method:'POST',body:JSON.stringify(payload)}); return r },
+  acceptInvite: async (payload) => { const r=await request('/auth/accept-invite',{method:'POST',body:JSON.stringify(payload)}); setAuthToken(r.token); return r },
   projects: () => request('/projects'),
   project: (id) => request('/projects/' + id),
   updateProject: (id,payload) => request('/projects/' + id,{method:'PATCH',body:JSON.stringify(payload)}),
