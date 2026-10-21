@@ -24,6 +24,7 @@ export const api = {
   health: () => request('/health'),
   studio: () => request('/studio'),
   studioUsage: () => request('/studio/usage'),
+  billingPlans: () => request('/billing/plans'),
   team: () => request('/team'),
   addTeamMember: (payload) => request('/team',{method:'POST',body:JSON.stringify(payload)}),
   updateTeamRole: (id,role) => request('/team/'+id,{method:'PATCH',body:JSON.stringify({role})}),
