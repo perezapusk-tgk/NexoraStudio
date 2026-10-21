@@ -651,16 +651,7 @@ app.post('/api/payments', async (req,res) => {
   const metrics={...q.rows[0],orders:oq.rows[0].orders,paidOrders:oq.rows[0].paid_orders,averageOrder:oq.rows[0].average_order,paymentConversion:oq.rows[0].orders?Number(oq.rows[0].paid_orders)/Number(oq.rows[0].orders)*100:0,series:s.rows}
   res.json({metrics})
 })
-+(values.length+1)));values.push(v)}
-  if(hasStatus)add('status=$N',status)
-  if(startsAt!==undefined)add('starts_at=$N',startsAt)
-  if(endsAt!==undefined)add('ends_at=$N',endsAt)
-  if(customerName!==undefined)add('customer_name=$N',customerName)
-  if(customerPhone!==undefined)add('customer_phone=$N',customerPhone)
-  if(serviceName!==undefined)add('service_name=$N',serviceName)
-  if(!fields.length)return res.status(400).json({error:'Нет изменений'})
-  values.push(req.params.id)
-  const q=await pool.query('update bookings set '+fields.join(', ')+' where id=
+
 app.post('/api/bookings/:id/payment', async (req,res) => {
   const id=req.params.id
   const amount=Number(req.body?.amount)
