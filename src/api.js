@@ -17,6 +17,10 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  stripeConnectStatus: () => request('/connect/status'),
+  stripeConnectAccount: (email) => request('/connect/account',{method:'POST',body:JSON.stringify({email})}),
+  stripeConnectOnboard: () => request('/connect/onboard',{method:'POST'}),
+
   authRegister: async (payload) => { const r=await request('/auth/register',{method:'POST',body:JSON.stringify(payload)}); setAuthToken(r.token); return r },
   authLogin: async (payload) => { const r=await request('/auth/login',{method:'POST',body:JSON.stringify(payload)}); setAuthToken(r.token); return r },
   authMe: () => request('/auth/me'),
