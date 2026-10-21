@@ -35,6 +35,7 @@ export const api = {
   clients: () => request('/clients'),
   client: (id) => request('/clients/' + id),
   bookings: () => request('/bookings'),
+  createBooking: (payload) => request('/bookings',{method:'POST',body:JSON.stringify(payload)}),
   updateBooking: (id,payload) => request('/bookings/' + id,{method:'PATCH',body:JSON.stringify(typeof payload==='string'?{status:payload}:payload)}),
   payments: () => request('/payments'),
   invoices: () => request('/invoices'),
