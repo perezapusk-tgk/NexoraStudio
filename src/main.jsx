@@ -291,7 +291,7 @@ function App() {
           {active === 'Mini Apps' && <MiniApps projects={projectData} onCreate={() => setShowCreate(true)} onOpenProject={openProject} />}
           {active === 'Аналитика' && <Analytics metrics={crm.analytics} />}
           {active === 'Интеграции' && <Integrations />}
-          {active === 'Шаблоны' && <Templates onCreate={() => setShowCreate(true)} />}
+          {active === 'Шаблоны' && <Templates onCreate={createProject} />}
           {active === 'Настройки' && !selectedProject && <SettingsPage />}
           {selectedProject && <ProjectWorkspace project={selectedProject} data={workspaceData} view={projectView} setView={setProjectView} onBack={() => { setSelectedProject(null); setWorkspaceData(null) }} onRefresh={async()=>setWorkspaceData(await api.project(selectedProject.id))} />}
         </div>
