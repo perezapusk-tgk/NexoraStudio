@@ -1284,6 +1284,29 @@ app.post('/api/orders/:id/invoice', async (req,res) => {
 })
 
 
+app.get('/api/invoices', async (req,res) => {
+  if (!pool) return res.json({invoices:memoryInvoices.filter(x=>x.studio_id===req.user.studio_id)})
+  const {rows}=await pool.query('select i.id,i.project_id,i.client_id,i.number,i.amount,i.currency,i.status,i.due_date,i.description,i.created_at,p.name as project_name,c.name as client_name from invoices i left join projects p on p.id=i.project_id left join clients c on c.id=i.client_id where p.studio_id=$1 order by i.created_at desc limit 200',[req.user.studio_id])
+  res.json({invoices:rows})
+})
+app.post('/api/invoices', async (req,res) => {
+  const projectId=String(req.body?.project_id||'').trim()
+  if(!projectId)return res.status(400).json({error:'Проект обязателен'})
+  const number=String(req.body?.number||('INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()))
+  const amount=Number(req.body?.amount||0),currency=String(req.body?.currency||'EUR'),status=String(req.body?.status||'sent')
+  if(!pool){const x={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,client_id:req.body?.client_id||null,number,amount,currency,status,due_date:req.body?.due_date||null,description:String(req.body?.description||''),created_at:new Date().toISOString()};memoryInvoices.unshift(x);return res.status(201).json({invoice:x})}
+  const q=await pool.query('insert into invoices(project_id,client_id,number,amount,currency,status,due_date,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,number,amount,currency,status,req.body?.due_date||null,String(req.body?.description||'')])
+  res.status(201).json({invoice:q.rows[0]})
+})
+app.patch('/api/invoices/:id', async (req,res) => {
+  const status=String(req.body?.status||'').trim()
+  if(!['draft','sent','paid','overdue','cancelled'].includes(status))return res.status(400).json({error:'Недопустимый статус счёта'})
+  if(!pool){const x=memoryInvoices.find(v=>v.id===req.params.id&&v.studio_id===req.user.studio_id);if(!x)return res.status(404).json({error:'Счёт не найден'});x.status=status;return res.json({invoice:x})}
+  const q=await pool.query('update invoices i set status=$1 from projects p where i.id=$2 and i.project_id=p.id and p.studio_id=$3 returning i.*',[status,req.params.id,req.user.studio_id])
+  if(!q.rows[0])return res.status(404).json({error:'Счёт не найден'})
+  res.json({invoice:q.rows[0]})
+})
+
 app.get('/api/payments', async (_req,res) => {
   if (!pool) return res.json({payments:memoryPayments.filter(x=>x.studio_id===req.user.studio_id)})
   const {rows}=await pool.query('select p.id,p.project_id,p.client_id,p.booking_id,p.order_id,p.amount,p.currency,p.status,p.description,p.created_at,pr.name as project_name from payments p left join projects pr on pr.id=p.project_id where pr.studio_id=$1 order by p.created_at desc limit 200',[req.user.studio_id])
