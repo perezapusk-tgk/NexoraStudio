@@ -408,7 +408,7 @@ app.patch('/api/orders/:id', async (req,res) => {
 
 app.get('/api/payments', async (_req,res) => {
   if (!pool) return res.json({payments:memoryPayments})
-  const {rows}=await pool.query('select p.id,p.project_id,p.client_id,p.booking_id,p.amount,p.currency,p.status,p.description,p.created_at,pr.name as project_name from payments p left join projects pr on pr.id=p.project_id order by p.created_at desc limit 200')
+  const {rows}=await pool.query('select p.id,p.project_id,p.client_id,p.booking_id,p.order_id,p.amount,p.currency,p.status,p.description,p.created_at,pr.name as project_name from payments p left join projects pr on pr.id=p.project_id order by p.created_at desc limit 200')
   res.json({payments:rows})
 })
 app.post('/api/payments', async (req,res) => {
@@ -419,8 +419,15 @@ app.post('/api/payments', async (req,res) => {
   if(!projectId || !Number.isFinite(amount) || amount<=0) return res.status(400).json({error:'Проект и сумма обязательны'})
   const status=String(req.body?.status||'paid').trim()
   if(!['pending','paid','refunded','failed'].includes(status)) return res.status(400).json({error:'Недопустимый статус платежа'})
-  if(!pool){const payment={id:crypto.randomUUID(),project_id:projectId,client_id:req.body?.client_id||null,booking_id:req.body?.booking_id||null,amount,currency,status,description,created_at:new Date().toISOString()};memoryPayments.unshift(payment);return res.status(201).json({payment})}
-  const q=await pool.query('insert into payments(project_id,client_id,booking_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7) returning *',[projectId,req.body?.client_id||null,req.body?.booking_id||null,amount,currency,status,description||null])
+  const orderId=req.body?.order_id||null
+  if(!pool){
+    const payment={id:crypto.randomUUID(),project_id:projectId,client_id:req.body?.client_id||null,booking_id:req.body?.booking_id||null,order_id:orderId,amount,currency,status,description,created_at:new Date().toISOString()}
+    memoryPayments.unshift(payment)
+    if(orderId && status==='paid'){const order=memoryOrders.find(x=>x.id===orderId);if(order) order.status='paid';}
+    return res.status(201).json({payment})
+  }
+  const q=await pool.query('insert into payments(project_id,client_id,booking_id,order_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,req.body?.booking_id||null,orderId,amount,currency,status,description||null])
+  if(orderId && status==='paid') await pool.query("update orders set status='paid' where id=$1",[orderId])
   res.status(201).json({payment:q.rows[0]})
 })
 app.patch('/api/payments/:id', async (req,res) => {
