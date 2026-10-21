@@ -211,3 +211,5 @@
 .public-cta{display:grid;gap:10px}
 .public-cards article{gap:8px}
 .public-cards article .text-action{justify-self:start}
+
+.catalog-thumb{overflow:hidden}.catalog-thumb img{width:100%;height:100%;display:block;object-fit:cover;border-radius:inherit}
