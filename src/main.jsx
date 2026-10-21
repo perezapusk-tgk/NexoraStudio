@@ -50,7 +50,7 @@ function PublicApp({mode,slug}){
 }
 
 function PublicSite({data,slug}){
-  const project=data.project,pages=data.pages||[],blocks=pages[0]?.content?.blocks||[],catalog=(data.catalog||[]).filter(x=>x.active!==false)
+  const project=data.project,pages=data.pages||[],page=pages[0],blocks=page?.content?.blocks||[],catalog=(data.catalog||[]).filter(x=>x.active!==false),theme={accent:'#111827',background:'#ffffff',text:'#111827',font:'Inter',radius:'14px',...(page?.content?.theme||{})}
   const [open,setOpen]=useState(false),[sent,setSent]=useState(null),[cart,setCart]=useState([]),[form,setForm]=useState({name:'',phone:'',email:''}),[sending,setSending]=useState(false)
   useEffect(()=>{api.publicEvent(slug,{event_type:'page_view',path:window.location.pathname}).catch(()=>{})},[slug])
   const add=(item)=>setCart(v=>{const found=v.find(x=>x.id===item.id);return found?v.map(x=>x.id===item.id?{...x,quantity:x.quantity+1}:x):[...v,{...item,quantity:1}]})
