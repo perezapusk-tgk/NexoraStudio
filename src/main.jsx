@@ -445,13 +445,14 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
   const [domainBusy,setDomainBusy]=useState(false), [domainInfo,setDomainInfo]=useState(null);
   const [analytics,setAnalytics]=useState(null);
   const [pageId,setPageId]=useState(null), [blocks,setBlocks]=useState([]);
+  const [theme,setTheme]=useState({accent:'#111827',background:'#ffffff',text:'#111827',font:'Inter',radius:'14px',button:'solid',maxWidth:'1180px'});
   const page=pages.find(p=>p.id===pageId)||pages[0];
   useEffect(()=>{
     setName(current.name||''); setDomain(current.domain||'');
     const mini=current.settings?.miniApp||{};
     setTg({enabled:mini.enabled===true || String(current.project_type||'').includes('miniapp'),configured:mini.configured===true,botUsername:mini.botUsername||'',buttonText:mini.buttonText||'Открыть Mini App',url:mini.url||''});
     const p=pages.find(x=>x.id===pageId)||pages[0];
-    if(p){setPageId(p.id);setBlocks(p.content?.blocks||[])}
+    if(p){setPageId(p.id);setBlocks(p.content?.blocks||[]);setTheme(v=>({...v,...(p.content?.theme||{})}))}
   },[current.id,current.name,current.domain,pages.length,pageId,JSON.stringify(current.settings||{})]);
 
   useEffect(()=>{api.projectAnalytics(current.id).then(r=>setAnalytics(r.metrics||null)).catch(()=>setAnalytics(null))},[current.id]);
@@ -474,7 +475,7 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
   const saveEditor=async()=>{
     if(!page)return;
     setSaving(true);
-    try{await api.updatePage(current.id,page.id,{content:{blocks}});await onRefresh()}
+    try{await api.updatePage(current.id,page.id,{content:{blocks,theme}});await onRefresh()}
     finally{setSaving(false)}
   };
   const saveSettings=async()=>{setSaving(true);try{await api.updateProject(current.id,{name,domain,settings:{miniApp:{enabled:tg.enabled,buttonText:tg.buttonText}}});await onRefresh()}finally{setSaving(false)}};
@@ -510,6 +511,14 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
         <div className="editor-hint">Изменения сохраняются в выбранной странице. Порядок блоков можно менять стрелками.</div>
       </aside>
       <section className="card editor-canvas"><div className="editor-toolbar"><div><b>{page?.title||'Главная'}</b><span>{blocks.length} блоков</span></div><div className="editor-device"><button className={device==='desktop'?'selected':''} onClick={()=>setDevice('desktop')}>ПК</button><button className={device==='mobile'?'selected':''} onClick={()=>setDevice('mobile')}>Телефон</button><button className="primary" onClick={saveEditor} disabled={saving}>{saving?'Сохраняем…':'Сохранить'}</button></div></div>
+        <div className="editor-theme card"><div className="eyebrow">Оформление</div><div className="theme-grid">
+<label>Акцент<input type="color" value={theme.accent} onChange={e=>setTheme(v=>({...v,accent:e.target.value}))}/></label>
+<label>Фон<input type="color" value={theme.background} onChange={e=>setTheme(v=>({...v,background:e.target.value}))}/></label>
+<label>Текст<input type="color" value={theme.text} onChange={e=>setTheme(v=>({...v,text:e.target.value}))}/></label>
+<label>Шрифт<select value={theme.font} onChange={e=>setTheme(v=>({...v,font:e.target.value}))}><option>Inter</option><option>Arial</option><option>Georgia</option><option>system-ui</option></select></label>
+<label>Скругление<select value={theme.radius} onChange={e=>setTheme(v=>({...v,radius:e.target.value}))}><option value="8px">Малое</option><option value="14px">Среднее</option><option value="24px">Большое</option></select></label>
+<label>Кнопки<select value={theme.button} onChange={e=>setTheme(v=>({...v,button:e.target.value}))}><option value="solid">Заполненные</option><option value="outline">Контурные</option><option value="soft">Мягкие</option></select></label>
+</div><small>Настройки применяются к предпросмотру и сохраняются вместе со страницей.</small></div>
         <div className="editor-stack">{blocks.length===0&&<div className="empty-editor"><Palette size={24}/><b>Страница пока пустая</b><span>Добавьте первый блок слева.</span></div>}
         {blocks.map((b,i)=><div className="editable-block" key={i}>
           <div className="block-controls"><span>{i+1}</span><b>{b.type==='hero'?'Первый экран':b.type==='services'?'Услуги':b.type==='contacts'?'Контакты':b.type==='gallery'?'Галерея':b.type==='testimonials'?'Отзывы':b.type==='faq'?'FAQ':'CTA'}</b><button onClick={()=>moveBlock(i,-1)} disabled={i===0}>↑</button><button onClick={()=>moveBlock(i,1)} disabled={i===blocks.length-1}>↓</button><button onClick={()=>removeBlock(i)}>Удалить</button></div>
@@ -522,7 +531,7 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
       </section>
     </div>}
 
-    {view==='preview'&&<div className="card preview-shell"><div className="preview-top"><b>{current.name}</b><span>{domain||'preview.nexora.site'}</span></div><div className={`public-preview ${device==='mobile'?'preview-mobile':''}`}>{blocks.map((b,i)=><div key={i} className={b.type==='hero'?'preview-hero':'preview-section'}>{b.type==='hero'?<><small>ПРЕДПРОСМОТР</small><h1>{b.headline}</h1><p>{b.subheadline}</p><button>{b.cta}</button></>:b.type==='services'?<><span>{b.title}</span><div className="preview-services">{(b.items||[]).map(x=><b key={x}>{x}</b>)}</div></>:b.type==='cta'?<><h2>{b.title}</h2><p>{b.text}</p><button>{b.button}</button></>:<><h2>{b.title}</h2><div className="preview-services">{(b.items||[]).map(x=><b key={x}>{x}</b>)}</div></>}</div>)}{!blocks.length&&<div className="empty-editor"><b>Нет блоков</b><span>Добавьте блоки в редакторе.</span></div>}</div></div>}
+    {view==='preview'&&<div className="card preview-shell"><div className="preview-top"><b>{current.name}</b><span>{domain||'preview.nexora.site'}</span></div><div className={`public-preview ${device==='mobile'?'preview-mobile':''}`} style={{'--preview-accent':theme.accent,'--preview-bg':theme.background,'--preview-text':theme.text,'--preview-radius':theme.radius,'--preview-font':theme.font}}>{blocks.map((b,i)=><div key={i} className={b.type==='hero'?'preview-hero':'preview-section'}>{b.type==='hero'?<><small>ПРЕДПРОСМОТР</small><h1>{b.headline}</h1><p>{b.subheadline}</p><button>{b.cta}</button></>:b.type==='services'?<><span>{b.title}</span><div className="preview-services">{(b.items||[]).map(x=><b key={x}>{x}</b>)}</div></>:b.type==='cta'?<><h2>{b.title}</h2><p>{b.text}</p><button>{b.button}</button></>:<><h2>{b.title}</h2><div className="preview-services">{(b.items||[]).map(x=><b key={x}>{x}</b>)}</div></>}</div>)}{!blocks.length&&<div className="empty-editor"><b>Нет блоков</b><span>Добавьте блоки в редакторе.</span></div>}</div></div>}
 
     {view==='settings'&&<div className="workspace-settings">
       <div className="card workspace-card"><div className="eyebrow">Настройки проекта</div><h2>Основные параметры</h2><label className="workspace-label">Название проекта<input value={name} onChange={e=>setName(e.target.value)}/></label><label className="workspace-label">Домен<input placeholder="client.ru" value={domain} onChange={e=>{setDomain(e.target.value);setDomainInfo(null)}}/></label>
