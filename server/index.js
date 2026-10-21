@@ -82,7 +82,7 @@ app.patch('/api/projects/:id',async(req,res)=>{if(!pool){
   if(req.body?.domain!==undefined)p.domain=String(req.body.domain||'').trim()||null
   if(req.body?.settings)p.settings={...(p.settings||{}),...req.body.settings}
   return res.json({project:p})
-}const q=await pool.query('update projects set name=coalesce($1,name),domain=coalesce($2,domain),updated_at=now() where id=$3 returning *',[req.body?.name,req.body?.domain,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Проект не найден'});res.json({project:q.rows[0]})});
+}const current=await pool.query('select * from projects where id=$1',[req.params.id]);if(!current.rows[0])return res.status(404).json({error:'Проект не найден'});const settings=req.body?.settings?{...(current.rows[0].settings||{}),...req.body.settings}:current.rows[0].settings;const q=await pool.query('update projects set name=coalesce($1,name),domain=case when $2 is null then domain else $2 end,settings=$3,updated_at=now() where id=$4 returning *',[req.body?.name,req.body?.domain===undefined?null:String(req.body.domain||'').trim()||null,JSON.stringify(settings),req.params.id]);res.json({project:q.rows[0]})});
 app.post('/api/projects/:id/pages',async(req,res)=>{const title=String(req.body?.title||'Новая страница'),slug=slugify(req.body?.slug||title);if(!pool)return res.status(201).json({page:{id:crypto.randomUUID(),title,slug,content:{blocks:[]},published:false}});const q=await pool.query('insert into pages(project_id,title,slug,content) values($1,$2,$3,$4) returning *',[req.params.id,title,slug,JSON.stringify({blocks:[]})]);res.status(201).json({page:q.rows[0]})});
 app.patch('/api/projects/:id/pages/:pageId',async(req,res)=>{if(!pool){const pages=memoryPages.get(req.params.id)||[];const p=pages.find(x=>x.id===req.params.pageId);if(!p)return res.status(404).json({error:'Страница не найдена'});if(req.body?.content)p.content=req.body.content;return res.json({page:p})}const q=await pool.query('update pages set content=coalesce($1,content),updated_at=now() where id=$2 and project_id=$3 returning *',[req.body?.content?JSON.stringify(req.body.content):null,req.params.pageId,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Страница не найдена'});res.json({page:q.rows[0]})});
 app.get('/api/public/:slug', async (req,res) => {
@@ -90,13 +90,7 @@ app.get('/api/public/:slug', async (req,res) => {
   if (!pool) {
     const project = memoryProjects.find(p => p.slug === slug)
     if (!project) return res.status(404).json({error:'Публичный проект не найден'})
-    return res.json({project,pages:(memoryPages.get(project.id)||[]).filter(x=>x.published),catalog:memoryCatalog.get(project.id)||[]}) /* MEMORY */
-    /* legacy demo payload removed */
-    /* return res.json({project,pages:[{id:'page-'+project.id,title:'Главная',slug:'home',published:true,content:{blocks:[
-      {type:'hero',headline:project.name,subheadline:'Современный цифровой опыт для ваших клиентов.',cta:'Записаться'},
-      {type:'services',title:'Услуги',items:['Основная услуга','Популярная услуга','Премиум услуга']},
-      {type:'contacts',title:'Контакты',text:'Свяжитесь с нами удобным способом.'}
-    ]}}],catalog:demoCatalog(project.id)}) */
+    return res.json({project,pages:(memoryPages.get(project.id)||[]).filter(x=>x.published),catalog:memoryCatalog.get(project.id)||[]})
   }
   const q = await pool.query('select * from projects where slug=$1 and status=\'published\' limit 1',[slug])
   if (!q.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
@@ -104,6 +98,35 @@ app.get('/api/public/:slug', async (req,res) => {
   const pages = await pool.query('select id,title,slug,content,published from pages where project_id=$1 and published=true order by created_at',[project.id])
   const catalog = await pool.query('select id,name,description,price,currency,image_url,active from catalog_items where project_id=$1 and active=true order by created_at desc',[project.id])
   res.json({project,pages:pages.rows,catalog:catalog.rows})
+})
+
+app.post('/api/projects/:id/telegram/configure', async (req,res) => {
+  const token = String(process.env.TELEGRAM_BOT_TOKEN || '').trim()
+  if (!token) return res.status(503).json({ error: 'TELEGRAM_BOT_TOKEN не настроен на сервере' })
+  const project = !pool
+    ? memoryProjects.find(p => p.id === req.params.id || p.slug === req.params.id)
+    : (await pool.query('select * from projects where id=$1 or slug=$1 limit 1',[req.params.id])).rows[0]
+  if (!project) return res.status(404).json({ error: 'Проект не найден' })
+  const domain = String(project.domain || '').trim()
+  const base = domain ? 'https://' + domain.replace(/^https?:\\/\\//,'').replace(/\\/$/,'') : 'https://' + project.slug + '.nexora.site'
+  const miniAppUrl = base + '/miniapp/' + project.slug
+  const callTelegram = async (method, body) => {
+    const response = await fetch('https://api.telegram.org/bot' + token + '/' + method, { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(body) })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) throw new Error(payload.description || 'Telegram API error')
+    return payload.result
+  }
+  try {
+    const bot = await callTelegram('getMe', {})
+    const buttonText = String(req.body?.button_text || 'Открыть Mini App').trim().slice(0,64) || 'Открыть Mini App'
+    await callTelegram('setChatMenuButton', { menu_button:{type:'web_app',text:buttonText,web_app:{url:miniAppUrl}} })
+    const settings = {...(project.settings||{}), miniApp:{...((project.settings||{}).miniApp||{}),enabled:true,configured:true,botUsername:bot.username||'',url:miniAppUrl,buttonText}}
+    if (!pool) project.settings=settings
+    else await pool.query('update projects set settings=$1,updated_at=now() where id=$2',[JSON.stringify(settings),project.id])
+    return res.json({configured:true,bot:{username:bot.username||'',name:bot.first_name||''},url:miniAppUrl,project})
+  } catch (error) {
+    return res.status(502).json({error:'Telegram не принял настройку Mini App: '+error.message})
+  }
 })
 
 app.post('/api/public/:slug/leads', async (req,res) => {
