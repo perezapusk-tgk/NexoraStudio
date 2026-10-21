@@ -151,10 +151,10 @@ app.post('/api/public/:slug/bookings', async (req,res) => {
   const startsAt=String(req.body?.starts_at||'').trim()
   const serviceName=String(req.body?.service_name||'').trim()
   if(!name || !phone || !startsAt) return res.status(400).json({error:'Заполните имя, телефон и время'})
-  if(!pool){const booking={id:crypto.randomUUID(),project_slug:slug,customer_name:name,customer_phone:phone,starts_at:startsAt,service_name:serviceName,status:'pending'};memoryBookings.push(booking);return res.status(201).json({booking})}
+  if(!pool){let client=memoryClients.find(x=>x.phone===phone);if(!client){client={id:crypto.randomUUID(),name,email:'',phone,created_at:new Date().toISOString()};memoryClients.unshift(client)}const booking={id:crypto.randomUUID(),project_slug:slug,client_id:client.id,customer_name:name,customer_phone:phone,starts_at:startsAt,service_name:serviceName,status:'pending'};memoryBookings.push(booking);return res.status(201).json({booking})}
   const pr=await pool.query("select id from projects where slug=$1 and status='published' limit 1",[slug])
   if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
-  const q=await pool.query('insert into bookings(project_id,customer_name,customer_phone,starts_at,service_name,status) values($1,$2,$3,$4,$5,$6) returning *',[pr.rows[0].id,name,phone,startsAt,serviceName||null,'pending'])
+  const existingClient=await pool.query('select id from clients where phone=$1 limit 1',[phone]);const clientId=existingClient.rows[0]?.id||null;const q=await pool.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7) returning *',[pr.rows[0].id,clientId,name,phone,startsAt,serviceName||null,'pending'])
   res.status(201).json({booking:q.rows[0]})
 })
 
@@ -462,7 +462,7 @@ app.patch('/api/invoices/:id', async (req,res) => {
 })
 
 app.get('/api/analytics/overview', async (_req, res) => {
-  if (!pool) return res.json({ metrics: { visits: 28460 + memoryEvents.length, leads: memoryLeads.length, bookings: memoryBookings.length, revenue: 18420 } })
+  if (!pool) return res.json({ metrics: { visits: 28460 + memoryEvents.length, leads: memoryLeads.length, bookings: memoryBookings.length, revenue: memoryPayments.filter(p=>p.status==='paid').reduce((sum,p)=>sum+Number(p.amount||0),0) } })
   const { rows } = await pool.query(`
     select
       count(*) filter (where event_type='page_view')::int as visits,
