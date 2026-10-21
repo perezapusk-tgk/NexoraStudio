@@ -48,9 +48,6 @@ function App() {
   const [selectedProject, setSelectedProject] = useState(null)
   const [projectView, setProjectView] = useState('overview')
   const [workspaceData, setWorkspaceData] = useState(null)
-  const [selectedProject, setSelectedProject] = useState(null)
-  const [projectView, setProjectView] = useState('overview')
-  const [workspaceData, setWorkspaceData] = useState(null)
 
   useEffect(() => {
     let alive = true
@@ -58,6 +55,7 @@ function App() {
       if (!alive) return
       const list = Array.isArray(items) ? items : (items.projects || [])
       if (list.length) setProjectData(list.map(p => ({
+        id: p.id,
         name: p.name || p.title || 'Без названия',
         type: p.project_type === 'miniapp' ? 'Mini App' : p.project_type === 'site' ? 'Сайт' : 'Сайт + Mini App',
         status: p.status === 'published' ? 'Опубликован' : p.status === 'draft' ? 'Черновик' : 'В работе',
@@ -82,7 +80,7 @@ function App() {
     if (!name?.trim()) return
     try {
       const created = await api.createProject({ name: name.trim(), projectType })
-      const mapped = { name: created.name, type: projectType === 'miniapp' ? 'Mini App' : projectType === 'site' ? 'Сайт' : 'Сайт + Mini App', status: 'Черновик', color: 'dark', leads: 0, bookings: 0, revenue: '€0', updated: 'только что' }
+      const mapped = { id: created.id, type: projectType === 'miniapp' ? 'Mini App' : projectType === 'site' ? 'Сайт' : 'Сайт + Mini App', status: 'Черновик', color: 'dark', leads: 0, bookings: 0, revenue: '€0', updated: 'только что' }
       setProjectData(v => [mapped, ...v])
       setShowCreate(false)
       setActive('Проекты')
