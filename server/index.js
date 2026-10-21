@@ -1133,7 +1133,7 @@ app.post('/api/leads/:id/convert', async (req,res) => {
 app.get('/api/clients/:id', async (req,res) => {
   const id=String(req.params.id)
   if(!pool){
-    const client=memoryClients.find(x=>x.id===id)
+    const client=memoryClients.find(x=>x.id===id&&x.studio_id===req.user.studio_id)
     if(!client)return res.status(404).json({error:'Клиент не найден'})
     const phone=client.phone||'',email=client.email||''
     return res.json({
@@ -1145,28 +1145,18 @@ app.get('/api/clients/:id', async (req,res) => {
       orders:memoryOrders.filter(x=>x.client_id===id)
     })
   }
-  const cq=await pool.query('select id,name,email,phone,created_at from clients where id=$1 limit 1',[id])
+  const cq=await pool.query('select id,name,email,phone,created_at from clients where id=$1 and studio_id=$2 limit 1',[id,req.user.studio_id])
   if(!cq.rows[0])return res.status(404).json({error:'Клиент не найден'})
   const [leads,bookings,payments,invoices,orders]=await Promise.all([
-    pool.query('select id,project_id,name,message,status,created_at from leads where phone=$1 or email=$2 order by created_at desc',[cq.rows[0].phone,cq.rows[0].email]),
-    pool.query('select id,project_id,customer_name,starts_at,status,service_name from bookings where client_id=$1 or customer_phone=$2 order by starts_at desc',[id,cq.rows[0].phone]),
-    pool.query('select id,project_id,amount,currency,status,description,order_id,created_at from payments where client_id=$1 order by created_at desc',[id]),
-    pool.query('select id,project_id,number,amount,currency,status,due_date,description,created_at from invoices where client_id=$1 order by created_at desc',[id]),
-    pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name from orders o left join projects pr on pr.id=o.project_id where o.client_id=$1 order by o.created_at desc',[id])
+    pool.query('select l.id,l.project_id,l.name,l.message,l.status,l.created_at from leads l join projects pr on pr.id=l.project_id where pr.studio_id=$3 and (l.phone=$1 or l.email=$2) order by l.created_at desc',[cq.rows[0].phone,cq.rows[0].email,req.user.studio_id]),
+    pool.query('select b.id,b.project_id,b.customer_name,b.starts_at,b.status,b.service_name from bookings b join projects pr on pr.id=b.project_id where pr.studio_id=$3 and (b.client_id=$1 or b.customer_phone=$2) order by b.starts_at desc',[id,cq.rows[0].phone,req.user.studio_id]),
+    pool.query('select p.id,p.project_id,p.amount,p.currency,p.status,p.description,p.order_id,p.created_at from payments p join projects pr on pr.id=p.project_id where pr.studio_id=$2 and p.client_id=$1 order by p.created_at desc',[id,req.user.studio_id]),
+    pool.query('select i.id,i.project_id,i.number,i.amount,i.currency,i.status,i.due_date,i.description,i.created_at from invoices i join projects pr on pr.id=i.project_id where pr.studio_id=$2 and i.client_id=$1 order by i.created_at desc',[id,req.user.studio_id]),
+    pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name from orders o left join projects pr on pr.id=o.project_id where o.client_id=$1 and pr.studio_id=$2 order by o.created_at desc',[id,req.user.studio_id])
   ])
   res.json({client:cq.rows[0],leads:leads.rows,bookings:bookings.rows,payments:payments.rows,invoices:invoices.rows,orders:orders.rows})
 })
-
-app.patch('/api/clients/:id', async (req,res) => {
-  const id=String(req.params.id)
-  const name=String(req.body?.name||'').trim()
-  const email=String(req.body?.email||'').trim() || null
-  const phone=String(req.body?.phone||'').trim() || null
-  if(!name) return res.status(400).json({error:'Имя клиента обязательно'})
-  if(!pool){
-    const client=memoryClients.find(x=>x.id===id)
-    if(!client)return res.status(404).json({error:'Клиент не найден'})
-    const duplicate=memoryClients.find(x=>x.id!==id&&((phone&&x.phone===phone)||(email&&x.email===email)))
+hone&&x.phone===phone)||(email&&x.email===email)))
     if(duplicate)return res.status(409).json({error:'Клиент с таким телефоном или email уже существует'})
     client.name=name;client.email=email;client.phone=phone
     return res.json({client})
