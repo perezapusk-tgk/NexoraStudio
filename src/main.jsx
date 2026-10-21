@@ -205,7 +205,7 @@ function App() {
 
   const studioName=auth.studio?.name||'Nexora Studio'
   const userName=auth.user?.name||'Пользователь'
-  const initials=userName.split(/\\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase()
+  const initials=userName.split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase()
 
   return (
     <div className="app">
