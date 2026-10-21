@@ -251,12 +251,15 @@ app.get('/api/projects/:id/catalog', async (req,res) => {
 app.post('/api/projects/:id/catalog', async (req,res) => {
   const name = String(req.body?.name || '').trim()
   if (!name) return res.status(400).json({ error:'Название товара обязательно' })
+  const rawPrice=req.body?.price
+  const price = rawPrice === '' || rawPrice == null ? null : Number(rawPrice)
+  if(price!=null && (!Number.isFinite(price) || price<0)) return res.status(400).json({error:'Некорректная цена'})
   const payload = {
     name,
-    description: String(req.body?.description || ''),
-    price: req.body?.price === '' || req.body?.price == null ? null : Number(req.body.price),
-    currency: String(req.body?.currency || 'EUR'),
-    image_url: String(req.body?.image_url || ''),
+    description: String(req.body?.description || '').trim(),
+    price,
+    currency: String(req.body?.currency || 'EUR').toUpperCase(),
+    image_url: String(req.body?.image_url || '').trim(),
     active: req.body?.active !== false
   }
   if (!pool) { const item={id:crypto.randomUUID(),project_id:req.params.id,...payload};const list=memoryCatalog.get(req.params.id)||[];list.unshift(item);memoryCatalog.set(req.params.id,list);return res.status(201).json({item}) }
