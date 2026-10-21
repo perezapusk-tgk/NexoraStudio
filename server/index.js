@@ -317,17 +317,25 @@ app.get('/api/clients/:id', async (req,res) => {
     const client=memoryClients.find(x=>x.id===id)
     if(!client)return res.status(404).json({error:'Клиент не найден'})
     const phone=client.phone||'',email=client.email||''
-    return res.json({client,leads:memoryLeads.filter(x=>(phone&&x.phone===phone)||(email&&x.email===email)),bookings:memoryBookings.filter(x=>x.customer_phone===phone),payments:memoryPayments.filter(x=>x.client_id===id),invoices:memoryInvoices.filter(x=>x.client_id===id)})
+    return res.json({
+      client,
+      leads:memoryLeads.filter(x=>(phone&&x.phone===phone)||(email&&x.email===email)),
+      bookings:memoryBookings.filter(x=>x.customer_phone===phone),
+      payments:memoryPayments.filter(x=>x.client_id===id),
+      invoices:memoryInvoices.filter(x=>x.client_id===id),
+      orders:memoryOrders.filter(x=>x.client_id===id)
+    })
   }
   const cq=await pool.query('select id,name,email,phone,created_at from clients where id=$1 limit 1',[id])
   if(!cq.rows[0])return res.status(404).json({error:'Клиент не найден'})
-  const [leads,bookings,payments,invoices]=await Promise.all([
+  const [leads,bookings,payments,invoices,orders]=await Promise.all([
     pool.query('select id,project_id,name,message,status,created_at from leads where phone=$1 or email=$2 order by created_at desc',[cq.rows[0].phone,cq.rows[0].email]),
     pool.query('select id,project_id,customer_name,starts_at,status,service_name from bookings where client_id=$1 or customer_phone=$2 order by starts_at desc',[id,cq.rows[0].phone]),
-    pool.query('select id,project_id,amount,currency,status,description,created_at from payments where client_id=$1 order by created_at desc',[id]),
-    pool.query('select id,project_id,number,amount,currency,status,due_date,description,created_at from invoices where client_id=$1 order by created_at desc',[id])
+    pool.query('select id,project_id,amount,currency,status,description,order_id,created_at from payments where client_id=$1 order by created_at desc',[id]),
+    pool.query('select id,project_id,number,amount,currency,status,due_date,description,created_at from invoices where client_id=$1 order by created_at desc',[id]),
+    pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name from orders o left join projects pr on pr.id=o.project_id where o.client_id=$1 order by o.created_at desc',[id])
   ])
-  res.json({client:cq.rows[0],leads:leads.rows,bookings:bookings.rows,payments:payments.rows,invoices:invoices.rows})
+  res.json({client:cq.rows[0],leads:leads.rows,bookings:bookings.rows,payments:payments.rows,invoices:invoices.rows,orders:orders.rows})
 })
 
 app.get('/api/clients', async (_req, res) => {
@@ -416,108 +424,40 @@ app.post('/api/payments', async (req,res) => {
   const amount=Number(req.body?.amount)
   const currency=String(req.body?.currency||'EUR').trim().toUpperCase()
   const description=String(req.body?.description||'').trim()
-  if(!projectId || !Number.isFinite(amount) || amount<=0) return res.status(400).json({error:'Проект и сумма обязательны'})
   const status=String(req.body?.status||'paid').trim()
-  if(!['pending','paid','refunded','failed'].includes(status)) return res.status(400).json({error:'Недопустимый статус платежа'})
   const orderId=req.body?.order_id||null
+  if(!projectId || !Number.isFinite(amount) || amount<=0) return res.status(400).json({error:'Проект и сумма обязательны'})
+  if(!['pending','paid','refunded','failed'].includes(status)) return res.status(400).json({error:'Недопустимый статус платежа'})
   if(!pool){
+    if(orderId){
+      const order=memoryOrders.find(x=>x.id===orderId)
+      if(!order)return res.status(404).json({error:'Заказ не найден'})
+      if(order.project_id!==projectId)return res.status(400).json({error:'Заказ относится к другому проекту'})
+      if(Math.abs(Number(order.total||0)-amount)>0.01)return res.status(400).json({error:'Сумма платежа не совпадает с заказом'})
+      if(status==='paid' && memoryPayments.some(x=>x.order_id===orderId&&x.status==='paid'))return res.status(409).json({error:'Заказ уже оплачен'})
+    }
     const payment={id:crypto.randomUUID(),project_id:projectId,client_id:req.body?.client_id||null,booking_id:req.body?.booking_id||null,order_id:orderId,amount,currency,status,description,created_at:new Date().toISOString()}
     memoryPayments.unshift(payment)
-    if(orderId && status==='paid'){const order=memoryOrders.find(x=>x.id===orderId);if(order) order.status='paid';}
+    if(orderId && status==='paid'){
+      const order=memoryOrders.find(x=>x.id===orderId)
+      if(order) order.status='paid'
+      memoryEvents.push({slug:memoryProjects.find(x=>x.id===projectId)?.slug,event_type:'payment',path:'/payment',value:amount,created_at:new Date().toISOString()})
+    }
     return res.status(201).json({payment})
   }
+  if(orderId){
+    const oq=await pool.query('select id,project_id,total,status from orders where id=$1 limit 1',[orderId])
+    if(!oq.rows[0])return res.status(404).json({error:'Заказ не найден'})
+    if(oq.rows[0].project_id!==projectId)return res.status(400).json({error:'Заказ относится к другому проекту'})
+    if(Math.abs(Number(oq.rows[0].total||0)-amount)>0.01)return res.status(400).json({error:'Сумма платежа не совпадает с заказом'})
+    if(status==='paid' && oq.rows[0].status==='paid')return res.status(409).json({error:'Заказ уже оплачен'})
+    const dup=await pool.query("select id from payments where order_id=$1 and status='paid' limit 1",[orderId])
+    if(status==='paid' && dup.rows[0])return res.status(409).json({error:'Заказ уже оплачен'})
+  }
   const q=await pool.query('insert into payments(project_id,client_id,booking_id,order_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,req.body?.booking_id||null,orderId,amount,currency,status,description||null])
-  if(orderId && status==='paid') await pool.query("update orders set status='paid' where id=$1",[orderId])
+  if(orderId && status==='paid'){
+    await pool.query("update orders set status='paid' where id=$1",[orderId])
+    await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[projectId,'payment','/payment',amount,JSON.stringify({order_id:orderId,payment_id:q.rows[0].id})])
+  }
   res.status(201).json({payment:q.rows[0]})
 })
-app.patch('/api/payments/:id', async (req,res) => {
-  const status=String(req.body?.status||'').trim()
-  if(!['pending','paid','refunded','failed'].includes(status)) return res.status(400).json({error:'Недопустимый статус платежа'})
-  if(!pool){const p=memoryPayments.find(x=>x.id===req.params.id);if(!p)return res.status(404).json({error:'Платёж не найден'});p.status=status;return res.json({payment:p})}
-  const q=await pool.query('update payments set status=$1 where id=$2 returning *',[status,req.params.id])
-  if(!q.rows[0])return res.status(404).json({error:'Платёж не найден'})
-  res.json({payment:q.rows[0]})
-})
-
-app.get('/api/invoices', async (_req,res) => {
-  if (!pool) return res.json({invoices: memoryInvoices})
-  const {rows}=await pool.query('select i.id,i.project_id,i.client_id,i.number,i.amount,i.currency,i.status,i.due_date,i.description,i.created_at,pr.name as project_name,c.name as client_name from invoices i left join projects pr on pr.id=i.project_id left join clients c on c.id=i.client_id order by i.created_at desc limit 200')
-  res.json({invoices:rows})
-})
-app.post('/api/invoices', async (req,res) => {
-  const projectId=String(req.body?.project_id||'').trim()
-  const amount=Number(req.body?.amount)
-  const currency=String(req.body?.currency||'EUR').trim().toUpperCase()
-  const description=String(req.body?.description||'').trim()
-  const dueDate=req.body?.due_date ? String(req.body.due_date).trim() : null
-  const clientId=req.body?.client_id||null
-  if(!projectId || !Number.isFinite(amount) || amount<=0) return res.status(400).json({error:'Проект и сумма обязательны'})
-  const status=String(req.body?.status||'draft').trim()
-  if(!['draft','sent','paid','overdue','cancelled'].includes(status)) return res.status(400).json({error:'Недопустимый статус счёта'})
-  const number='INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
-  if(!pool){const invoice={id:crypto.randomUUID(),project_id:projectId,client_id:clientId,number,amount,currency,status,due_date:dueDate,description,created_at:new Date().toISOString()};memoryInvoices.unshift(invoice);return res.status(201).json({invoice})}
-  const q=await pool.query('insert into invoices(project_id,client_id,number,amount,currency,status,due_date,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,clientId,number,amount,currency,status,dueDate,description||null])
-  res.status(201).json({invoice:q.rows[0]})
-})
-app.patch('/api/invoices/:id', async (req,res) => {
-  const status=String(req.body?.status||'').trim()
-  if(!['draft','sent','paid','overdue','cancelled'].includes(status)) return res.status(400).json({error:'Недопустимый статус счёта'})
-  if(!pool){const x=memoryInvoices.find(v=>v.id===req.params.id);if(!x)return res.status(404).json({error:'Счёт не найден'});x.status=status;return res.json({invoice:x})}
-  const q=await pool.query('update invoices set status=$1 where id=$2 returning *',[status,req.params.id])
-  if(!q.rows[0])return res.status(404).json({error:'Счёт не найден'})
-  res.json({invoice:q.rows[0]})
-})
-
-app.get('/api/analytics/overview', async (_req, res) => {\n  if (!pool) {\n    const base=memoryEvents.filter(e=>e.created_at && new Date(e.created_at)>=new Date(Date.now()-30*86400000))\n    const series=Array.from({length:14},(_,idx)=>{const d=new Date(Date.now()-(13-idx)*86400000);const key=d.toISOString().slice(0,10);const day=base.filter(e=>String(e.created_at).slice(0,10)===key);return {day:key,visits:day.filter(e=>e.event_type==='page_view').length,leads:day.filter(e=>e.event_type==='lead').length,bookings:day.filter(e=>e.event_type==='booking').length,revenue:day.filter(e=>e.event_type==='payment').reduce((s,e)=>s+Number(e.value||0),0)}})\n    const revenue=memoryPayments.filter(p=>p.status==='paid').reduce((sum,p)=>sum+Number(p.amount||0),0)\n    return res.json({metrics:{visits:28460+base.filter(e=>e.event_type==='page_view').length,leads:memoryLeads.length,bookings:memoryBookings.length,revenue,series}})\n  }\n  const q=await pool.query(`select count(*) filter (where event_type='page_view')::int as visits,count(*) filter (where event_type='lead')::int as leads,count(*) filter (where event_type='booking')::int as bookings,coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue from analytics_events where created_at >= now() - interval '30 days'`)\n  const s=await pool.query(`select to_char(date_trunc('day',created_at),'YYYY-MM-DD') as day,count(*) filter (where event_type='page_view')::int as visits,count(*) filter (where event_type='lead')::int as leads,count(*) filter (where event_type='booking')::int as bookings,coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue from analytics_events where created_at >= now() - interval '30 days' group by 1 order by 1`)\n  res.json({metrics:{...q.rows[0],series:s.rows}})\n})
-
-app.get('/api/templates', (_req, res) => res.json({ templates: [
-  { id:'barber', name:'Barber', category:'Барбершоп' },
-  { id:'beauty', name:'Beauty', category:'Салон красоты' },
-  { id:'fitness', name:'Fitness', category:'Фитнес-студия' },
-  { id:'restaurant', name:'Restaurant', category:'Ресторан' },
-  { id:'coffee', name:'Coffee', category:'Кофейня' },
-  { id:'dental', name:'Dental', category:'Стоматология' }
-]}))
-
-app.use((_req, res) => res.status(404).json({ error: 'Route not found' }))
-
-app.listen(port, () => console.log(`Nexora API listening on :${port}`))
-
-function templateDefinition(id){
-  const common={
-    barber:{hero:'Barber House',sub:'Стильная запись и услуги без звонков.',items:['Мужская стрижка','Стрижка бороды','Комплекс'],catalog:[['Мужская стрижка','Стрижка и укладка',35],['Стрижка бороды','Форма и уход',20],['Комплекс','Стрижка + борода',50]]},
-    beauty:{hero:'Beauty Studio',sub:'Красота, уход и запись онлайн.',items:['Стрижка','Окрашивание','Уход'],catalog:[['Стрижка','Консультация и укладка',45],['Окрашивание','Подбор оттенка и уход',90],['Уход','Восстановление волос',55]]},
-    fitness:{hero:'Fitness Studio',sub:'Тренировки и абонементы в одном месте.',items:['Персональная тренировка','Групповое занятие','Абонемент'],catalog:[['Персональная тренировка','Индивидуальная программа',40],['Групповое занятие','Тренировка с группой',15],['Абонемент','Месячный абонемент',79]]},
-    restaurant:{hero:'Restaurant',sub:'Меню, бронирование и заявки онлайн.',items:['Завтраки','Основные блюда','Десерты'],catalog:[['Завтрак','Сезонное меню',14],['Основное блюдо','Авторская кухня',24],['Десерт','Домашний десерт',9]]},
-    coffee:{hero:'Coffee House',sub:'Кофе, десерты и заказы для гостей.',items:['Кофе','Десерты','Завтраки'],catalog:[['Капучино','Классический кофе',4.5],['Чизкейк','Домашний десерт',6],['Завтрак','Кофе + выпечка',10]]},
-    dental:{hero:'Dental Clinic',sub:'Запись на консультацию и лечение онлайн.',items:['Консультация','Гигиена','Лечение'],catalog:[['Консультация','Первичный приём',50],['Гигиена','Профессиональная чистка',80],['Лечение','План лечения после осмотра',120]]}
-  }
-  const x=common[id]||{hero:'Ваш бизнес',sub:'Современный цифровой опыт для клиентов.',items:['Основная услуга','Популярная услуга','Премиум услуга'],catalog:[['Основная услуга','Описание услуги',30],['Популярная услуга','Описание услуги',50],['Премиум услуга','Описание услуги',80]]}
-  return {blocks:[
-    {type:'hero',headline:x.hero,subheadline:x.sub,cta:'Записаться'},
-    {type:'services',title:'Услуги',items:x.items},
-    {type:'contacts',title:'Контакты',text:'Свяжитесь с нами удобным способом.'}
-  ],catalog:x.catalog.map(([name,description,price])=>({name,description,price,currency:'EUR',active:true}))}
-}
-
-function slugify(value) {
-  return value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || crypto.randomUUID().slice(0,8)
-}
-function demoProjects(){ return [
-  {id:'p1',name:'Barber House',slug:'barber-house',project_type:'website+miniapp',status:'published'},
-  {id:'p2',name:'Nordic Beauty',slug:'nordic-beauty',project_type:'website',status:'draft'},
-  {id:'p3',name:'Urban Fitness',slug:'urban-fitness',project_type:'miniapp',status:'published'}
-] }
-function demoCatalog(projectId){ return [
-  {id:'item-1',project_id:projectId,name:'Стрижка',description:'Классическая мужская стрижка',price:35,currency:'EUR',active:true},
-  {id:'item-2',project_id:projectId,name:'Стрижка + борода',description:'Комплексная услуга',price:50,currency:'EUR',active:true},
-  {id:'item-3',project_id:projectId,name:'Премиум уход',description:'Уход и укладка',price:65,currency:'EUR',active:true}
-] }
-function demoLeads(){ return [{id:'l1',name:'Марина Соколова',message:'Хочу записаться на стрижку',status:'new'},{id:'l2',name:'Иван Петров',message:'Есть ли свободное окно в субботу?',status:'in_progress'}] }
-function demoBookings(){ return [{id:'b1',customer_name:'Александр К.',starts_at:'2026-10-21T10:00:00',status:'confirmed'},{id:'b2',customer_name:'Елена М.',starts_at:'2026-10-21T11:00:00',status:'confirmed'}] }
-function demoPayments(){ return [{id:'pay1',project_id:'p1',project_name:'Barber House',amount:85,currency:'EUR',status:'paid',description:'Стрижка + борода',created_at:'2026-10-21T12:10:00Z'},{id:'pay2',project_id:'p3',project_name:'Urban Fitness',amount:120,currency:'EUR',status:'paid',description:'Абонемент',created_at:'2026-10-20T16:30:00Z'}] }
-function demoInvoices(){ return [{id:'inv1',project_id:'p1',number:'INV-20261021-AB12CD',amount:85,currency:'EUR',status:'paid',description:'Стрижка + борода',due_date:'2026-10-28',created_at:'2026-10-21T12:12:00Z'},{id:'inv2',project_id:'p3',number:'INV-20261020-EF34GH',amount:120,currency:'EUR',status:'sent',description:'Абонемент',due_date:'2026-10-27',created_at:'2026-10-20T16:32:00Z'}] }
-function demoClients(){ return [{id:'c1',name:'Barber House',email:'client@example.com',phone:'+358 40 000 0000'},{id:'c2',name:'Nordic Beauty',email:'hello@example.com',phone:'+358 40 000 0001'}] }
-
-
-function demoOrders(){ return [] }
