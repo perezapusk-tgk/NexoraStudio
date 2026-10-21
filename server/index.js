@@ -900,6 +900,14 @@ app.post('/api/stripe/connect/webhook', async (req,res)=>{
     const event=JSON.parse(payload),obj=event.data?.object||{}
     if(pool&&event.type==='account.updated'&&obj.id){
       await pool.query("update studios set stripe_connect_status=$1,updated_at=now() where stripe_connect_account_id=$2",[obj.charges_enabled&&obj.payouts_enabled?'active':'pending',obj.id])
+    }else if(pool&&event.type==='payment_intent.succeeded'&&obj.id){
+      const orderId=obj.metadata?.order_id
+      if(orderId){
+        await pool.query("update orders set status='paid',paid_at=coalesce(paid_at,now()),stripe_payment_intent_id=$1 where id=$2",[obj.id,orderId])
+      }
+    }else if(pool&&event.type==='payment_intent.payment_failed'&&obj.id){
+      const orderId=obj.metadata?.order_id
+      if(orderId) await pool.query("update orders set status='cancelled' where id=$1 and status='pending'",[orderId])
     }
     res.json({received:true})
   }catch(e){res.status(400).json({error:'Не удалось обработать Connect webhook'})}
