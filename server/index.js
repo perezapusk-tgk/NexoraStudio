@@ -46,6 +46,25 @@ app.get('/api/projects/:id', async (req,res)=>{const id=req.params.id;if(!pool){
 app.patch('/api/projects/:id',async(req,res)=>{if(!pool)return res.json({project:{id:req.params.id,name:req.body?.name,domain:req.body?.domain}});const q=await pool.query('update projects set name=coalesce($1,name),domain=coalesce($2,domain),updated_at=now() where id=$3 returning *',[req.body?.name,req.body?.domain,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Проект не найден'});res.json({project:q.rows[0]})});
 app.post('/api/projects/:id/pages',async(req,res)=>{const title=String(req.body?.title||'Новая страница'),slug=slugify(req.body?.slug||title);if(!pool)return res.status(201).json({page:{id:crypto.randomUUID(),title,slug,content:{blocks:[]},published:false}});const q=await pool.query('insert into pages(project_id,title,slug,content) values($1,$2,$3,$4) returning *',[req.params.id,title,slug,JSON.stringify({blocks:[]})]);res.status(201).json({page:q.rows[0]})});
 app.patch('/api/projects/:id/pages/:pageId',async(req,res)=>{if(!pool)return res.json({page:{id:req.params.pageId,...req.body}});const q=await pool.query('update pages set content=coalesce($1,content),updated_at=now() where id=$2 and project_id=$3 returning *',[req.body?.content?JSON.stringify(req.body.content):null,req.params.pageId,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Страница не найдена'});res.json({page:q.rows[0]})});
+app.get('/api/public/:slug', async (req,res) => {
+  const slug = String(req.params.slug || '').trim()
+  if (!pool) {
+    const project = demoProjects().find(p => p.slug === slug)
+    if (!project) return res.status(404).json({error:'Публичный проект не найден'})
+    return res.json({project,pages:[{id:'page-'+project.id,title:'Главная',slug:'home',published:true,content:{blocks:[
+      {type:'hero',headline:project.name,subheadline:'Современный цифровой опыт для ваших клиентов.',cta:'Записаться'},
+      {type:'services',title:'Услуги',items:['Основная услуга','Популярная услуга','Премиум услуга']},
+      {type:'contacts',title:'Контакты',text:'Свяжитесь с нами удобным способом.'}
+    ]}}],catalog:demoCatalog(project.id)})
+  }
+  const q = await pool.query('select * from projects where slug=$1 and status=\'published\' limit 1',[slug])
+  if (!q.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
+  const project = q.rows[0]
+  const pages = await pool.query('select id,title,slug,content,published from pages where project_id=$1 and published=true order by created_at',[project.id])
+  const catalog = await pool.query('select id,name,description,price,currency,image_url,active from catalog_items where project_id=$1 and active=true order by created_at desc',[project.id])
+  res.json({project,pages:pages.rows,catalog:catalog.rows})
+})
+
 app.get('/api/projects/:id/catalog', async (req,res) => {
   const id = req.params.id
   if (!pool) return res.json({ items: demoCatalog(id) })
