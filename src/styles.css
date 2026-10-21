@@ -142,3 +142,6 @@
  .client-op{grid-template-columns:1fr auto}
  .client-op b{grid-column:1/-1}
 }
+
+.order-detail-actions{display:flex;gap:10px;align-items:center;margin-top:18px;flex-wrap:wrap}
+.order-invoice-note{display:flex;align-items:center;gap:9px;margin:16px 0;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft);font-size:13px}
