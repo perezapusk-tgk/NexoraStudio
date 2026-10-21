@@ -73,6 +73,44 @@ app.get('/api/public/:slug', async (req,res) => {
   res.json({project,pages:pages.rows,catalog:catalog.rows})
 })
 
+app.post('/api/public/:slug/leads', async (req,res) => {
+  const slug=String(req.params.slug||'').trim()
+  const name=String(req.body?.name||'').trim()
+  const phone=String(req.body?.phone||'').trim()
+  const message=String(req.body?.message||'').trim()
+  if(!name || (!phone && !String(req.body?.email||'').trim())) return res.status(400).json({error:'Укажите имя и телефон или email'})
+  if(!pool) return res.status(201).json({lead:{id:crypto.randomUUID(),project_slug:slug,name,phone,message,status:'new',source:'public'}})
+  const pr=await pool.query("select id from projects where slug=$1 and status='published' limit 1",[slug])
+  if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
+  const q=await pool.query('insert into leads(project_id,name,email,phone,message,status,source) values($1,$2,$3,$4,$5,$6,$7) returning id,name,email,phone,message,status,source,created_at',[pr.rows[0].id,name,String(req.body?.email||'').trim()||null,phone||null,message,'new','public'])
+  res.status(201).json({lead:q.rows[0]})
+})
+
+app.post('/api/public/:slug/bookings', async (req,res) => {
+  const slug=String(req.params.slug||'').trim()
+  const name=String(req.body?.name||'').trim()
+  const phone=String(req.body?.phone||'').trim()
+  const startsAt=String(req.body?.starts_at||'').trim()
+  const serviceName=String(req.body?.service_name||'').trim()
+  if(!name || !phone || !startsAt) return res.status(400).json({error:'Заполните имя, телефон и время'})
+  if(!pool) return res.status(201).json({booking:{id:crypto.randomUUID(),project_slug:slug,customer_name:name,customer_phone:phone,starts_at:startsAt,service_name:serviceName,status:'pending'}})
+  const pr=await pool.query("select id from projects where slug=$1 and status='published' limit 1",[slug])
+  if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
+  const q=await pool.query('insert into bookings(project_id,customer_name,customer_phone,starts_at,service_name,status) values($1,$2,$3,$4,$5,$6) returning *',[pr.rows[0].id,name,phone,startsAt,serviceName||null,'pending'])
+  res.status(201).json({booking:q.rows[0]})
+})
+
+app.post('/api/public/:slug/events', async (req,res) => {
+  const slug=String(req.params.slug||'').trim()
+  if(!pool) return res.status(204).end()
+  const pr=await pool.query('select id from projects where slug=$1 limit 1',[slug])
+  if(!pr.rows[0]) return res.status(404).json({error:'Проект не найден'})
+  const type=String(req.body?.event_type||'page_view')
+  const value=Number(req.body?.value||0)
+  await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[pr.rows[0].id,type,String(req.body?.path||''),value,JSON.stringify(req.body?.metadata||{})])
+  res.status(204).end()
+})
+
 app.get('/api/projects/:id/catalog', async (req,res) => {
   const id = req.params.id
   if (!pool) return res.json({ items: demoCatalog(id) })
