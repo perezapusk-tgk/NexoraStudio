@@ -52,7 +52,7 @@ const createSessionToken=()=>crypto.randomBytes(32).toString('hex')
 const createInviteToken=()=>crypto.randomBytes(32).toString('hex')
 const tokenHash=token=>crypto.createHash('sha256').update(token).digest('hex')
 const inviteUrl=token=>{const base=String(process.env.APP_URL||process.env.FRONTEND_URL||'http://localhost:5173').replace(/\/$/,'');return base+'/?invite='+encodeURIComponent(token)}
-const authPayload=(u,studio,token)=>({token,user:{id:u.id,name:u.name,email:u.email,role:u.role},studio:{id:studio.id,name:studio.name,ownerName:studio.owner_name||studio.ownerName,plan:studio.plan,projectLimit:studio.project_limit||studio.projectLimit,planConfig:planConfig(studio.plan)}})
+const authPayload=(u,studio,token)=>({token,user:{id:u.id,name:u.name,email:u.email,role:u.role},studio:{id:studio.id,name:studio.name,ownerName:studio.owner_name||studio.ownerName,plan:studio.plan,projectLimit:studio.project_limit||studio.projectLimit,billingCurrency:studio.billing_currency||studio.billingCurrency||'RUB',planConfig:planConfig(studio.plan)}})
 
 async function requireAuth(req,res,next){
   const header=String(req.headers.authorization||'')
@@ -66,7 +66,7 @@ async function requireAuth(req,res,next){
       if(!q.rows[0]) return res.status(401).json({error:'Сессия истекла или недействительна'})
       const x=q.rows[0]
       req.user={id:x.id,name:x.name,email:x.email,role:x.role,studio_id:x.studio_id}
-      req.studio={id:x.studio_id,name:x.studio_name,owner_name:x.owner_name,plan:x.plan,project_limit:x.project_limit}
+      req.studio={id:x.studio_id,name:x.studio_name,owner_name:x.owner_name,plan:x.plan,project_limit:x.project_limit,billing_currency:x.billing_currency}
       return next()
     }
     const session=memorySessions.get(tokenHash(token))
@@ -89,7 +89,7 @@ app.post('/api/auth/register',async(req,res)=>{
       const c=await pool.connect()
       try{
         await c.query('begin')
-        const studio=(await c.query('insert into studios(name,owner_name,plan,project_limit) values($1,$2,$3,$4) returning *',[studioName,name,'starter',5])).rows[0]
+        const studio=(await c.query('insert into studios(name,owner_name,plan,project_limit) values($1,$2,$3,$4) returning *',[studioName,name,'starter',10])).rows[0]
         const user=(await c.query('insert into users(studio_id,name,email,role,password_hash) values($1,$2,$3,$4,$5) returning id,name,email,role',[studio.id,name,email,'owner',hashPassword(password)])).rows[0]
         const token=createSessionToken()
         await c.query("insert into sessions(user_id,token_hash,expires_at) values($1,$2,now()+interval '30 days')",[user.id,tokenHash(token)])
@@ -98,7 +98,7 @@ app.post('/api/auth/register',async(req,res)=>{
       }catch(e){await c.query('rollback');throw e}finally{c.release()}
     }
     if(memoryUsers.some(x=>x.email===email))return res.status(409).json({error:'Пользователь с таким email уже существует'})
-    const studio={id:crypto.randomUUID(),name:studioName,ownerName:name,plan:'starter',projectLimit:5}
+    const studio={id:crypto.randomUUID(),name:studioName,ownerName:name,plan:'starter',projectLimit:10,project_limit:10,billing_currency:'RUB',billingCurrency:'RUB'}
     memoryStudios.push(studio)
     const user={id:crypto.randomUUID(),studio_id:studio.id,name,email,role:'owner',password_hash:hashPassword(password)}
     memoryUsers.push(user)
@@ -111,7 +111,7 @@ app.post('/api/auth/login',async(req,res)=>{
   if(!email||!password)return res.status(400).json({error:'Введите email и пароль'})
   try{
     if(pool){
-      const q=await pool.query(`select u.id,u.name,u.email,u.role,u.password_hash,u.studio_id,s.name as studio_name,s.owner_name,s.plan,s.project_limit
+      const q=await pool.query(`select u.id,u.name,u.email,u.role,u.password_hash,u.studio_id,s.name as studio_name,s.owner_name,s.plan,s.project_limit,s.billing_currency
         from users u join studios s on s.id=u.studio_id where lower(u.email)=lower($1)`,[email])
       if(!q.rows[0]||!verifyPassword(password,q.rows[0].password_hash))return res.status(401).json({error:'Неверный email или пароль'})
       const x=q.rows[0],user={id:x.id,name:x.name,email:x.email,role:x.role},studio={id:x.studio_id,name:x.studio_name,owner_name:x.owner_name,plan:x.plan,project_limit:x.project_limit}
