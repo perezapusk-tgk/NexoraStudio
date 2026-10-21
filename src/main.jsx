@@ -216,18 +216,70 @@ function SettingsPage(){return <><Header eyebrow="Рабочее простра�
 
 function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
   const current=data?.project||project, pages=data?.pages||[];
-  const [saving,setSaving]=useState(false), [name,setName]=useState(current.name||''), [domain,setDomain]=useState(current.domain||''), [headline,setHeadline]=useState('Ваш бизнес. Онлайн.');
-  useEffect(()=>{setName(current.name||'');setDomain(current.domain||'');const h=pages[0]?.content?.blocks?.find(b=>b.type==='hero')?.headline;setHeadline(h||'Ваш бизнес. Онлайн.')},[current.id,pages.length]);
+  const [saving,setSaving]=useState(false), [name,setName]=useState(''), [domain,setDomain]=useState('');
+  const [pageId,setPageId]=useState(null), [blocks,setBlocks]=useState([]);
+  const page=pages.find(p=>p.id===pageId)||pages[0];
+  useEffect(()=>{
+    setName(current.name||''); setDomain(current.domain||'');
+    const p=pages.find(x=>x.id===pageId)||pages[0];
+    if(p){setPageId(p.id);setBlocks(p.content?.blocks||[])}
+  },[current.id,current.name,current.domain,pages.length,pageId]);
+
+  const updateBlock=(index,patch)=>setBlocks(v=>v.map((b,i)=>i===index?{...b,...patch}:b));
+  const addBlock=(type)=>{
+    const defaults={
+      hero:{type:'hero',headline:'Ваш бизнес. Онлайн.',subheadline:'Понятный цифровой опыт для ваших клиентов.',cta:'Оставить заявку'},
+      services:{type:'services',title:'Услуги',items:['Основная услуга','Популярная услуга','Премиум услуга']},
+      contacts:{type:'contacts',title:'Контакты',text:'Свяжитесь с нами удобным способом.'}
+    };
+    setBlocks(v=>[...v,defaults[type]]);
+  };
+  const removeBlock=(index)=>setBlocks(v=>v.filter((_,i)=>i!==index));
+  const moveBlock=(index,dir)=>setBlocks(v=>{const n=index+dir;if(n<0||n>=v.length)return v;const a=[...v];[a[index],a[n]]=[a[n],a[index]];return a});
+  const saveEditor=async()=>{
+    if(!page)return;
+    setSaving(true);
+    try{await api.updatePage(current.id,page.id,{content:{blocks}});await onRefresh()}
+    finally{setSaving(false)}
+  };
   const saveSettings=async()=>{setSaving(true);try{await api.updateProject(current.id,{name,domain});await onRefresh()}finally{setSaving(false)}};
-  const saveEditor=async()=>{setSaving(true);try{let page=pages[0];if(!page)page=(await api.createPage(current.id,{title:'Главная',slug:'home'})).page;await api.updatePage(current.id,page.id,{content:{blocks:[{type:'hero',headline},{type:'services',title:'Услуги',items:['Основная услуга','Популярная услуга','Премиум услуга']},{type:'contacts',title:'Контакты'}]}});await onRefresh()}finally{setSaving(false)}};
   const publish=async()=>{setSaving(true);try{await api.publishProject(current.id);await onRefresh()}finally{setSaving(false)}};
+
   return <div className="workspace-page">
-    <div className="workspace-head"><button className="filter" onClick={onBack}>← Проекты</button><div className="workspace-title"><div className="project-logo dark">{current.name?.slice(0,1)}</div><div><b>{current.name}</b><span>{current.project_type||'website'} · {current.status==='published'?'Опубликован':'Черновик'}</span></div></div><div className="workspace-actions"><button className="filter" onClick={()=>setView('preview')}><ExternalLink size={14}/> Предпросмотр</button><button className="primary" onClick={publish} disabled={saving}><Globe2 size={15}/> Опубликовать</button></div></div>
+    <div className="workspace-head">
+      <button className="filter" onClick={onBack}>← Проекты</button>
+      <div className="workspace-title"><div className="project-logo dark">{current.name?.slice(0,1)}</div><div><b>{current.name}</b><span>{current.project_type||'website'} · {current.status==='published'?'Опубликован':'Черновик'}</span></div></div>
+      <div className="workspace-actions"><button className="filter" onClick={()=>setView('preview')}><ExternalLink size={14}/> Предпросмотр</button><button className="primary" onClick={publish} disabled={saving}><Globe2 size={15}/> Опубликовать</button></div>
+    </div>
     <div className="workspace-tabs">{[['overview','Обзор'],['pages','Страницы'],['editor','Редактор'],['preview','Предпросмотр'],['settings','Настройки']].map(([id,label])=><button key={id} className={view===id?'selected':''} onClick={()=>setView(id)}>{label}</button>)}</div>
-    {view==='overview'&&<div className="workspace-grid"><div className="card workspace-card"><div className="eyebrow">Проект</div><h2>Центр управления клиентским проектом</h2><p>Сайт, Mini App, контент, публикация и настройки клиента управляются из одного рабочего пространства.</p><div className="workspace-stat-grid"><div><b>{pages.length}</b><span>страниц</span></div><div><b>{current.status==='published'?'Опубликован':'Черновик'}</b><span>статус</span></div><div><b>{domain||'Не подключен'}</b><span>домен</span></div></div></div><div className="card workspace-card"><h3>Следующие шаги</h3><button className="workspace-step" onClick={()=>setView('pages')}><Globe2 size={17}/><span><b>Настроить страницы</b><small>Создать структуру сайта</small></span><ChevronRight size={16}/></button><button className="workspace-step" onClick={()=>setView('editor')}><Palette size={17}/><span><b>Открыть редактор</b><small>Изменить блоки и тексты</small></span><ChevronRight size={16}/></button><button className="workspace-step" onClick={publish}><CheckCircle2 size={17}/><span><b>Опубликовать</b><small>Сделать проект доступным</small></span><ChevronRight size={16}/></button></div></div>}
-    {view==='pages'&&<div className="card workspace-card"><div className="card-head"><div><h2>Страницы</h2><span>Структура сайта</span></div><button className="primary" onClick={async()=>{await api.createPage(current.id,{title:'Новая страница',slug:'new-page'});await onRefresh()}}><Plus size={15}/> Новая страница</button></div>{pages.map(p=><div className="page-row" key={p.id}><div className="page-icon"><Globe2 size={16}/></div><div><b>{p.title}</b><span>/{p.slug}</span></div><span className={p.published?'status success':'status draft'}><i/>{p.published?'Опубликована':'Черновик'}</span><button className="filter" onClick={()=>setView('editor')}>Редактировать</button></div>)}</div>}
-    {view==='editor'&&<div className="editor-layout"><aside className="card editor-sidebar"><div className="eyebrow">Редактор</div><h3>Главная</h3><p>Блоки страницы</p><div className="editor-block active"><Palette size={15}/><span>Hero / первый экран</span></div><div className="editor-block"><Layers3 size={15}/><span>Услуги / каталог</span></div><div className="editor-block"><Users size={15}/><span>Контакты / CTA</span></div></aside><section className="card editor-canvas"><div className="editor-toolbar"><b>Главная</b><span>Редактирование</span><button className="primary" onClick={saveEditor} disabled={saving}>{saving?'Сохраняем…':'Сохранить'}</button></div><div className="site-canvas"><div className="canvas-hero"><input value={headline} onChange={e=>setHeadline(e.target.value)}/><p>Удобный цифровой опыт для ваших клиентов.</p><button>Оставить заявку</button></div><div className="canvas-section"><h3>Услуги</h3><div className="canvas-cards"><div>Основная услуга</div><div>Популярная услуга</div><div>Премиум услуга</div></div></div><div className="canvas-section"><h3>Контакты</h3><p>Свяжитесь с нами удобным способом.</p></div></div></section></div>}
-    {view==='preview'&&<div className="card preview-shell"><div className="preview-top"><b>{current.name}</b><span>{domain||'preview.nexora.site'}</span></div><div className="public-preview"><div><small>ПРЕДПРОСМОТР</small><h1>{headline}</h1><p>Удобный цифровой опыт для ваших клиентов.</p><button>Оставить заявку</button></div><div className="preview-services"><span>Услуги</span><b>Основная услуга</b><b>Популярная услуга</b><b>Премиум услуга</b></div></div></div>}
+
+    {view==='overview'&&<div className="workspace-grid">
+      <div className="card workspace-card"><div className="eyebrow">Проект</div><h2>Центр управления клиентским проектом</h2><p>Сайт, Mini App, контент, публикация и настройки клиента управляются из одного рабочего пространства.</p><div className="workspace-stat-grid"><div><b>{pages.length}</b><span>страниц</span></div><div><b>{current.status==='published'?'Опубликован':'Черновик'}</b><span>статус</span></div><div><b>{domain||'Не подключен'}</b><span>домен</span></div></div></div>
+      <div className="card workspace-card"><h3>Следующие шаги</h3><button className="workspace-step" onClick={()=>setView('pages')}><Globe2 size={17}/><span><b>Настроить страницы</b><small>Создать структуру сайта</small></span><ChevronRight size={16}/></button><button className="workspace-step" onClick={()=>setView('editor')}><Palette size={17}/><span><b>Открыть редактор</b><small>Собрать страницу из блоков</small></span><ChevronRight size={16}/></button><button className="workspace-step" onClick={publish}><CheckCircle2 size={17}/><span><b>Опубликовать</b><small>Сделать проект доступным</small></span><ChevronRight size={16}/></button></div>
+    </div>}
+
+    {view==='pages'&&<div className="card workspace-card"><div className="card-head"><div><h2>Страницы</h2><span>Структура сайта</span></div><button className="primary" onClick={async()=>{await api.createPage(current.id,{title:'Новая страница',slug:'new-page'});await onRefresh()}}><Plus size={15}/> Новая страница</button></div>{pages.map(p=><div className="page-row" key={p.id}><div className="page-icon"><Globe2 size={16}/></div><div><b>{p.title}</b><span>/{p.slug}</span></div><span className={p.published?'status success':'status draft'}><i/>{p.published?'Опубликована':'Черновик'}</span><button className="filter" onClick={()=>{setPageId(p.id);setBlocks(p.content?.blocks||[]);setView('editor')}}>Редактировать</button></div>)}</div>}
+
+    {view==='editor'&&<div className="editor-layout">
+      <aside className="card editor-sidebar"><div className="eyebrow">Редактор</div><h3>{page?.title||'Главная'}</h3><p>Добавляйте и перестраивайте секции страницы.</p>
+        <button className="editor-add" onClick={()=>addBlock('hero')}><Palette size={15}/> Первый экран <Plus size={14}/></button>
+        <button className="editor-add" onClick={()=>addBlock('services')}><Layers3 size={15}/> Услуги / каталог <Plus size={14}/></button>
+        <button className="editor-add" onClick={()=>addBlock('contacts')}><Users size={15}/> Контакты / CTA <Plus size={14}/></button>
+        <div className="editor-hint">Изменения сохраняются в выбранной странице. Порядок блоков можно менять стрелками.</div>
+      </aside>
+      <section className="card editor-canvas"><div className="editor-toolbar"><div><b>{page?.title||'Главная'}</b><span>{blocks.length} блоков</span></div><button className="primary" onClick={saveEditor} disabled={saving}>{saving?'Сохраняем…':'Сохранить'}</button></div>
+        <div className="editor-stack">{blocks.length===0&&<div className="empty-editor"><Palette size={24}/><b>Страница пока пустая</b><span>Добавьте первый блок слева.</span></div>}
+        {blocks.map((b,i)=><div className="editable-block" key={i}>
+          <div className="block-controls"><span>{i+1}</span><b>{b.type==='hero'?'Первый экран':b.type==='services'?'Услуги':'Контакты'}</b><button onClick={()=>moveBlock(i,-1)} disabled={i===0}>↑</button><button onClick={()=>moveBlock(i,1)} disabled={i===blocks.length-1}>↓</button><button onClick={()=>removeBlock(i)}>Удалить</button></div>
+          {b.type==='hero'&&<div className="block-form"><label>Заголовок<input value={b.headline||''} onChange={e=>updateBlock(i,{headline:e.target.value})}/></label><label>Подзаголовок<textarea value={b.subheadline||''} onChange={e=>updateBlock(i,{subheadline:e.target.value})}/></label><label>Кнопка<input value={b.cta||''} onChange={e=>updateBlock(i,{cta:e.target.value})}/></label></div>}
+          {b.type==='services'&&<div className="block-form"><label>Заголовок<input value={b.title||''} onChange={e=>updateBlock(i,{title:e.target.value})}/></label><label>Услуги<textarea value={(b.items||[]).join('\n')} onChange={e=>updateBlock(i,{items:e.target.value.split('\n').filter(Boolean)})}/></label></div>}
+          {b.type==='contacts'&&<div className="block-form"><label>Заголовок<input value={b.title||''} onChange={e=>updateBlock(i,{title:e.target.value})}/></label><label>Текст<textarea value={b.text||''} onChange={e=>updateBlock(i,{text:e.target.value})}/></label></div>}
+        </div>)}</div>
+      </section>
+    </div>}
+
+    {view==='preview'&&<div className="card preview-shell"><div className="preview-top"><b>{current.name}</b><span>{domain||'preview.nexora.site'}</span></div><div className="public-preview">{blocks.map((b,i)=><div key={i} className={b.type==='hero'?'preview-hero':'preview-section'}>{b.type==='hero'?<><small>ПРЕДПРОСМОТР</small><h1>{b.headline}</h1><p>{b.subheadline}</p><button>{b.cta}</button></>:b.type==='services'?<><span>{b.title}</span><div className="preview-services">{(b.items||[]).map(x=><b key={x}>{x}</b>)}</div></>:<><h2>{b.title}</h2><p>{b.text}</p></>}</div>)}{!blocks.length&&<div className="empty-editor"><b>Нет блоков</b><span>Добавьте блоки в редакторе.</span></div>}</div></div>}
+
     {view==='settings'&&<div className="card workspace-card"><div className="eyebrow">Настройки проекта</div><h2>Основные параметры</h2><label className="workspace-label">Название проекта<input value={name} onChange={e=>setName(e.target.value)}/></label><label className="workspace-label">Домен<input placeholder="client.ru" value={domain} onChange={e=>setDomain(e.target.value)}/></label><div className="setting-actions"><button className="primary" onClick={saveSettings} disabled={saving}>{saving?'Сохраняем…':'Сохранить'}</button></div></div>}
   </div>
 }
