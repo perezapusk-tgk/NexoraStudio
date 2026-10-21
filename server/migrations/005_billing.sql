@@ -17,3 +17,5 @@ create table if not exists billing_transactions (
   paid_at timestamptz
 );
 create index if not exists idx_billing_transactions_studio_created on billing_transactions(studio_id, created_at desc);
+alter table billing_transactions add column if not exists checkout_url text;
+create unique index if not exists idx_billing_provider_payment on billing_transactions(provider, provider_payment_id) where provider_payment_id is not null;
