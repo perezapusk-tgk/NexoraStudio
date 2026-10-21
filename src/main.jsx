@@ -5,7 +5,7 @@ import {
   Smartphone, BarChart3, Plug, Zap, Settings, Plus, Search, Bell,
   ArrowUpRight, MoreHorizontal, ChevronRight, CheckCircle2, Clock3,
   CircleDollarSign, ExternalLink, Filter, Send, CreditCard, Palette,
-  ShieldCheck, Bot, Sparkles, X, Menu, LogOut, UserRound, Layers3, Receipt
+  ShieldCheck, Bot, Sparkles, X, Menu, LogOut, UserRound, Layers3, Receipt, ShoppingCart
 } from 'lucide-react'
 import './styles.css'
 
@@ -16,6 +16,7 @@ const nav = [
   ['Клиенты', Users],
   ['Бронирования', CalendarDays],
   ['Платежи', CreditCard],
+  ['Заказы', ShoppingCart],
   ['Счета', Receipt],
   ['Сайты', Globe2],
   ['Mini Apps', Smartphone],
