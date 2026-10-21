@@ -959,7 +959,6 @@ app.get('/api/leads', async (_req, res) => {
   const { rows } = await pool.query('select l.id, l.project_id, l.name, l.message, l.status, l.created_at, p.name as project_name from leads l left join projects p on p.id=l.project_id where p.studio_id=$1 order by created_at desc limit 100',[req.user.studio_id])
   res.json({ leads: rows })
 })
-})
 
 app.get('/api/bookings', async (_req, res) => {
   if (!pool) return res.json({ bookings: memoryBookings.filter(x=>x.studio_id===req.user.studio_id) })
