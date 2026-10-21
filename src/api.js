@@ -18,6 +18,7 @@ export const api = {
   createPage: (id,payload) => request('/projects/' + id + '/pages',{method:'POST',body:JSON.stringify(payload)}),
   updatePage: (id,pageId,payload) => request('/projects/' + id + '/pages/' + pageId,{method:'PATCH',body:JSON.stringify(payload)}),
   publishProject: (id) => request('/projects/' + id + '/publish',{method:'POST'}),
+  publicProject: (slug) => request('/public/' + slug),
   catalog: (id) => request('/projects/' + id + '/catalog'),
   createCatalogItem: (id,payload) => request('/projects/' + id + '/catalog',{method:'POST',body:JSON.stringify(payload)}),
   updateCatalogItem: (id,itemId,payload) => request('/projects/' + id + '/catalog/' + itemId,{method:'PATCH',body:JSON.stringify(payload)}),
