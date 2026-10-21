@@ -161,10 +161,11 @@ app.post('/api/public/:slug/leads', async (req,res) => {
   const phone=String(req.body?.phone||'').trim()
   const message=String(req.body?.message||'').trim()
   if(!name || (!phone && !String(req.body?.email||'').trim())) return res.status(400).json({error:'Укажите имя и телефон или email'})
-  if(!pool){const lead={id:crypto.randomUUID(),project_slug:slug,name,phone,email:String(req.body?.email||''),message,status:'new',source:'public',created_at:new Date().toISOString()};memoryLeads.unshift(lead);return res.status(201).json({lead})}
+  if(!pool){const project=memoryProjects.find(p=>p.slug===slug && p.status==='published');if(!project) return res.status(404).json({error:'Публичный проект не найден'});const lead={id:crypto.randomUUID(),project_slug:slug,project_id:project.id,name,phone,email:String(req.body?.email||''),message,status:'new',source:'public',created_at:new Date().toISOString()};memoryLeads.unshift(lead);memoryEvents.push({slug,event_type:'lead',path:'/lead',created_at:new Date().toISOString()});return res.status(201).json({lead})}
   const pr=await pool.query("select id from projects where slug=$1 and status='published' limit 1",[slug])
   if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
   const q=await pool.query('insert into leads(project_id,name,email,phone,message,status,source) values($1,$2,$3,$4,$5,$6,$7) returning id,name,email,phone,message,status,source,created_at',[pr.rows[0].id,name,String(req.body?.email||'').trim()||null,phone||null,message,'new','public'])
+  await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[pr.rows[0].id,'lead','/lead',0,JSON.stringify({source:'public'})])
   res.status(201).json({lead:q.rows[0]})
 })
 
@@ -175,10 +176,11 @@ app.post('/api/public/:slug/bookings', async (req,res) => {
   const startsAt=String(req.body?.starts_at||'').trim()
   const serviceName=String(req.body?.service_name||'').trim()
   if(!name || !phone || !startsAt) return res.status(400).json({error:'Заполните имя, телефон и время'})
-  if(!pool){let client=memoryClients.find(x=>x.phone===phone);if(!client){client={id:crypto.randomUUID(),name,email:'',phone,created_at:new Date().toISOString()};memoryClients.unshift(client)}const booking={id:crypto.randomUUID(),project_slug:slug,client_id:client.id,customer_name:name,customer_phone:phone,starts_at:startsAt,service_name:serviceName,status:'pending'};memoryBookings.push(booking);return res.status(201).json({booking})}
+  if(!pool){const project=memoryProjects.find(p=>p.slug===slug && p.status==='published');if(!project) return res.status(404).json({error:'Публичный проект не найден'});let client=memoryClients.find(x=>x.phone===phone);if(!client){client={id:crypto.randomUUID(),name,email:'',phone,created_at:new Date().toISOString()};memoryClients.unshift(client)}const booking={id:crypto.randomUUID(),project_slug:slug,project_id:project.id,client_id:client.id,customer_name:name,customer_phone:phone,starts_at:startsAt,service_name:serviceName,status:'pending'};memoryBookings.push(booking);memoryEvents.push({slug,event_type:'booking',path:'/booking',created_at:new Date().toISOString()});return res.status(201).json({booking})}
   const pr=await pool.query("select id from projects where slug=$1 and status='published' limit 1",[slug])
   if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
   const existingClient=await pool.query('select id from clients where phone=$1 limit 1',[phone]);const clientId=existingClient.rows[0]?.id||null;const q=await pool.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7) returning *',[pr.rows[0].id,clientId,name,phone,startsAt,serviceName||null,'pending'])
+  await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[pr.rows[0].id,'booking','/booking',0,JSON.stringify({source:'public',service_name:serviceName})])
   res.status(201).json({booking:q.rows[0]})
 })
 
