@@ -33,7 +33,8 @@ export const api = {
   updateBillingSettings: (currency) => request('/billing/settings',{method:'PATCH',body:JSON.stringify({currency})}),
   switchBillingPlan: (plan) => request('/billing/checkout',{method:'POST',body:JSON.stringify({plan})}),
   billingCheckout: (plan) => request('/billing/checkout',{method:'POST',body:JSON.stringify({plan})}),
-  billingConfirm: (provider,payment_id) => request('/billing/confirm',{method:'POST',body:JSON.stringify({provider,payment_id})}),
+  billingConfirm: (provider,payment_id) => request('/billing/confirm',{method:'POST',body:JSON.stringify({provider,payment_id})}),  billingPortal: () => request('/billing/portal',{method:'POST'}),
+
   team: () => request('/team'),
   addTeamMember: (payload) => request('/team',{method:'POST',body:JSON.stringify(payload)}),
   updateTeamRole: (id,role) => request('/team/'+id,{method:'PATCH',body:JSON.stringify({role})}),
