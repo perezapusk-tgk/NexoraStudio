@@ -392,6 +392,11 @@ app.post('/api/projects', async (req, res) => {
   const templateId = String(req.body?.templateId || '').trim()
   if (!name) return res.status(400).json({ error: 'Название проекта обязательно' })
   if (!pool) {
+  const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
+  const cfg=planConfig(studio.plan)
+  const limit=Number(studio.projectLimit||studio.project_limit||cfg.projectLimit)
+  const count=memoryProjects.filter(x=>x.studio_id===req.user.studio_id).length
+  if(count>=limit)return res.status(409).json({error:'Достигнут лимит проектов вашего тарифа',code:'PLAN_LIMIT',limit,plan:cfg.name})
   const template=templateDefinition(templateId)
   const project={id:crypto.randomUUID(),studio_id:req.user.studio_id,name,slug:slugify(name),project_type:projectType,status:'draft',domain:null,settings:{miniApp:{enabled:projectType.includes('miniapp')}}}
   memoryProjects.unshift(project)
