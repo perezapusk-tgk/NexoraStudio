@@ -1156,19 +1156,28 @@ app.get('/api/clients/:id', async (req,res) => {
   ])
   res.json({client:cq.rows[0],leads:leads.rows,bookings:bookings.rows,payments:payments.rows,invoices:invoices.rows,orders:orders.rows})
 })
-hone&&x.phone===phone)||(email&&x.email===email)))
+app.patch('/api/clients/:id', async (req,res) => {
+  const id=String(req.params.id)
+  const name=String(req.body?.name||'').trim()
+  const email=String(req.body?.email||'').trim() || null
+  const phone=String(req.body?.phone||'').trim() || null
+  if(!name)return res.status(400).json({error:'Имя клиента обязательно'})
+  if(!pool){
+    const client=memoryClients.find(x=>x.id===id&&x.studio_id===req.user.studio_id)
+    if(!client)return res.status(404).json({error:'Клиент не найден'})
+    const duplicate=memoryClients.find(x=>x.id!==id&&x.studio_id===req.user.studio_id&&((phone&&x.phone===phone)||(email&&x.email===email)))
     if(duplicate)return res.status(409).json({error:'Клиент с таким телефоном или email уже существует'})
     client.name=name;client.email=email;client.phone=phone
     return res.json({client})
   }
-  const duplicate=await pool.query('select id from clients where id<>$1 and ((phone is not null and phone=$2) or (email is not null and email=$3)) limit 1',[id,phone,email])
+  const duplicate=await pool.query('select id from clients where studio_id=$4 and id<>$1 and ((phone is not null and phone=$2) or (email is not null and email=$3)) limit 1',[id,phone,email,req.user.studio_id])
   if(duplicate.rows[0])return res.status(409).json({error:'Клиент с таким телефоном или email уже существует'})
-  const q=await pool.query('update clients set name=$1,email=$2,phone=$3 where id=$4 returning id,name,email,phone,created_at',[name,email,phone,id])
+  const q=await pool.query('update clients set name=$1,email=$2,phone=$3 where id=$4 and studio_id=$5 returning id,name,email,phone,created_at',[name,email,phone,id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Клиент не найден'})
   res.json({client:q.rows[0]})
 })
 
-app.get('/api/clients', async (_req, res) => {
+app.get('/api/clients', async (req, res) => {
   if (!pool) {
     const rows=memoryClients.filter(x=>x.studio_id===req.user.studio_id).map(client=>{
       const phone=client.phone||'',email=client.email||''
