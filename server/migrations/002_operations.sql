@@ -38,3 +38,19 @@ create table if not exists payments (
 );
 create index if not exists idx_payments_project_created on payments(project_id, created_at desc);
 create index if not exists idx_payments_status on payments(status);
+
+
+create table if not exists invoices (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  client_id uuid references clients(id) on delete set null,
+  number text not null unique,
+  amount numeric(12,2) not null,
+  currency text not null default 'EUR',
+  status text not null default 'draft',
+  due_date date,
+  description text,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_invoices_project_created on invoices(project_id, created_at desc);
+create index if not exists idx_invoices_status on invoices(status);
