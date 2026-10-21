@@ -421,6 +421,11 @@ app.post('/api/billing/stripe/webhook', async (req,res)=>{
     const event=JSON.parse(payload),obj=event.data?.object||{}
     if(!pool)return res.json({received:true})
     if(event.type==='checkout.session.completed'){
+      const orderId=obj.metadata?.order_id
+      if(orderId){
+        const pi=typeof obj.payment_intent==='string'?obj.payment_intent:(obj.payment_intent?.id||null)
+        await pool.query("update orders set status='paid',paid_at=now(),stripe_checkout_session_id=$1,stripe_payment_intent_id=$2 where id=$3",[obj.id,pi,orderId])
+      }
       const studioId=obj.metadata?.studio_id,plan=String(obj.metadata?.plan||'').toLowerCase()
       if(studioId&&PLAN_CONFIG[plan]&&obj.payment_status==='paid'){
         const subId=typeof obj.subscription==='string'?obj.subscription:(obj.subscription?.id||null)
