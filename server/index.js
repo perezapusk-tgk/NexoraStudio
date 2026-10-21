@@ -1274,7 +1274,8 @@ app.post('/api/payments', async (req,res) => {
     await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[projectId,'payment','/payment',amount,JSON.stringify({order_id:orderId,payment_id:q.rows[0].id})])
   }
   res.status(201).json({payment:q.rows[0]})
-})app.get('/api/analytics/overview', async (_req, res) => {
+})
+app.get('/api/analytics/overview', async (_req, res) => {
   if (!pool) {
     const since=new Date(Date.now()-30*86400000)
     const base=memoryEvents.filter(e=>e.created_at && new Date(e.created_at)>=since)
