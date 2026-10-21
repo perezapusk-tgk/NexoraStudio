@@ -373,7 +373,7 @@ function CatalogManager({projectId}) {
   const [loading,setLoading]=useState(true)
   const [saving,setSaving]=useState(false)
   const [editing,setEditing]=useState(null)
-  const [form,setForm]=useState({name:'',description:'',price:'',currency:'EUR',active:true})
+  const [form,setForm]=useState({name:'',description:'',price:'',currency:'EUR',image_url:'',active:true})
   const [orderOpen,setOrderOpen]=useState(false)
   const [orderItems,setOrderItems]=useState([])
   const [orderClient,setOrderClient]=useState('')
@@ -387,7 +387,7 @@ function CatalogManager({projectId}) {
     }finally{setLoading(false)}
   }
   useEffect(()=>{load()},[projectId])
-  const reset=()=>{setEditing(null);setForm({name:'',description:'',price:'',currency:'EUR',active:true})}
+  const reset=()=>{setEditing(null);setForm({name:'',description:'',price:'',currency:'EUR',image_url:'',active:true})}
   const save=async()=>{
     if(!form.name.trim()) return
     setSaving(true)
@@ -397,7 +397,7 @@ function CatalogManager({projectId}) {
       reset(); await load()
     }finally{setSaving(false)}
   }
-  const edit=(item)=>{setEditing(item.id);setForm({name:item.name||'',description:item.description||'',price:item.price??'',currency:item.currency||'EUR',active:item.active!==false})}
+  const edit=(item)=>{setEditing(item.id);setForm({name:item.name||'',description:item.description||'',price:item.price??'',currency:item.currency||'EUR',image_url:item.image_url||'',active:item.active!==false})}
   const remove=async(id)=>{if(!window.confirm('Удалить позицию из каталога?'))return;await api.deleteCatalogItem(projectId,id);setItems(v=>v.filter(x=>x.id!==id));if(editing===id)reset()}
   const openOrder=(item)=>{
     setOrderItems([{...item,quantity:1}])
@@ -424,12 +424,12 @@ function CatalogManager({projectId}) {
     <section className="card workspace-card">
       <div className="card-head"><div><h2>Каталог</h2><span>{items.length} позиций · данные доступны сайту и Mini App</span></div><button className="filter" onClick={reset}>Новая позиция</button></div>
       {loading?<div className="empty-editor"><span>Загружаем каталог…</span></div>:items.length===0?<div className="empty-editor"><Layers3 size={24}/><b>Каталог пока пуст</b><span>Добавьте первую услугу или товар справа.</span></div>:
-      <div className="catalog-list">{items.map(item=><div className="catalog-row" key={item.id}><div className="catalog-thumb">{item.name.slice(0,1)}</div><div className="catalog-main"><b>{item.name}</b><span>{item.description||'Без описания'}</span></div><div className="catalog-price">{item.price!=null?new Intl.NumberFormat('ru-RU',{style:'currency',currency:item.currency||'EUR'}).format(Number(item.price)):'Цена по запросу'}</div><span className={item.active?'status success':'status draft'}><i/>{item.active?'Активна':'Скрыта'}</span><div className="catalog-actions"><button className="filter" onClick={()=>openOrder(item)}>Создать заказ</button><button className="filter" onClick={()=>edit(item)}>Изменить</button><button className="row-more" onClick={()=>remove(item.id)}><X size={16}/></button></div></div>)}</div>}
+      <div className="catalog-list">{items.map(item=><div className="catalog-row" key={item.id}><div className="catalog-thumb">{item.image_url?<img src={item.image_url} alt="" loading="lazy"/>:item.name.slice(0,1)}</div><div className="catalog-main"><b>{item.name}</b><span>{item.description||'Без описания'}</span></div><div className="catalog-price">{item.price!=null?new Intl.NumberFormat('ru-RU',{style:'currency',currency:item.currency||'EUR'}).format(Number(item.price)):'Цена по запросу'}</div><span className={item.active?'status success':'status draft'}><i/>{item.active?'Активна':'Скрыта'}</span><div className="catalog-actions"><button className="filter" onClick={()=>openOrder(item)}>Создать заказ</button><button className="filter" onClick={()=>edit(item)}>Изменить</button><button className="row-more" onClick={()=>remove(item.id)}><X size={16}/></button></div></div>)}</div>}
     </section>
     <section className="card workspace-card catalog-form">
       <div className="eyebrow">{editing?'Редактирование':'Новая позиция'}</div><h3>{editing?'Изменить позицию':'Добавить в каталог'}</h3>
       <label className="workspace-label">Название<input value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))} placeholder="Например, Стрижка"/></label>
-      <label className="workspace-label">Описание<textarea value={form.description} onChange={e=>setForm(v=>({...v,description:e.target.value}))} placeholder="Короткое описание услуги или товара"/></label>
+      <label className="workspace-label">Описание<textarea value={form.description} onChange={e=>setForm(v=>({...v,description:e.target.value}))} placeholder="Короткое описание услуги или товара"/></label><label className="workspace-label">Изображение<input type="url" value={form.image_url} onChange={e=>setForm(v=>({...v,image_url:e.target.value}))} placeholder="https://..."/></label>
       <div className="catalog-form-grid"><label className="workspace-label">Цена<input type="number" min="0" step="0.01" value={form.price} onChange={e=>setForm(v=>({...v,price:e.target.value}))} placeholder="35"/></label><label className="workspace-label">Валюта<select value={form.currency} onChange={e=>setForm(v=>({...v,currency:e.target.value}))}><option>EUR</option><option>USD</option><option>RUB</option></select></label></div>
       <label className="catalog-check"><input type="checkbox" checked={form.active} onChange={e=>setForm(v=>({...v,active:e.target.checked}))}/> Показывать клиентам</label>
       <div className="setting-actions"><button className="filter" onClick={reset}>Очистить</button><button className="primary" onClick={save} disabled={saving}>{saving?'Сохраняем…':editing?'Сохранить':'Добавить'}</button></div>
