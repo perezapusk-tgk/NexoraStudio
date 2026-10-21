@@ -9,7 +9,7 @@ const port = Number(process.env.PORT || 4000)
 const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false }) : null
 
 app.use(cors())
-app.use(express.json())
+app.use(express.json({verify:(req,_res,buf)=>{req.rawBody=Buffer.from(buf)}}))
 
 const PLAN_CONFIG = { free:{name:'Free',price:0,projectLimit:1,teamLimit:1,clientLimit:100}, starter:{name:'Starter',price:9,projectLimit:10,teamLimit:3,clientLimit:1000}, pro:{name:'Pro',price:19,projectLimit:50,teamLimit:5,clientLimit:10000}, agency:{name:'Agency',price:39,projectLimit:200,teamLimit:15,clientLimit:50000} }
 const planConfig=plan=>PLAN_CONFIG[String(plan||'starter').toLowerCase()]||PLAN_CONFIG.starter
@@ -272,23 +272,27 @@ function billingAmount(plan,currency){
 function billingAppUrl(){
   return String(process.env.APP_URL||process.env.FRONTEND_URL||'http://localhost:5173').replace(/\\/$/,'')
 }
-async function createStripeCheckout({studioId,plan,amount,currency}){
+async function createStripeCheckout({studioId,plan,amount,currency,email}){
   const secret=String(process.env.STRIPE_SECRET_KEY||'').trim()
   if(!secret) throw new Error('STRIPE_SECRET_KEY не настроен')
   const body=new URLSearchParams()
-  body.set('mode','payment')
+  body.set('mode','subscription')
   body.set('success_url',billingAppUrl()+'/?billing=success&provider=stripe&session_id={CHECKOUT_SESSION_ID}')
   body.set('cancel_url',billingAppUrl()+'/?billing=cancelled')
+  if(email) body.set('customer_email',email)
   body.set('line_items[0][price_data][currency]','usd')
-  body.set('line_items[0][price_data][product_data][name]','Nexora Studio '+planConfig(plan).name+' — 30 дней')
+  body.set('line_items[0][price_data][product_data][name]','Nexora Studio '+planConfig(plan).name)
   body.set('line_items[0][price_data][unit_amount]',String(Math.round(amount*100)))
+  body.set('line_items[0][price_data][recurring][interval]','month')
   body.set('line_items[0][quantity]','1')
+  body.set('subscription_data[metadata][studio_id]',studioId)
+  body.set('subscription_data[metadata][plan]',plan)
   body.set('metadata[studio_id]',studioId)
   body.set('metadata[plan]',plan)
   const r=await fetch('https://api.stripe.com/v1/checkout/sessions',{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/x-www-form-urlencoded'},body})
   const data=await r.json()
-  if(!r.ok) throw new Error(data?.error?.message||'Stripe не смог создать оплату')
-  return {id:data.id,url:data.url}
+  if(!r.ok) throw new Error(data?.error?.message||'Stripe не смог создать подписку')
+  return {id:data.id,url:data.url,customer_id:data.customer||null,subscription_id:data.subscription||null}
 }
 async function createYookassaCheckout({studioId,plan,amount}){
   const shopId=String(process.env.YOOKASSA_SHOP_ID||'').trim()
@@ -327,7 +331,7 @@ app.post('/api/billing/checkout', async (req,res)=>{
   }
   try{
     const checkout=currency==='USD'
-      ? await createStripeCheckout({studioId:req.user.studio_id,plan,amount,currency})
+      ? await createStripeCheckout({studioId:req.user.studio_id,plan,amount,currency,email:req.user.email})
       : await createYookassaCheckout({studioId:req.user.studio_id,plan,amount})
     if(!checkout.url) throw new Error('Платёжный провайдер не вернул ссылку оплаты')
     if(pool) {
@@ -336,6 +340,40 @@ app.post('/api/billing/checkout', async (req,res)=>{
     res.json({ok:true,mode:'checkout',provider:currency==='USD'?'stripe':'yookassa',checkout_url:checkout.url,provider_payment_id:checkout.id,plan:planConfig(plan),currency,amount})
   }catch(e){res.status(503).json({error:e.message||'Не удалось создать платёж'})}
 })
+app.post('/api/billing/stripe/webhook', async (req,res)=>{
+  const signing=String(process.env.STRIPE_WEBHOOK_SECRET||'').trim()
+  if(!signing)return res.status(503).json({error:'STRIPE_WEBHOOK_SECRET не настроен'})
+  const signature=String(req.headers['stripe-signature']||'')
+  const timestamp=Number((signature.match(/(?:^|,)t=(\\d+)/)||[])[1]||0)
+  const provided=(signature.match(/(?:^|,)v1=([^,]+)/)||[])[1]||''
+  const payload=(req.rawBody||Buffer.from('')).toString('utf8')
+  const expected=crypto.createHmac('sha256',signing).update(String(timestamp)+'.'+payload).digest('hex')
+  if(!timestamp||!provided||expected!==provided||Math.abs(Date.now()/1000-timestamp)>300)return res.status(400).json({error:'Недействительная подпись Stripe webhook'})
+  try{
+    const event=JSON.parse(payload),obj=event.data?.object||{}
+    if(!pool)return res.json({received:true})
+    if(event.type==='checkout.session.completed'){
+      const studioId=obj.metadata?.studio_id,plan=String(obj.metadata?.plan||'').toLowerCase()
+      if(studioId&&PLAN_CONFIG[plan]&&obj.payment_status==='paid'){
+        const subId=typeof obj.subscription==='string'?obj.subscription:(obj.subscription?.id||null)
+        await pool.query("update billing_transactions set status='paid',paid_at=now(),stripe_customer_id=$1,stripe_subscription_id=$2 where studio_id=$3 and provider='stripe' and provider_payment_id=$4",[obj.customer||null,subId,studioId,obj.id])
+        await pool.query("update studios set plan=$1,project_limit=$2,subscription_status='active',billing_provider='stripe',subscription_started_at=now(),subscription_renews_at=case when $3::bigint>0 then to_timestamp($3) else now()+interval '30 days' end,stripe_customer_id=$4,stripe_subscription_id=$5,updated_at=now() where id=$6",[plan,PLAN_CONFIG[plan].projectLimit,Number(obj.subscription?.current_period_end||0),obj.customer||null,subId,studioId])
+      }
+    }else if(event.type==='customer.subscription.updated'||event.type==='customer.subscription.deleted'){
+      const q=await pool.query('select id from studios where stripe_subscription_id=$1 limit 1',[obj.id])
+      if(q.rows[0]){
+        const status=event.type==='customer.subscription.deleted'?'cancelled':String(obj.status||'active')
+        await pool.query("update studios set subscription_status=$1,subscription_renews_at=case when $2::bigint>0 then to_timestamp($2) else subscription_renews_at end,updated_at=now() where id=$3",[status,Number(obj.current_period_end||0),q.rows[0].id])
+      }
+    }else if(event.type==='invoice.payment_failed'){
+      const q=await pool.query('update studios set subscription_status=\'past_due\',updated_at=now() where stripe_customer_id=$1',[obj.customer||''])
+    }else if(event.type==='invoice.paid'){
+      await pool.query('update studios set subscription_status=\'active\',updated_at=now() where stripe_customer_id=$1',[obj.customer||''])
+    }
+    res.json({received:true})
+  }catch(e){res.status(400).json({error:'Не удалось обработать Stripe webhook'})}
+})
+
 app.post('/api/billing/confirm', async (req,res)=>{
   if(!requireRole(req,res,['owner','admin'])) return
   const provider=String(req.body?.provider||'').toLowerCase()
@@ -348,9 +386,9 @@ app.post('/api/billing/confirm', async (req,res)=>{
   if(provider==='stripe'){
     const secret=String(process.env.STRIPE_SECRET_KEY||'').trim()
     if(!secret) return res.status(503).json({error:'STRIPE_SECRET_KEY не настроен'})
-    const r=await fetch('https://api.stripe.com/v1/checkout/sessions/'+encodeURIComponent(paymentId),{headers:{Authorization:'Bearer '+secret}})
+    const r=await fetch('https://api.stripe.com/v1/checkout/sessions/'+encodeURIComponent(paymentId)+'?expand[]=subscription',{headers:{Authorization:'Bearer '+secret}})
     const data=await r.json()
-    paid=r.ok&&data.payment_status==='paid'
+    paid=r.ok&&data.payment_status==='paid'&&data.mode==='subscription'
   }else{
     const shopId=String(process.env.YOOKASSA_SHOP_ID||'').trim(),secret=String(process.env.YOOKASSA_SECRET_KEY||'').trim()
     if(!shopId||!secret) return res.status(503).json({error:'YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY не настроены'})
@@ -359,8 +397,10 @@ app.post('/api/billing/confirm', async (req,res)=>{
     paid=r.ok&&data.status==='succeeded'&&data.paid===true
   }
   if(!paid) return res.status(409).json({error:'Оплата ещё не подтверждена'})
-  await pool.query('update billing_transactions set status=$1,paid_at=now() where id=$2',['paid',tx.id])
-  await pool.query('update studios set plan=$1,project_limit=$2,subscription_status=$3,billing_provider=$4,subscription_started_at=now(),subscription_renews_at=now()+interval \'30 days\',updated_at=now() where id=$5',[tx.plan,planConfig(tx.plan).projectLimit,'active',provider,req.user.studio_id])
+  const stripeSubscriptionId=provider==='stripe' ? (typeof data?.subscription==='string'?data.subscription:(data?.subscription?.id||null)) : null
+  const stripeCustomerId=provider==='stripe' ? (data?.customer||null) : null
+  await pool.query('update billing_transactions set status=$1,paid_at=now(),stripe_customer_id=$3,stripe_subscription_id=$4 where id=$2',['paid',tx.id,stripeCustomerId,stripeSubscriptionId])
+  await pool.query('update studios set plan=$1,project_limit=$2,subscription_status=$3,billing_provider=$4,subscription_started_at=now(),subscription_renews_at=case when $6::bigint>0 then to_timestamp($6) else now()+interval \'30 days\' end,stripe_customer_id=coalesce($7,stripe_customer_id),stripe_subscription_id=coalesce($8,stripe_subscription_id),updated_at=now() where id=$5',[tx.plan,planConfig(tx.plan).projectLimit,'active',provider,req.user.studio_id,Number(data?.subscription?.current_period_end||0),stripeCustomerId,stripeSubscriptionId])
   res.json({ok:true,plan:planConfig(tx.plan),currency:tx.currency,amount:Number(tx.amount),provider})
 })
 
