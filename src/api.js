@@ -36,6 +36,7 @@ export const api = {
   convertLead: (id) => request('/leads/' + id + '/convert',{method:'POST'}),
   clients: () => request('/clients'),
   client: (id) => request('/clients/' + id),
+  updateClient: (id,payload) => request('/clients/' + id,{method:'PATCH',body:JSON.stringify(payload)}),
   bookings: () => request('/bookings'),
   createBooking: (payload) => request('/bookings',{method:'POST',body:JSON.stringify(payload)}),
   updateBooking: (id,payload) => request('/bookings/' + id,{method:'PATCH',body:JSON.stringify(typeof payload==='string'?{status:payload}:payload)}),
