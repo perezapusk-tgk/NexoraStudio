@@ -32,6 +32,7 @@ export const api = {
   updateLead: (id,status) => request('/leads/' + id,{method:'PATCH',body:JSON.stringify({status})}),
   convertLead: (id) => request('/leads/' + id + '/convert',{method:'POST'}),
   clients: () => request('/clients'),
+  client: (id) => request('/clients/' + id),
   bookings: () => request('/bookings'),
   updateBooking: (id,status) => request('/bookings/' + id,{method:'PATCH',body:JSON.stringify({status})}),
   payments: () => request('/payments'),
