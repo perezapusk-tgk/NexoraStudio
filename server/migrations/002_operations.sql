@@ -70,3 +70,8 @@ create table if not exists orders (
 create index if not exists idx_orders_project_created on orders(project_id, created_at desc);
 create index if not exists idx_orders_client_created on orders(client_id, created_at desc);
 create index if not exists idx_orders_status on orders(status);
+
+
+alter table if exists payments
+  add column if not exists order_id uuid references orders(id) on delete set null;
+create index if not exists idx_payments_order on payments(order_id);
