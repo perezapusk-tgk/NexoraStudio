@@ -22,7 +22,8 @@ const memoryCatalog = new Map(memoryProjects.map(p => [p.id, demoCatalog(p.id)])
 const memoryLeads = [...demoLeads()]
 const memoryClients = [...demoClients()]
 const memoryBookings = [...demoBookings()]
-const memoryPayments = [...demoPayments()]\nconst memoryInvoices = [...demoInvoices()]
+const memoryPayments = [...demoPayments()]
+const memoryInvoices = [...demoInvoices()]
 const memoryEvents = []
 
 app.get('/api/health', async (_req, res) => {
@@ -268,7 +269,7 @@ app.get('/api/projects/:id/analytics', async (req,res) => {
     const events=memoryEvents.filter(e=>e.slug===slug)
     const leads=memoryLeads.filter(l=>l.project_slug===slug)
     const bookings=memoryBookings.filter(b=>b.project_slug===slug)
-    return res.json({metrics:{visits:events.filter(e=>e.event_type==='page_view').length,leads:leads.length,bookings:bookings.length,revenue:0}})
+    return res.json({metrics:{visits:events.filter(e=>e.event_type==='page_view').length,leads:leads.length,bookings:bookings.length,revenue:memoryPayments.filter(p=>p.project_id===project.id&&p.status==='paid').reduce((a,p)=>a+Number(p.amount||0),0)}})
   }
   const project=await pool.query('select id from projects where id=$1 or slug=$1 limit 1',[id])
   if(!project.rows[0])return res.status(404).json({error:'Проект не найден'})
@@ -278,8 +279,16 @@ app.get('/api/projects/:id/analytics', async (req,res) => {
     count(*) filter (where event_type='booking')::int as bookings,
     coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue
     from analytics_events where project_id=$1 and created_at >= now() - interval '30 days'`,[project.rows[0].id])
-  res.json({metrics:q.rows[0]})
+  const series=await pool.query(`select to_char(date_trunc('day',created_at),'YYYY-MM-DD') as day,
+    count(*) filter (where event_type='page_view')::int as visits,
+    count(*) filter (where event_type='lead')::int as leads,
+    count(*) filter (where event_type='booking')::int as bookings,
+    coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue
+    from analytics_events where project_id=$1 and created_at >= now() - interval '30 days'
+    group by 1 order by 1`,[project.rows[0].id])
+  res.json({metrics:q.rows[0],series:series.rows})
 })
+
 
 app.get('/api/payments', async (_req,res) => {
   if (!pool) return res.json({payments:memoryPayments})
