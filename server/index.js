@@ -1620,10 +1620,6 @@ app.get('/api/analytics/overview', async (_req, res) => {
   const metrics={...q.rows[0],orders:oq.rows[0].orders,paidOrders:oq.rows[0].paid_orders,averageOrder:oq.rows[0].average_order,paymentConversion:oq.rows[0].orders?Number(oq.rows[0].paid_orders)/Number(oq.rows[0].orders)*100:0,series:s.rows}
   res.json({metrics})
 })
-+values.length+' returning *',values)
-  if(!q.rows[0])return res.status(404).json({error:'Бронирование не найдено'})
-  res.json({booking:q.rows[0]})
-})
 app.post('/api/bookings/:id/payment', async (req,res) => {
   const id=req.params.id
   const amount=Number(req.body?.amount)
