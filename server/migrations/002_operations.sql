@@ -54,3 +54,19 @@ create table if not exists invoices (
 );
 create index if not exists idx_invoices_project_created on invoices(project_id, created_at desc);
 create index if not exists idx_invoices_status on invoices(status);
+
+
+create table if not exists orders (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  client_id uuid references clients(id) on delete set null,
+  number text not null unique,
+  status text not null default 'pending',
+  total numeric(12,2) not null,
+  currency text not null default 'EUR',
+  items jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_orders_project_created on orders(project_id, created_at desc);
+create index if not exists idx_orders_client_created on orders(client_id, created_at desc);
+create index if not exists idx_orders_status on orders(status);
