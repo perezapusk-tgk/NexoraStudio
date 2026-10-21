@@ -42,31 +42,29 @@ app.get('/api/projects', async (_req, res) => {
 app.post('/api/projects', async (req, res) => {
   const name = String(req.body?.name || '').trim()
   const projectType = String(req.body?.projectType || 'website').trim()
+  const templateId = String(req.body?.templateId || '').trim()
   if (!name) return res.status(400).json({ error: 'Название проекта обязательно' })
   if (!pool) {
+  const template=templateDefinition(templateId)
   const project={id:crypto.randomUUID(),name,slug:slugify(name),project_type:projectType,status:'draft',domain:null,settings:{miniApp:{enabled:projectType.includes('miniapp')}}}
   memoryProjects.unshift(project)
-  memoryPages.set(project.id,[{id:crypto.randomUUID(),title:'Главная',slug:'home',published:false,content:{blocks:[
-    {type:'hero',headline:name,subheadline:'Современный цифровой опыт для ваших клиентов.',cta:'Оставить заявку'},
-    {type:'services',title:'Услуги',items:['Основная услуга','Популярная услуга','Премиум услуга']},
-    {type:'contacts',title:'Контакты',text:'Свяжитесь с нами удобным способом.'}
-  ]}}])
-  memoryCatalog.set(project.id,[])
+  memoryPages.set(project.id,[{id:crypto.randomUUID(),title:'Главная',slug:'home',published:false,content:{blocks:template.blocks}}])
+  memoryCatalog.set(project.id,template.catalog.map(item=>({id:crypto.randomUUID(),project_id:project.id,...item})))
   return res.status(201).json({project})
 }
   const slug = slugify(name)
+  const template=templateDefinition(templateId)
   const { rows } = await pool.query(
     'insert into projects (studio_id, name, slug, project_type, status, settings) values ($1,$2,$3,$4,$5,$6) returning *',
     [demoStudio.id, name, slug, projectType, 'draft', JSON.stringify({miniApp:{enabled:projectType.includes('miniapp')}})]
   )
   await pool.query(
     'insert into pages(project_id,title,slug,content) values($1,$2,$3,$4)',
-    [rows[0].id,'Главная','home',JSON.stringify({blocks:[
-      {type:'hero',headline:name,subheadline:'Современный цифровой опыт для ваших клиентов.',cta:'Оставить заявку'},
-      {type:'services',title:'Услуги',items:['Основная услуга','Популярная услуга','Премиум услуга']},
-      {type:'contacts',title:'Контакты',text:'Свяжитесь с нами удобным способом.'}
-    ]})]
+    [rows[0].id,'Главная','home',JSON.stringify({blocks:template.blocks})]
   )
+  for (const item of template.catalog) {
+    await pool.query('insert into catalog_items(project_id,name,description,price,currency,active) values($1,$2,$3,$4,$5,$6)',[rows[0].id,item.name,item.description,item.price,item.currency,true])
+  }
   res.status(201).json({ project: rows[0] })
 })
 
@@ -246,6 +244,23 @@ app.get('/api/templates', (_req, res) => res.json({ templates: [
 app.use((_req, res) => res.status(404).json({ error: 'Route not found' }))
 
 app.listen(port, () => console.log(`Nexora API listening on :${port}`))
+
+function templateDefinition(id){
+  const common={
+    barber:{hero:'Barber House',sub:'Стильная запись и услуги без звонков.',items:['Мужская стрижка','Стрижка бороды','Комплекс'],catalog:[['Мужская стрижка','Стрижка и укладка',35],['Стрижка бороды','Форма и уход',20],['Комплекс','Стрижка + борода',50]]},
+    beauty:{hero:'Beauty Studio',sub:'Красота, уход и запись онлайн.',items:['Стрижка','Окрашивание','Уход'],catalog:[['Стрижка','Консультация и укладка',45],['Окрашивание','Подбор оттенка и уход',90],['Уход','Восстановление волос',55]]},
+    fitness:{hero:'Fitness Studio',sub:'Тренировки и абонементы в одном месте.',items:['Персональная тренировка','Групповое занятие','Абонемент'],catalog:[['Персональная тренировка','Индивидуальная программа',40],['Групповое занятие','Тренировка с группой',15],['Абонемент','Месячный абонемент',79]]},
+    restaurant:{hero:'Restaurant',sub:'Меню, бронирование и заявки онлайн.',items:['Завтраки','Основные блюда','Десерты'],catalog:[['Завтрак','Сезонное меню',14],['Основное блюдо','Авторская кухня',24],['Десерт','Домашний десерт',9]]},
+    coffee:{hero:'Coffee House',sub:'Кофе, десерты и заказы для гостей.',items:['Кофе','Десерты','Завтраки'],catalog:[['Капучино','Классический кофе',4.5],['Чизкейк','Домашний десерт',6],['Завтрак','Кофе + выпечка',10]]},
+    dental:{hero:'Dental Clinic',sub:'Запись на консультацию и лечение онлайн.',items:['Консультация','Гигиена','Лечение'],catalog:[['Консультация','Первичный приём',50],['Гигиена','Профессиональная чистка',80],['Лечение','План лечения после осмотра',120]]}
+  }
+  const x=common[id]||{hero:'Ваш бизнес',sub:'Современный цифровой опыт для клиентов.',items:['Основная услуга','Популярная услуга','Премиум услуга'],catalog:[['Основная услуга','Описание услуги',30],['Популярная услуга','Описание услуги',50],['Премиум услуга','Описание услуги',80]]}
+  return {blocks:[
+    {type:'hero',headline:x.hero,subheadline:x.sub,cta:'Записаться'},
+    {type:'services',title:'Услуги',items:x.items},
+    {type:'contacts',title:'Контакты',text:'Свяжитесь с нами удобным способом.'}
+  ],catalog:x.catalog.map(([name,description,price])=>({name,description,price,currency:'EUR',active:true}))}
+}
 
 function slugify(value) {
   return value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || crypto.randomUUID().slice(0,8)
