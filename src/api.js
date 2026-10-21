@@ -32,5 +32,6 @@ export const api = {
   clients: () => request('/clients'),
   bookings: () => request('/bookings'),
   analytics: () => request('/analytics/overview'),
+  projectAnalytics: (id) => request('/projects/' + id + '/analytics'),
   templates: () => request('/templates'),
 }
