@@ -22,7 +22,7 @@ const memoryCatalog = new Map(memoryProjects.map(p => [p.id, demoCatalog(p.id)])
 const memoryLeads = [...demoLeads()]
 const memoryClients = [...demoClients()]
 const memoryBookings = [...demoBookings()]
-const memoryPayments = [...demoPayments()]
+const memoryPayments = [...demoPayments()]\nconst memoryInvoices = [...demoInvoices()]
 const memoryEvents = []
 
 app.get('/api/health', async (_req, res) => {
@@ -307,6 +307,35 @@ app.patch('/api/payments/:id', async (req,res) => {
   res.json({payment:q.rows[0]})
 })
 
+app.get('/api/invoices', async (_req,res) => {
+  if (!pool) return res.json({invoices: memoryInvoices})
+  const {rows}=await pool.query('select i.id,i.project_id,i.client_id,i.number,i.amount,i.currency,i.status,i.due_date,i.description,i.created_at,pr.name as project_name,c.name as client_name from invoices i left join projects pr on pr.id=i.project_id left join clients c on c.id=i.client_id order by i.created_at desc limit 200')
+  res.json({invoices:rows})
+})
+app.post('/api/invoices', async (req,res) => {
+  const projectId=String(req.body?.project_id||'').trim()
+  const amount=Number(req.body?.amount)
+  const currency=String(req.body?.currency||'EUR').trim().toUpperCase()
+  const description=String(req.body?.description||'').trim()
+  const dueDate=req.body?.due_date ? String(req.body.due_date).trim() : null
+  const clientId=req.body?.client_id||null
+  if(!projectId || !Number.isFinite(amount) || amount<=0) return res.status(400).json({error:'Проект и сумма обязательны'})
+  const status=String(req.body?.status||'draft').trim()
+  if(!['draft','sent','paid','overdue','cancelled'].includes(status)) return res.status(400).json({error:'Недопустимый статус счёта'})
+  const number='INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
+  if(!pool){const invoice={id:crypto.randomUUID(),project_id:projectId,client_id:clientId,number,amount,currency,status,due_date:dueDate,description,created_at:new Date().toISOString()};memoryInvoices.unshift(invoice);return res.status(201).json({invoice})}
+  const q=await pool.query('insert into invoices(project_id,client_id,number,amount,currency,status,due_date,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,clientId,number,amount,currency,status,dueDate,description||null])
+  res.status(201).json({invoice:q.rows[0]})
+})
+app.patch('/api/invoices/:id', async (req,res) => {
+  const status=String(req.body?.status||'').trim()
+  if(!['draft','sent','paid','overdue','cancelled'].includes(status)) return res.status(400).json({error:'Недопустимый статус счёта'})
+  if(!pool){const x=memoryInvoices.find(v=>v.id===req.params.id);if(!x)return res.status(404).json({error:'Счёт не найден'});x.status=status;return res.json({invoice:x})}
+  const q=await pool.query('update invoices set status=$1 where id=$2 returning *',[status,req.params.id])
+  if(!q.rows[0])return res.status(404).json({error:'Счёт не найден'})
+  res.json({invoice:q.rows[0]})
+})
+
 app.get('/api/analytics/overview', async (_req, res) => {
   if (!pool) return res.json({ metrics: { visits: 28460 + memoryEvents.length, leads: memoryLeads.length, bookings: memoryBookings.length, revenue: 18420 } })
   const { rows } = await pool.query(`
@@ -367,4 +396,5 @@ function demoCatalog(projectId){ return [
 function demoLeads(){ return [{id:'l1',name:'Марина Соколова',message:'Хочу записаться на стрижку',status:'new'},{id:'l2',name:'Иван Петров',message:'Есть ли свободное окно в субботу?',status:'in_progress'}] }
 function demoBookings(){ return [{id:'b1',customer_name:'Александр К.',starts_at:'2026-10-21T10:00:00',status:'confirmed'},{id:'b2',customer_name:'Елена М.',starts_at:'2026-10-21T11:00:00',status:'confirmed'}] }
 function demoPayments(){ return [{id:'pay1',project_id:'p1',project_name:'Barber House',amount:85,currency:'EUR',status:'paid',description:'Стрижка + борода',created_at:'2026-10-21T12:10:00Z'},{id:'pay2',project_id:'p3',project_name:'Urban Fitness',amount:120,currency:'EUR',status:'paid',description:'Абонемент',created_at:'2026-10-20T16:30:00Z'}] }
+function demoInvoices(){ return [{id:'inv1',project_id:'p1',number:'INV-20261021-AB12CD',amount:85,currency:'EUR',status:'paid',description:'Стрижка + борода',due_date:'2026-10-28',created_at:'2026-10-21T12:12:00Z'},{id:'inv2',project_id:'p3',number:'INV-20261020-EF34GH',amount:120,currency:'EUR',status:'sent',description:'Абонемент',due_date:'2026-10-27',created_at:'2026-10-20T16:32:00Z'}] }
 function demoClients(){ return [{id:'c1',name:'Barber House',email:'client@example.com',phone:'+358 40 000 0000'},{id:'c2',name:'Nordic Beauty',email:'hello@example.com',phone:'+358 40 000 0001'}] }
