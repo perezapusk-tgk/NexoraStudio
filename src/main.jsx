@@ -437,13 +437,14 @@ function CatalogManager({projectId}) {
 }
 
 function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
+  
   const current=data?.project||project, pages=data?.pages||[];
   const [saving,setSaving]=useState(false), [name,setName]=useState(''), [domain,setDomain]=useState('');
   const [device,setDevice]=useState('desktop');
   const [tg,setTg]=useState({enabled:false,configured:false,botUsername:'',buttonText:'Открыть Mini App',url:''});
   const [telegramBusy,setTelegramBusy]=useState(false);
   const [domainBusy,setDomainBusy]=useState(false), [domainInfo,setDomainInfo]=useState(null);
-  const [analytics,setAnalytics]=useState(null);
+  const [analytics,setAnalytics]=useState(null), [openFaq,setOpenFaq]=useState({});
   const [pageId,setPageId]=useState(null), [blocks,setBlocks]=useState([]);
   const [theme,setTheme]=useState({accent:'#111827',background:'#ffffff',text:'#111827',font:'Inter',radius:'14px',button:'solid',maxWidth:'1180px'});
   const page=pages.find(p=>p.id===pageId)||pages[0];
@@ -537,7 +538,7 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
       </section>
     </div>}
 
-    {view==='preview'&&<div className="card preview-shell"><div className="preview-top"><b>{current.name}</b><span>{domain||'preview.nexora.site'}</span></div><div className={`public-preview ${device==='mobile'?'preview-mobile':''}`} style={{'--preview-accent':theme.accent,'--preview-bg':theme.background,'--preview-text':theme.text,'--preview-radius':theme.radius,'--preview-font':theme.font}}>{blocks.map((b,i)=><div key={i} className={b.type==='hero'?'preview-hero':'preview-section'}>{b.type==='hero'?<><small>ПРЕДПРОСМОТР</small><h1>{b.headline}</h1><p>{b.subheadline}</p><button>{b.cta}</button></>:b.type==='services'?<><span>{b.title}</span><div className="preview-services" style={{gridTemplateColumns:`repeat(${b.columns||1},minmax(0,1fr))`}}>{(b.items||[]).map((x,j)=><div className="preview-card" key={j}>{b.type==='gallery'&&(b.images||[])[j]&&<img src={b.images[j]} alt=""/>}<b>{x}</b></div>)}</div></>:b.type==='cta'?<><h2>{b.title}</h2><p>{b.text}</p><button>{b.button}</button></>:<><h2>{b.title}</h2><div className="preview-services">{(b.items||[]).map(x=><b key={x}>{x}</b>)}</div></>}</div>)}{!blocks.length&&<div className="empty-editor"><b>Нет блоков</b><span>Добавьте блоки в редакторе.</span></div>}</div></div>}
+    {view==='preview'&&<div className="card preview-shell"><div className="preview-top"><b>{current.name}</b><span>{domain||'preview.nexora.site'}</span></div><div className={`public-preview ${device==='mobile'?'preview-mobile':''}`} style={{'--preview-accent':theme.accent,'--preview-bg':theme.background,'--preview-text':theme.text,'--preview-radius':theme.radius,'--preview-font':theme.font}}>{blocks.map((b,i)=><div key={i} className={b.type==='hero'?'preview-hero':'preview-section'}>{b.type==='hero'?<><small>ПРЕДПРОСМОТР</small><h1>{b.headline}</h1><p>{b.subheadline}</p><button onClick={()=>b.link?window.open(b.link,'_blank'):null}>{b.cta}</button></>:b.type==='services'?<><span>{b.title}</span><div className="preview-services" style={{gridTemplateColumns:`repeat(${b.columns||1},minmax(0,1fr))`}}>{(b.items||[]).map((x,j)=><div className="preview-card" key={j}>{b.type==='gallery'&&(b.images||[])[j]&&<img src={b.images[j]} alt=""/>}<b>{x}</b></div>)}</div></>:b.type==='cta'?<><h2>{b.title}</h2><p>{b.text}</p><button>{b.button}</button></>:<><h2>{b.title}</h2><div className="preview-services">{(b.items||[]).map(x=><b key={x}>{x}</b>)}</div></>}</div>)}{!blocks.length&&<div className="empty-editor"><b>Нет блоков</b><span>Добавьте блоки в редакторе.</span></div>}</div></div>}
 
     {view==='settings'&&<div className="workspace-settings">
       <div className="card workspace-card"><div className="eyebrow">Настройки проекта</div><h2>Основные параметры</h2><label className="workspace-label">Название проекта<input value={name} onChange={e=>setName(e.target.value)}/></label><label className="workspace-label">Домен<input placeholder="client.ru" value={domain} onChange={e=>{setDomain(e.target.value);setDomainInfo(null)}}/></label>
