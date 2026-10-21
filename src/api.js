@@ -35,7 +35,7 @@ export const api = {
   clients: () => request('/clients'),
   client: (id) => request('/clients/' + id),
   bookings: () => request('/bookings'),
-  updateBooking: (id,status) => request('/bookings/' + id,{method:'PATCH',body:JSON.stringify({status})}),
+  updateBooking: (id,payload) => request('/bookings/' + id,{method:'PATCH',body:JSON.stringify(typeof payload==='string'?{status:payload}:payload)}),
   payments: () => request('/payments'),
   invoices: () => request('/invoices'),
   orders: () => request('/orders'),
