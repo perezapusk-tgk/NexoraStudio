@@ -1391,23 +1391,23 @@ app.patch('/api/payments/:id', async (req,res) => {
   res.json({payment:q.rows[0]})
 })
 
-app.get('/api/analytics/overview', async (_req, res) => {
+app.get('/api/analytics/overview', async (req, res) => {
   if (!pool) {
     const since=new Date(Date.now()-30*86400000)
-    const base=memoryEvents.filter(e=>e.created_at && new Date(e.created_at)>=since)
-    const paidOrders=memoryOrders.filter(o=>o.status==='paid' && new Date(o.created_at)>=since)
-    const allOrders=memoryOrders.filter(o=>new Date(o.created_at)>=since)
-    const revenue=memoryPayments.filter(p=>p.status==='paid' && new Date(p.created_at)>=since).reduce((sum,p)=>sum+Number(p.amount||0),0)
+    const base=memoryEvents.filter(e=>e.studio_id===req.user.studio_id && e.created_at && new Date(e.created_at)>=since)
+    const paidOrders=memoryOrders.filter(o=>o.studio_id===req.user.studio_id && o.status==='paid' && new Date(o.created_at)>=since)
+    const allOrders=memoryOrders.filter(o=>o.studio_id===req.user.studio_id && new Date(o.created_at)>=since)
+    const revenue=memoryPayments.filter(p=>p.studio_id===req.user.studio_id && p.status==='paid' && new Date(p.created_at)>=since).reduce((sum,p)=>sum+Number(p.amount||0),0)
     const series=Array.from({length:14},(_,idx)=>{const d=new Date(Date.now()-(13-idx)*86400000);const key=d.toISOString().slice(0,10);const day=base.filter(e=>String(e.created_at).slice(0,10)===key);return {day:key,visits:day.filter(e=>e.event_type==='page_view').length,leads:day.filter(e=>e.event_type==='lead').length,bookings:day.filter(e=>e.event_type==='booking').length,revenue:day.filter(e=>e.event_type==='payment').reduce((s,e)=>s+Number(e.value||0),0)}})
-    return res.json({metrics:{visits:28460+base.filter(e=>e.event_type==='page_view').length,leads:memoryLeads.length,bookings:memoryBookings.length,revenue,orders:allOrders.length,paidOrders:paidOrders.length,averageOrder:allOrders.length?allOrders.reduce((s,o)=>s+Number(o.total||0),0)/allOrders.length:0,paymentConversion:allOrders.length?paidOrders.length/allOrders.length*100:0,series}})
+    return res.json({metrics:{visits:28460+base.filter(e=>e.event_type==='page_view').length,leads:memoryLeads.filter(x=>x.studio_id===req.user.studio_id).length,bookings:memoryBookings.filter(x=>x.studio_id===req.user.studio_id).length,revenue,orders:allOrders.length,paidOrders:paidOrders.length,averageOrder:allOrders.length?allOrders.reduce((s,o)=>s+Number(o.total||0),0)/allOrders.length:0,paymentConversion:allOrders.length?paidOrders.length/allOrders.length*100:0,series}})
   }
   const q=await pool.query(`select
     count(*) filter (where event_type='page_view')::int as visits,
     count(*) filter (where event_type='lead')::int as leads,
     count(*) filter (where event_type='booking')::int as bookings,
     coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue
-    from analytics_events where created_at >= now() - interval '30 days'`)
-  const oq=await pool.query(`select count(*)::int as orders,count(*) filter (where status='paid')::int as paid_orders,coalesce(avg(total),0)::numeric as average_order from orders where created_at >= now() - interval '30 days'`)
+    from analytics_events ae join projects pr on pr.id=ae.project_id where pr.studio_id=$1 and ae.created_at >= now() - interval '30 days'`,[req.user.studio_id])
+  const oq=await pool.query(`select count(*)::int as orders,count(*) filter (where o.status='paid')::int as paid_orders,coalesce(avg(o.total),0)::numeric as average_order from orders o join projects pr on pr.id=o.project_id where pr.studio_id=$1 and o.created_at >= now() - interval '30 days'`,[req.user.studio_id])
   const s=await pool.query(`select to_char(date_trunc('day',created_at),'YYYY-MM-DD') as day,count(*) filter (where event_type='page_view')::int as visits,count(*) filter (where event_type='lead')::int as leads,count(*) filter (where event_type='booking')::int as bookings,coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue from analytics_events where created_at >= now() - interval '30 days' group by 1 order by 1`)
   const metrics={...q.rows[0],orders:oq.rows[0].orders,paidOrders:oq.rows[0].paid_orders,averageOrder:oq.rows[0].average_order,paymentConversion:oq.rows[0].orders?Number(oq.rows[0].paid_orders)/Number(oq.rows[0].orders)*100:0,series:s.rows}
   res.json({metrics})
