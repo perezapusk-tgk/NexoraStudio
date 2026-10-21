@@ -10,6 +10,7 @@ const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env
 
 app.use(cors())
 app.use(express.json({verify:(req,_res,buf)=>{req.rawBody=Buffer.from(buf)}}))
+app.use(express.static('dist'))
 
 const PLAN_CONFIG = { free:{name:'Free',price:0,projectLimit:1,teamLimit:1,clientLimit:100}, starter:{name:'Starter',price:9,projectLimit:10,teamLimit:3,clientLimit:1000}, pro:{name:'Pro',price:19,projectLimit:50,teamLimit:5,clientLimit:10000}, agency:{name:'Agency',price:39,projectLimit:200,teamLimit:15,clientLimit:50000} }
 const planConfig=plan=>PLAN_CONFIG[String(plan||'starter').toLowerCase()]||PLAN_CONFIG.starter
@@ -1462,6 +1463,11 @@ app.get('/api/analytics/overview', async (req, res) => {
   const s=await pool.query(`select to_char(date_trunc('day',created_at),'YYYY-MM-DD') as day,count(*) filter (where event_type='page_view')::int as visits,count(*) filter (where event_type='lead')::int as leads,count(*) filter (where event_type='booking')::int as bookings,coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue from analytics_events where created_at >= now() - interval '30 days' group by 1 order by 1`)
   const metrics={...q.rows[0],orders:oq.rows[0].orders,paidOrders:oq.rows[0].paid_orders,averageOrder:oq.rows[0].average_order,paymentConversion:oq.rows[0].orders?Number(oq.rows[0].paid_orders)/Number(oq.rows[0].orders)*100:0,series:s.rows}
   res.json({metrics})
+})
+
+app.use((req,res,next)=>{
+  if(req.method==='GET' && !req.path.startsWith('/api') && req.path!=='/health') return res.sendFile(process.cwd()+'/dist/index.html')
+  next()
 })
 
 if (process.env.NODE_ENV !== 'test') app.listen(port,()=>console.log(`Nexora API listening on ${port}`))
