@@ -271,6 +271,25 @@ app.patch('/api/bookings/:id', async (req,res) => {
   if(!q.rows[0])return res.status(404).json({error:'Бронирование не найдено'})
   res.json({booking:q.rows[0]})
 })
+app.post('/api/bookings/:id/payment', async (req,res) => {
+  const id=req.params.id
+  const amount=Number(req.body?.amount)
+  const currency=String(req.body?.currency||'EUR').trim().toUpperCase()
+  if(!Number.isFinite(amount)||amount<=0)return res.status(400).json({error:'Укажите корректную сумму оплаты'})
+  let booking
+  if(!pool) booking=memoryBookings.find(x=>x.id===id)
+  else booking=(await pool.query('select * from bookings where id=$1 limit 1',[id])).rows[0]
+  if(!booking)return res.status(404).json({error:'Бронирование не найдено'})
+  const projectId=booking.project_id||null
+  if(!projectId)return res.status(400).json({error:'У бронирования не указан проект'})
+  const description='Оплата бронирования'+(booking.service_name?' · '+booking.service_name:'')
+  if(!pool){const payment={id:crypto.randomUUID(),project_id:projectId,client_id:booking.client_id||null,booking_id:id,order_id:null,amount,currency,status:'paid',description,created_at:new Date().toISOString()};memoryPayments.unshift(payment);booking.status='completed';memoryEvents.push({slug:booking.project_slug,event_type:'payment',path:'/booking',value:amount,created_at:new Date().toISOString()});return res.status(201).json({payment,booking})}
+  const q=await pool.query('insert into payments(project_id,client_id,booking_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7) returning *',[projectId,booking.client_id||null,id,amount,currency,'paid',description])
+  await pool.query("update bookings set status='completed' where id=$1",[id])
+  await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[projectId,'payment','/booking',amount,JSON.stringify({booking_id:id})])
+  res.status(201).json({payment:q.rows[0],booking:{...booking,status:'completed'}})
+})
+
 
 app.patch('/api/leads/:id', async (req,res) => {
   const id=String(req.params.id)
