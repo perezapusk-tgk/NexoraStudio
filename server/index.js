@@ -413,10 +413,11 @@ app.post('/api/billing/stripe/webhook', async (req,res)=>{
   if(!signing)return res.status(503).json({error:'STRIPE_WEBHOOK_SECRET не настроен'})
   const signature=String(req.headers['stripe-signature']||'')
   const timestamp=Number((signature.match(/(?:^|,)t=(\\d+)/)||[])[1]||0)
-  const provided=(signature.match(/(?:^|,)v1=([^,]+)/)||[])[1]||''
+  const providedList=[...signature.matchAll(/(?:^|,)v1=([^,]+)/g)].map(m=>m[1])
   const payload=(req.rawBody||Buffer.from('')).toString('utf8')
   const expected=crypto.createHmac('sha256',signing).update(String(timestamp)+'.'+payload).digest('hex')
-  if(!timestamp||!provided||expected!==provided||Math.abs(Date.now()/1000-timestamp)>300)return res.status(400).json({error:'Недействительная подпись Stripe webhook'})
+  const valid=timestamp>0&&providedList.some(v=>v.length===expected.length&&crypto.timingSafeEqual(Buffer.from(v),Buffer.from(expected)))&&Math.abs(Date.now()/1000-timestamp)<=300
+  if(!valid)return res.status(400).json({error:'Недействительная подпись Stripe webhook'})
   try{
     const event=JSON.parse(payload),obj=event.data?.object||{}
     if(!pool)return res.json({received:true})
@@ -740,9 +741,9 @@ app.post('/api/public/:slug/bookings', async (req,res) => {
   const serviceName=String(req.body?.service_name||'').trim()
   if(!name || !phone || !startsAt) return res.status(400).json({error:'Заполните имя, телефон и время'})
   if(!pool){const project=memoryProjects.find(p=>p.slug===slug && p.status==='published');if(!project) return res.status(404).json({error:'Публичный проект не найден'});let client=memoryClients.find(x=>x.phone===phone);if(!client){client={id:crypto.randomUUID(),name,email:'',phone,created_at:new Date().toISOString()};memoryClients.unshift(client)}const booking={id:crypto.randomUUID(),project_slug:slug,project_id:project.id,client_id:client.id,customer_name:name,customer_phone:phone,starts_at:startsAt,service_name:serviceName,status:'pending'};memoryBookings.push(booking);memoryEvents.push({slug,event_type:'booking',path:'/booking',created_at:new Date().toISOString()});return res.status(201).json({booking})}
-  const pr=await pool.query("select id from projects where slug=$1 and status='published' limit 1",[slug])
+  const pr=await pool.query("select id,studio_id from projects where slug=$1 and status='published' limit 1",[slug])
   if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
-  const existingClient=await pool.query('select id from clients where phone=$1 limit 1',[phone]);const clientId=existingClient.rows[0]?.id||null;const q=await pool.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7) returning *',[pr.rows[0].id,clientId,name,phone,startsAt,serviceName||null,'pending'])
+  const existingClient=await pool.query('select id from clients where studio_id=$1 and phone=$2 limit 1',[pr.rows[0].studio_id,phone]);const clientId=existingClient.rows[0]?.id||null;const q=await pool.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7) returning *',[pr.rows[0].id,clientId,name,phone,startsAt,serviceName||null,'pending'])
   await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[pr.rows[0].id,'booking','/booking',0,JSON.stringify({source:'public',service_name:serviceName})])
   res.status(201).json({booking:q.rows[0]})
 })
@@ -762,7 +763,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   if(pool){
     const existing=(await pool.query('select id from clients where studio_id=$1 and ((phone=$2 and $2 <> \'\') or (email=$3 and $3 <> \'\')) limit 1',[project.studio_id||demoStudio.id,phone,email])).rows[0]
     if(existing) clientId=existing.id
-    else clientId=(await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id',[demoStudio.id,name,email||null,phone||null])).rows[0].id
+    else clientId=(await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id',[project.studio_id,name,email||null,phone||null])).rows[0].id
   } else {
     const existing=memoryClients.find(c=>(phone && c.phone===phone)||(email && c.email===email))
     if(existing) clientId=existing.id
@@ -936,7 +937,7 @@ app.post('/api/bookings', async (req,res) => {
   if(!project)return res.status(404).json({error:'Проект не найден'})
   const conflict=(await pool.query("select id from bookings where project_id=$1 and status <> 'cancelled' and starts_at < $3 and ends_at > $2 limit 1",[projectId,startsAt,endsAt])).rows[0]
   if(conflict)return res.status(409).json({error:'Это время уже занято другой записью'})
-  const client=phone?(await pool.query('select id from clients where phone=$1 limit 1',[phone])).rows[0]:null
+  const client=phone?(await pool.query('select id from clients where studio_id=$1 and phone=$2 limit 1',[req.user.studio_id,phone])).rows[0]:null
   const q=await pool.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,ends_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,client?.id||null,name,phone||null,startsAt,endsAt,service||null,status])
   res.status(201).json({booking:{...q.rows[0],project_name:project.name}})
 })
@@ -1042,12 +1043,12 @@ app.post('/api/leads/:id/convert', async (req,res) => {
     memoryClients.unshift(client)
     return res.status(201).json({client,existing:false})
   }
-  const leadQ=await pool.query('select * from leads where id=$1 limit 1',[id])
+  const leadQ=await pool.query('select l.*,p.studio_id from leads l left join projects p on p.id=l.project_id where l.id=$1 limit 1'
   if(!leadQ.rows[0])return res.status(404).json({error:'Заявка не найдена'})
   const lead=leadQ.rows[0]
-  const existingQ=await pool.query('select id,name,email,phone,created_at from clients where (phone=$1 and $1 is not null) or (email=$2 and $2 is not null) limit 1',[lead.phone,lead.email])
+  const existingQ=await pool.query('select id,name,email,phone,created_at from clients where studio_id=$3 and ((phone=$1 and $1 is not null) or (email=$2 and $2 is not null)) limit 1',[lead.phone,lead.email,lead.studio_id])
   if(existingQ.rows[0])return res.json({client:existingQ.rows[0],existing:true})
-  const q=await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id,name,email,phone,created_at',[demoStudio.id,lead.name,lead.email||null,lead.phone||null])
+  const q=await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id,name,email,phone,created_at',[lead.studio_id,lead.name,lead.email||null,lead.phone||null])
   await pool.query("update leads set status='won' where id=$1",[id])
   res.status(201).json({client:q.rows[0],existing:false})
 })
