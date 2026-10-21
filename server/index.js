@@ -13,6 +13,27 @@ app.use(express.json({verify:(req,_res,buf)=>{req.rawBody=Buffer.from(buf)}}))
 
 const PLAN_CONFIG = { free:{name:'Free',price:0,projectLimit:1,teamLimit:1,clientLimit:100}, starter:{name:'Starter',price:9,projectLimit:10,teamLimit:3,clientLimit:1000}, pro:{name:'Pro',price:19,projectLimit:50,teamLimit:5,clientLimit:10000}, agency:{name:'Agency',price:39,projectLimit:200,teamLimit:15,clientLimit:50000} }
 const planConfig=plan=>PLAN_CONFIG[String(plan||'starter').toLowerCase()]||PLAN_CONFIG.starter
+async function clientLimitState(studioId){
+  const studioIdText=String(studioId||'')
+  if(pool){
+    const q=await pool.query('select plan from studios where id=$1',[studioIdText])
+    const plan=planConfig(q.rows[0]?.plan)
+    const count=(await pool.query('select count(*)::int as count from clients where studio_id=$1',[studioIdText])).rows[0]?.count||0
+    return {count,limit:plan.clientLimit,plan:plan.name,exceeded:count>=plan.clientLimit}
+  }
+  const studio=memoryStudios?.find?.(x=>x.id===studioIdText)||demoStudio
+  const plan=planConfig(studio.plan)
+  const count=memoryClients.filter(x=>x.studio_id===studioIdText).length
+  return {count,limit:plan.clientLimit,plan:plan.name,exceeded:count>=plan.clientLimit}
+}
+async function requireClientCapacity(studioId,res){
+  const state=await clientLimitState(studioId)
+  if(state.exceeded){
+    res.status(409).json({error:'Достигнут лимит клиентов вашего тарифа',code:'PLAN_LIMIT',limit:state.limit,plan:state.plan})
+    return false
+  }
+  return true
+}
 const demoStudio = { id: '00000000-0000-0000-0000-000000000001', name: 'Nexora Studio', ownerName: 'Алексей', plan: 'pro', projectLimit: 50 }
 const TEMPLATE_DEFINITIONS={
   barber:{id:'barber',name:'Барбершоп',category:'Красота',blocks:[
@@ -343,10 +364,15 @@ async function createStripeCheckout({studioId,plan,amount,currency,email}){
   body.set('success_url',billingAppUrl()+'/?billing=success&provider=stripe&session_id={CHECKOUT_SESSION_ID}')
   body.set('cancel_url',billingAppUrl()+'/?billing=cancelled')
   if(email) body.set('customer_email',email)
-  body.set('line_items[0][price_data][currency]','usd')
-  body.set('line_items[0][price_data][product_data][name]','Nexora Studio '+planConfig(plan).name)
-  body.set('line_items[0][price_data][unit_amount]',String(Math.round(amount*100)))
-  body.set('line_items[0][price_data][recurring][interval]','month')
+  const stablePriceId=String(process.env['STRIPE_PRICE_'+String(plan).toUpperCase()+'_USD']||'').trim()
+  if(stablePriceId){
+    body.set('line_items[0][price]',stablePriceId)
+  }else{
+    body.set('line_items[0][price_data][currency]','usd')
+    body.set('line_items[0][price_data][product_data][name]','Nexora Studio '+planConfig(plan).name)
+    body.set('line_items[0][price_data][unit_amount]',String(Math.round(amount*100)))
+    body.set('line_items[0][price_data][recurring][interval]','month')
+  }
   body.set('line_items[0][quantity]','1')
   body.set('subscription_data[metadata][studio_id]',studioId)
   body.set('subscription_data[metadata][plan]',plan)
@@ -419,6 +445,17 @@ async function stripeRequest(path,method='GET',params=null){
   if(!r.ok) throw new Error(data?.error?.message||'Stripe API error')
   return data
 }
+app.post('/api/billing/portal', async (req,res)=>{
+  if(!requireRole(req,res,['owner','admin'])) return
+  try{
+    let customerId=null
+    if(pool) customerId=(await pool.query('select stripe_customer_id from studios where id=$1',[req.user.studio_id])).rows[0]?.stripe_customer_id
+    else customerId=(memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio).stripe_customer_id||null
+    if(!customerId)return res.status(409).json({error:'У студии пока нет активного Stripe-покупателя. Сначала оформите тариф через Stripe.'})
+    const portal=await stripeRequest('/v1/billing_portal/sessions','POST',{customer:customerId,return_url:billingAppUrl()+'/?billing=return'})
+    res.json({url:portal.url})
+  }catch(e){res.status(503).json({error:e.message||'Не удалось открыть управление подпиской в Stripe'})}
+})
 app.get('/api/connect/status', async (req,res)=>{
   if(!pool){
     const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
@@ -803,7 +840,7 @@ app.post('/api/public/:slug/bookings', async (req,res) => {
   const startsAt=String(req.body?.starts_at||'').trim()
   const serviceName=String(req.body?.service_name||'').trim()
   if(!name || !phone || !startsAt) return res.status(400).json({error:'Заполните имя, телефон и время'})
-  if(!pool){const project=memoryProjects.find(p=>p.slug===slug && p.status==='published');if(!project) return res.status(404).json({error:'Публичный проект не найден'});let client=memoryClients.find(x=>x.phone===phone);if(!client){client={id:crypto.randomUUID(),name,email:'',phone,created_at:new Date().toISOString()};memoryClients.unshift(client)}const booking={id:crypto.randomUUID(),project_slug:slug,project_id:project.id,client_id:client.id,customer_name:name,customer_phone:phone,starts_at:startsAt,service_name:serviceName,status:'pending'};memoryBookings.push(booking);memoryEvents.push({slug,event_type:'booking',path:'/booking',created_at:new Date().toISOString()});return res.status(201).json({booking})}
+  if(!pool){const project=memoryProjects.find(p=>p.slug===slug && p.status==='published');if(!project) return res.status(404).json({error:'Публичный проект не найден'});let client=memoryClients.find(x=>x.studio_id===project.studio_id&&x.phone===phone);if(!client){if(!await requireClientCapacity(project.studio_id,res))return;client={id:crypto.randomUUID(),studio_id:project.studio_id,name,email:'',phone,created_at:new Date().toISOString()};memoryClients.unshift(client)}const booking={id:crypto.randomUUID(),studio_id:project.studio_id,project_slug:slug,project_id:project.id,client_id:client.id,customer_name:name,customer_phone:phone,starts_at:startsAt,service_name:serviceName,status:'pending'};memoryBookings.push(booking);memoryEvents.push({slug,event_type:'booking',path:'/booking',created_at:new Date().toISOString()});return res.status(201).json({booking})}
   const pr=await pool.query("select id,studio_id from projects where slug=$1 and status='published' limit 1",[slug])
   if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
   const existingClient=await pool.query('select id from clients where studio_id=$1 and phone=$2 limit 1',[pr.rows[0].studio_id,phone]);const clientId=existingClient.rows[0]?.id||null;const q=await pool.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7) returning *',[pr.rows[0].id,clientId,name,phone,startsAt,serviceName||null,'pending'])
@@ -826,11 +863,19 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   if(pool){
     const existing=(await pool.query('select id from clients where studio_id=$1 and ((phone=$2 and $2 <> \'\') or (email=$3 and $3 <> \'\')) limit 1',[project.studio_id||demoStudio.id,phone,email])).rows[0]
     if(existing) clientId=existing.id
-    else clientId=(await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id',[project.studio_id,name,email||null,phone||null])).rows[0].id
+    else {
+      if(!await requireClientCapacity(project.studio_id,res))return
+      clientId=(await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id',[project.studio_id,name,email||null,phone||null])).rows[0].id
+    }
   } else {
     const existing=memoryClients.find(c=>(phone && c.phone===phone)||(email && c.email===email))
     if(existing) clientId=existing.id
-    else { const client={id:crypto.randomUUID(),studio_id:project.studio_id||demoStudio.id,name,email,phone,created_at:new Date().toISOString()}; memoryClients.unshift(client); clientId=client.id }
+    else {
+      const studioId=project.studio_id||demoStudio.id
+      if(!await requireClientCapacity(studioId,res))return
+      const client={id:crypto.randomUUID(),studio_id:studioId,name,email,phone,created_at:new Date().toISOString()}
+      memoryClients.unshift(client); clientId=client.id
+    }
   }
   let total=0
   const normalized=[]
@@ -1004,9 +1049,13 @@ app.post('/api/bookings', async (req,res) => {
     if(!project)return res.status(404).json({error:'Проект не найден'})
     const conflict=memoryBookings.find(x=>x.project_id===projectId&&x.status!=='cancelled'&&new Date(x.starts_at)<new Date(endsAt)&&new Date(x.ends_at||x.starts_at)<new Date(startsAt)===false)
     if(conflict&&new Date(conflict.starts_at)<new Date(endsAt)&&new Date(conflict.ends_at||new Date(new Date(conflict.starts_at).getTime()+3600000))>new Date(startsAt))return res.status(409).json({error:'Это время уже занято другой записью'})
-    let client=phone?memoryClients.find(x=>x.phone===phone):null
-    if(!client){client={id:crypto.randomUUID(),name,email:'',phone,created_at:new Date().toISOString()};memoryClients.unshift(client)}
-    const booking={id:crypto.randomUUID(),project_id:projectId,project_name:project.name,client_id:client.id,customer_name:name,customer_phone:phone,starts_at:startsAt,ends_at:endsAt,service_name:service,status}
+    let client=phone?memoryClients.find(x=>x.studio_id===req.user.studio_id&&x.phone===phone):null
+    if(!client){
+      if(!await requireClientCapacity(req.user.studio_id,res))return
+      client={id:crypto.randomUUID(),studio_id:req.user.studio_id,name,email:'',phone,created_at:new Date().toISOString()}
+      memoryClients.unshift(client)
+    }
+    const booking={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,project_name:project.name,client_id:client.id,customer_name:name,customer_phone:phone,starts_at:startsAt,ends_at:endsAt,service_name:service,status}
     memoryBookings.push(booking)
     return res.status(201).json({booking})
   }
@@ -1015,6 +1064,7 @@ app.post('/api/bookings', async (req,res) => {
   const conflict=(await pool.query("select id from bookings where project_id=$1 and status <> 'cancelled' and starts_at < $3 and ends_at > $2 limit 1",[projectId,startsAt,endsAt])).rows[0]
   if(conflict)return res.status(409).json({error:'Это время уже занято другой записью'})
   const client=phone?(await pool.query('select id from clients where studio_id=$1 and phone=$2 limit 1',[req.user.studio_id,phone])).rows[0]:null
+  if(phone&&!client && !await requireClientCapacity(req.user.studio_id,res))return
   const q=await pool.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,ends_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,client?.id||null,name,phone||null,startsAt,endsAt,service||null,status])
   res.status(201).json({booking:{...q.rows[0],project_name:project.name}})
 })
@@ -1113,9 +1163,10 @@ app.post('/api/leads/:id/convert', async (req,res) => {
   if(!pool){
     const lead=memoryLeads.find(x=>x.id===id)
     if(!lead)return res.status(404).json({error:'Заявка не найдена'})
-    const existing=demoClients().find(x=>(lead.phone&&x.phone===lead.phone)||(lead.email&&x.email===lead.email))
+    const existing=memoryClients.find(x=>x.studio_id===req.user.studio_id&&((lead.phone&&x.phone===lead.phone)||(lead.email&&x.email===lead.email)))
     if(existing)return res.json({client:existing,existing:true})
-    const client={id:crypto.randomUUID(),name:lead.name,email:lead.email||'',phone:lead.phone||'',created_at:new Date().toISOString(),source_lead_id:id}
+    if(!await requireClientCapacity(req.user.studio_id,res))return
+    const client={id:crypto.randomUUID(),studio_id:req.user.studio_id,name:lead.name,email:lead.email||'',phone:lead.phone||'',created_at:new Date().toISOString(),source_lead_id:id}
     lead.status='won'
     memoryClients.unshift(client)
     return res.status(201).json({client,existing:false})
@@ -1125,6 +1176,7 @@ app.post('/api/leads/:id/convert', async (req,res) => {
   const lead=leadQ.rows[0]
   const existingQ=await pool.query('select id,name,email,phone,created_at from clients where studio_id=$3 and ((phone=$1 and $1 is not null) or (email=$2 and $2 is not null)) limit 1',[lead.phone,lead.email,lead.studio_id])
   if(existingQ.rows[0])return res.json({client:existingQ.rows[0],existing:true})
+  if(!await requireClientCapacity(lead.studio_id,res))return
   const q=await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id,name,email,phone,created_at',[lead.studio_id,lead.name,lead.email||null,lead.phone||null])
   await pool.query("update leads set status='won' where id=$1",[id])
   res.status(201).json({client:q.rows[0],existing:false})
