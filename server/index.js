@@ -218,7 +218,51 @@ app.use('/api',async(req,res,next)=>{
   }catch(e){next(e)}
 })
 
-app.get('/api/studio', (req, res) => res.json({ studio: req.studio }))
+app.get('/api/studio', async (req, res) => {
+  if(!pool) return res.json({studio:{...req.studio,billing_currency:memoryStudios.find(x=>x.id===req.user.studio_id)?.billing_currency||'RUB'}})
+  const q=await pool.query('select * from studios where id=$1',[req.user.studio_id])
+  res.json({studio:q.rows[0]||req.studio})
+})
+app.get('/api/billing/account', async (req,res)=>{
+  if(!pool){
+    const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
+    return res.json({plan:planConfig(studio.plan),currency:studio.billing_currency||'RUB',status:studio.subscription_status||'active',provider:studio.billing_provider||null,renews_at:studio.subscription_renews_at||null,transactions:[]})
+  }
+  const s=await pool.query('select plan,billing_currency,subscription_status,billing_provider,subscription_started_at,subscription_renews_at from studios where id=$1',[req.user.studio_id])
+  const t=await pool.query('select id,plan,amount,currency,status,provider,created_at,paid_at from billing_transactions where studio_id=$1 order by created_at desc limit 20',[req.user.studio_id])
+  const row=s.rows[0]||{}
+  res.json({plan:planConfig(row.plan),currency:row.billing_currency||'RUB',status:row.subscription_status||'active',provider:row.billing_provider||null,started_at:row.subscription_started_at,renews_at:row.subscription_renews_at,transactions:t.rows})
+})
+app.patch('/api/billing/settings', async (req,res)=>{
+  if(!requireRole(req,res,['owner','admin'])) return
+  const currency=['RUB','USD'].includes(String(req.body?.currency||''))?String(req.body.currency):null
+  if(!currency)return res.status(400).json({error:'Поддерживаются RUB и USD'})
+  if(!pool){
+    const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
+    studio.billing_currency=currency
+    return res.json({currency})
+  }
+  await pool.query('update studios set billing_currency=$1,updated_at=now() where id=$2',[currency,req.user.studio_id])
+  res.json({currency})
+})
+app.post('/api/billing/plan', async (req,res)=>{
+  if(!requireRole(req,res,['owner','admin'])) return
+  const plan=String(req.body?.plan||'').toLowerCase()
+  if(!PLAN_CONFIG[plan])return res.status(400).json({error:'Неизвестный тариф'})
+  const current=pool?((await pool.query('select plan,billing_currency from studios where id=$1',[req.user.studio_id])).rows[0]):(memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio)
+  if(current?.plan===plan)return res.json({ok:true,plan:planConfig(plan),message:'Этот тариф уже активен'})
+  if(process.env.BILLING_MODE!=='manual')return res.status(402).json({error:'Для реального переключения тарифа требуется подключить платёжного провайдера. Сейчас доступен безопасный режим без списания средств.'})
+  const currency=current?.billing_currency||'RUB'
+  const amount=currency==='USD'?Number((PLAN_CONFIG[plan].price*1.09).toFixed(2)):Number((PLAN_CONFIG[plan].price*105).toFixed(2))
+  if(!pool){
+    const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
+    studio.plan=plan;studio.projectLimit=PLAN_CONFIG[plan].projectLimit;studio.project_limit=PLAN_CONFIG[plan].projectLimit;studio.subscription_status='active';studio.subscription_started_at=new Date().toISOString()
+    return res.json({ok:true,mode:'manual',plan:planConfig(plan),currency,amount})
+  }
+  await pool.query('update studios set plan=$1,project_limit=$2,subscription_status=$3,subscription_started_at=now(),subscription_renews_at=now()+interval \'30 days\',billing_provider=$4,updated_at=now() where id=$5',[plan,PLAN_CONFIG[plan].projectLimit,'active','manual',req.user.studio_id])
+  await pool.query('insert into billing_transactions(studio_id,plan,amount,currency,status,provider,paid_at) values($1,$2,$3,$4,$5,$6,now())',[req.user.studio_id,plan,amount,currency,'paid','manual'])
+  res.json({ok:true,mode:'manual',plan:planConfig(plan),currency,amount})
+})
 app.get('/api/billing/plans',(req,res)=>res.json({plans:Object.entries(PLAN_CONFIG).map(([id,p])=>({id,...p}))}))
 
 app.get('/api/studio/usage', async (req,res) => {
