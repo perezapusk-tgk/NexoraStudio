@@ -36,8 +36,16 @@ app.post('/api/projects', async (req, res) => {
   if (!pool) return res.status(201).json({ project: { id: crypto.randomUUID(), name, slug: slugify(name), project_type: projectType, status: 'draft' } })
   const slug = slugify(name)
   const { rows } = await pool.query(
-    'insert into projects (studio_id, name, slug, project_type, status) values ($1,$2,$3,$4,$5) returning *',
-    [demoStudio.id, name, slug, projectType, 'draft']
+    'insert into projects (studio_id, name, slug, project_type, status, settings) values ($1,$2,$3,$4,$5,$6) returning *',
+    [demoStudio.id, name, slug, projectType, 'draft', JSON.stringify({miniApp:{enabled:projectType.includes('miniapp')}})]
+  )
+  await pool.query(
+    'insert into pages(project_id,title,slug,content) values($1,$2,$3,$4)',
+    [rows[0].id,'Главная','home',JSON.stringify({blocks:[
+      {type:'hero',headline:name,subheadline:'Современный цифровой опыт для ваших клиентов.',cta:'Оставить заявку'},
+      {type:'services',title:'Услуги',items:['Основная услуга','Популярная услуга','Премиум услуга']},
+      {type:'contacts',title:'Контакты',text:'Свяжитесь с нами удобным способом.'}
+    ]})]
   )
   res.status(201).json({ project: rows[0] })
 })
