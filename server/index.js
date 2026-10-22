@@ -616,14 +616,25 @@ app.post('/api/billing/stripe/webhook', async (req,res)=>{
       const studioId=obj.metadata?.studio_id,plan=String(obj.metadata?.plan||'').toLowerCase()
       if(studioId&&PLAN_CONFIG[plan]&&obj.payment_status==='paid'){
         const subId=typeof obj.subscription==='string'?obj.subscription:(obj.subscription?.id||null)
+        let periodEnd=Number(obj.subscription?.current_period_end||0)
+        if(subId&&!periodEnd){
+          try{
+            const sub=await stripeRequest('/v1/subscriptions/'+encodeURIComponent(subId))
+            periodEnd=Number(sub?.current_period_end||0)
+          }catch(_error){}
+        }
         await pool.query("update billing_transactions set status='paid',paid_at=now(),stripe_customer_id=$1,stripe_subscription_id=$2 where studio_id::text=$3::text and provider='stripe' and provider_payment_id=$4",[obj.customer||null,subId,studioId,obj.id])
-        await pool.query("update studios set plan=$1,project_limit=$2,subscription_status='active',billing_provider='stripe',subscription_started_at=now(),subscription_renews_at=case when $3::bigint>0 then to_timestamp($3) else now()+interval '30 days' end,stripe_customer_id=$4,stripe_subscription_id=$5,updated_at=now() where id=$6",[plan,PLAN_CONFIG[plan].projectLimit,Number(obj.subscription?.current_period_end||0),obj.customer||null,subId,studioId])
+        await pool.query("update studios set plan=$1,project_limit=$2,subscription_status='active',billing_provider='stripe',subscription_started_at=coalesce(subscription_started_at,now()),subscription_renews_at=case when $3::bigint>0 then to_timestamp($3) else now()+interval '30 days' end,stripe_customer_id=$4,stripe_subscription_id=$5,updated_at=now() where id=$6",[plan,PLAN_CONFIG[plan].projectLimit,periodEnd,obj.customer||null,subId,studioId])
       }
     }else if(event.type==='customer.subscription.updated'||event.type==='customer.subscription.deleted'){
       const q=await pool.query('select id from studios where stripe_subscription_id=$1 limit 1',[obj.id])
       if(q.rows[0]){
         const status=event.type==='customer.subscription.deleted'?'cancelled':String(obj.status||'active')
-        await pool.query("update studios set subscription_status=$1,subscription_renews_at=case when $2::bigint>0 then to_timestamp($2) else subscription_renews_at end,updated_at=now() where id=$3",[status,Number(obj.current_period_end||0),q.rows[0].id])
+        if(event.type==='customer.subscription.deleted'){
+          await pool.query("update studios set plan='free',project_limit=$1,subscription_status='cancelled',subscription_renews_at=null,billing_provider=null,stripe_subscription_id=null,updated_at=now() where id=$2",[PLAN_CONFIG.free.projectLimit,q.rows[0].id])
+        }else{
+          await pool.query("update studios set subscription_status=$1,subscription_renews_at=case when $2::bigint>0 then to_timestamp($2) else subscription_renews_at end,updated_at=now() where id=$3",[status,Number(obj.current_period_end||0),q.rows[0].id])
+        }
       }
     }else if(event.type==='invoice.payment_failed'){
       const q=await pool.query('update studios set subscription_status=\'past_due\',updated_at=now() where stripe_customer_id=$1',[obj.customer||''])
@@ -649,7 +660,13 @@ app.post('/api/billing/confirm', async (req,res)=>{
     if(!secret) return res.status(503).json({error:'STRIPE_SECRET_KEY не настроен'})
     const r=await fetch('https://api.stripe.com/v1/checkout/sessions/'+encodeURIComponent(paymentId)+'?expand[]=subscription',{headers:{Authorization:'Bearer '+secret}})
     data=await r.json()
-    paid=r.ok&&data.payment_status==='paid'&&data.mode==='subscription'
+    const sessionStudio=String(data?.metadata?.studio_id||'')
+    const sessionPlan=String(data?.metadata?.plan||'').toLowerCase()
+    const txPlan=String(tx.plan||'').toLowerCase()
+    const customerMatches=!tx.stripe_customer_id || !data?.customer || String(tx.stripe_customer_id)===String(data.customer)
+    paid=r.ok&&data.payment_status==='paid'&&data.mode==='subscription'&&
+      sessionStudio===String(req.user.studio_id)&&sessionPlan===txPlan&&
+      customerMatches
   }else{
     const shopId=String(process.env.YOOKASSA_SHOP_ID||'').trim(),secret=String(process.env.YOOKASSA_SECRET_KEY||'').trim()
     if(!shopId||!secret) return res.status(503).json({error:'YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY не настроены'})
