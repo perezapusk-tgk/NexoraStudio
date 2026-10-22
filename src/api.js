@@ -55,6 +55,7 @@ export const api = {
   projects: () => request('/projects'),
   project: (id) => request('/projects/' + id),
   updateProject: (id,payload) => request('/projects/' + id,{method:'PATCH',body:JSON.stringify(payload)}),
+  deleteProject: (id) => request('/projects/' + id,{method:'DELETE'}),
   createProject: async (payload) => (await request('/projects', {method:'POST',body:JSON.stringify(payload)})).project,
   createPage: (id,payload) => request('/projects/' + id + '/pages',{method:'POST',body:JSON.stringify(payload)}),
   updatePage: (id,pageId,payload) => request('/projects/' + id + '/pages/' + pageId,{method:'PATCH',body:JSON.stringify(payload)}),
