@@ -429,11 +429,11 @@ function billingAmount(plan,currency){
   const base=planConfig(plan).price
   return currency==='USD'?Number(base.toFixed(2)):Number((base*100).toFixed(2))
 }
-async function yookassaRequest(pathname,method='GET',body=null){
+async function yookassaRequest(pathname,method='GET',body=null,idempotenceKey=null){
   const shopId=String(process.env.YOOKASSA_SHOP_ID||'').trim()
   const secret=String(process.env.YOOKASSA_SECRET_KEY||'').trim()
   if(!shopId||!secret) throw new Error('ЮKassa не настроена: добавьте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY')
-  const headers={'Content-Type':'application/json','Idempotence-Key':crypto.randomUUID()}
+  const headers={'Content-Type':'application/json','Idempotence-Key':String(idempotenceKey||crypto.randomUUID())}
   const auth=Buffer.from(shopId+':'+secret).toString('base64')
   headers.Authorization='Basic '+auth
   const response=await fetch('https://api.yookassa.ru/v3'+pathname,{method,headers,body:body?JSON.stringify(body):undefined})
@@ -1122,7 +1122,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
         confirmation:{type:'redirect',return_url:billingAppUrl()+'/?order='+encodeURIComponent(order.id)+'&payment=success&provider=yookassa&payment_id=return'},
         description:'Заказ '+number+' · '+project.name,
         metadata:{order_id:String(order.id),studio_id:String(project.studio_id),project_id:String(project.id)}
-      })
+      },'order-'+String(order.id))
       checkout_url=payment?.confirmation?.confirmation_url||null
       if(!checkout_url) throw new Error('ЮKassa не вернула ссылку на оплату')
       if(pool) await pool.query("update orders set status='pending',payment_provider='yookassa',payment_external_id=$1 where id::text=$2",[payment.id,order.id])
