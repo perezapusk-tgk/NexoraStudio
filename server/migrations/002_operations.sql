@@ -75,3 +75,19 @@ create index if not exists idx_orders_status on orders(status);
 alter table if exists payments
   add column if not exists order_id uuid references orders(id) on delete set null;
 create index if not exists idx_payments_order on payments(order_id);
+
+
+-- Stripe Connect / checkout state
+alter table if exists studios
+  add column if not exists stripe_connect_account_id text,
+  add column if not exists stripe_connect_status text not null default 'not_connected';
+
+alter table if exists orders
+  add column if not exists paid_at timestamptz,
+  add column if not exists stripe_checkout_session_id text,
+  add column if not exists stripe_payment_intent_id text;
+
+create index if not exists idx_orders_stripe_payment_intent
+  on orders(stripe_payment_intent_id);
+create index if not exists idx_orders_stripe_checkout_session
+  on orders(stripe_checkout_session_id);
