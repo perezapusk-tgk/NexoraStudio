@@ -532,7 +532,7 @@ app.get('/api/connect/status', async (req,res)=>{
   if(!row.stripe_connect_account_id)return res.json({connected:false,account_id:null,status:'not_connected'})
   try{
     const account=await stripeRequest('/v1/accounts/'+encodeURIComponent(row.stripe_connect_account_id))
-    return res.json({connected:true,account_id:account.id,status:account.charges_enabled&&account.payouts_enabled?'active':'pending',charges_enabled:!!account.charges_enabled,payouts_enabled:!!account.payouts_enabled,details_submitted:!!account.details_submitted})
+    return res.json({connected:true,account_id:account.id,status:account.charges_enabled&&account.payouts_enabled?'active':'pending',charges_enabled:!!account.charges_enabled,payouts_enabled:!!account.payouts_enabled,details_submitted:!!account.details_submitted,disabled_reason:account.requirements?.disabled_reason||null,currently_due:account.requirements?.currently_due||[],past_due:account.requirements?.past_due||[]})
   }catch(e){return res.json({connected:true,account_id:row.stripe_connect_account_id,status:'pending'})}
 })
 app.post('/api/connect/account', async (req,res)=>{
