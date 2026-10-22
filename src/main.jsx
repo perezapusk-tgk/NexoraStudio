@@ -221,6 +221,24 @@ function App() {
     return () => { alive = false }
   }, [auth])
 
+  const deleteProject = async (project) => {
+    if (!project?.id) return
+    if (!window.confirm(`Удалить проект «${project.name}»? Все страницы, каталог и данные проекта будут удалены. Это действие нельзя отменить.`)) return
+    try {
+      await api.deleteProject(project.id)
+      setProjectData(v => v.filter(x => x.id !== project.id))
+      if (selectedProject?.id === project.id) {
+        setSelectedProject(null)
+        setWorkspaceData(null)
+        setProjectView('overview')
+      }
+    } catch (err) {
+      let message = err?.message || 'Не удалось удалить проект.'
+      try { message = JSON.parse(message)?.error || message } catch {}
+      window.alert(message)
+    }
+  }
+
   const createProject = async (projectType, templateId = '') => {
     const name = window.prompt('Название проекта')
     if (!name?.trim()) return
@@ -302,8 +320,8 @@ function App() {
         </header>
 
         <div className="content">
-          {active === 'Обзор' && !selectedProject && <Dashboard projects={filteredProjects} onCreate={() => setShowCreate(true)} onNavigate={go} onOpenProject={openProject} onDeleteProject={async p=>{if(!window.confirm(`Удалить проект «${p.name}»? Это действие нельзя отменить.`))return;try{await api.deleteProject(p.id);setProjectData(v=>v.filter(x=>x.id!==p.id));if(selectedProject?.id===p.id)setSelectedProject(null)}catch(e){window.alert(e.message||'Не удалось удалить проект')}}}/>}
-          {active === 'Проекты' && !selectedProject && <Projects projects={filteredProjects} onCreate={() => setShowCreate(true)} onOpenProject={openProject}/>}
+          {active === 'Обзор' && !selectedProject && <Dashboard projects={filteredProjects} onCreate={() => setShowCreate(true)} onNavigate={go} onOpenProject={openProject} onDeleteProject={deleteProject}/>}
+          {active === 'Проекты' && !selectedProject && <Projects projects={filteredProjects} onCreate={() => setShowCreate(true)} onOpenProject={openProject} onDeleteProject={deleteProject}/>}
           {active === 'Заявки' && <InboxPage leads={crm.leads} />}
           {active === 'Клиенты' && !selectedClient && <Clients clients={crm.clients} onOpenClient={openClient} />}
           {active === 'Клиенты' && selectedClient && <ClientWorkspace data={clientData} projects={projectData} onRefresh={async () => { if (selectedClient?.id) setClientData(await api.client(selectedClient.id)); const [cl,ord,inv]=await Promise.all([api.clients(),api.orders(),api.invoices()]); setCrm(v=>({...v,clients:cl.clients||[],invoices:inv.invoices||[]})); setOrders(ord.orders||[]) }} onBack={() => { setSelectedClient(null); setClientData(null) }} />}
