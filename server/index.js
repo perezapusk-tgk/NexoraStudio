@@ -7,11 +7,25 @@ import path from 'node:path'
 const { Pool } = pg
 const app = express()
 const port = Number(process.env.PORT || 4000)
-const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false }) : null
+const host = process.env.HOST || '0.0.0.0'
+const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000, max: 5 }) : null
 
-app.use(cors())
-app.use(express.json({verify:(req,_res,buf)=>{req.rawBody=Buffer.from(buf)}}))
+app.disable('x-powered-by')
+app.use(cors({origin:true,credentials:true}))
+app.use(express.json({limit:'1mb',verify:(req,_res,buf)=>{req.rawBody=Buffer.from(buf)}}))
 const distDir = path.resolve(process.cwd(), 'dist')
+
+const noStore = {
+  'Cache-Control':'no-store, no-cache, must-revalidate, proxy-revalidate',
+  'Pragma':'no-cache',
+  'Expires':'0'
+}
+
+// Health must be available independently of the frontend bundle.
+app.get('/health', (_req,res) => {
+  res.set(noStore)
+  res.status(200).json({ok:true,service:'nexora-api',version:'0.3.0',storage:pool?'postgres':'memory'})
+})
 
 // Production frontend: always return a fresh HTML shell so a browser/CDN cannot
 // keep an index.html that points at assets from an older deployment.
@@ -26,6 +40,7 @@ app.get('/', (_req, res) => {
 
 app.use(express.static(distDir, {
   index: false,
+  fallthrough: true,
   maxAge: '1h',
   etag: true,
   setHeaders: (res, filePath) => {
@@ -1499,4 +1514,16 @@ app.use((req,res,next)=>{
   next()
 })
 
-if (process.env.NODE_ENV !== 'test') app.listen(port,()=>console.log(`Nexora API listening on ${port}`))
+app.use((err,req,res,next)=>{
+  console.error('Nexora request error', {method:req.method,path:req.path,error:err?.message||String(err)})
+  if(res.headersSent) return next(err)
+  res.status(Number(err?.status)||500).json({error:'Внутренняя ошибка сервера',detail:process.env.NODE_ENV==='production'?undefined:(err?.message||String(err))})
+})
+
+if (process.env.NODE_ENV !== 'test') {
+  const server = app.listen(port, host, () => console.log(`Nexora API listening on ${host}:${port}`))
+  server.on('error', (err) => {
+    console.error('Nexora server error', err)
+    process.exitCode = 1
+  })
+}
