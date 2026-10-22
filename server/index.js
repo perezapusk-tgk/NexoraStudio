@@ -830,6 +830,28 @@ app.get('/api/projects/:id', async (req,res)=>{const id=req.params.id;if(!pool){
   if(!project) return res.status(404).json({error:'Проект не найден'})
   return res.json({project,pages:memoryPages.get(project.id)||[]})
 }const pr=await pool.query('select * from projects where studio_id::text=$2::text and (id::text=$1 or slug=$1) limit 1',[id,req.user.studio_id]);if(!pr.rows[0])return res.status(404).json({error:'Проект не найден'});const pg=await pool.query('select * from pages where project_id::text=$1::text order by created_at',[pr.rows[0].id]);res.json({project:pr.rows[0],pages:pg.rows})});
+app.delete('/api/projects/:id',async(req,res)=>{
+  if(!pool){
+    const index=memoryProjects.findIndex(x=>(x.id===req.params.id||x.slug===req.params.id)&&x.studio_id===req.user.studio_id)
+    if(index<0)return res.status(404).json({error:'Проект не найден'})
+    const id=memoryProjects[index].id
+    memoryProjects.splice(index,1); memoryPages.delete(id); memoryCatalog.delete(id)
+    for(const list of [memoryLeads,memoryBookings,memoryPayments,memoryInvoices,memoryOrders]){for(let i=list.length-1;i>=0;i--)if(list[i].project_id===id)list.splice(i,1)}
+    return res.json({deleted:true})
+  }
+  const check=await pool.query('select id from projects where id::text=$1 and studio_id::text=$2::text',[req.params.id,req.user.studio_id])
+  if(!check.rows[0])return res.status(404).json({error:'Проект не найден'})
+  await pool.query('delete from pages where project_id::text=$1',[req.params.id])
+  await pool.query('delete from catalog_items where project_id::text=$1',[req.params.id])
+  await pool.query('delete from leads where project_id::text=$1',[req.params.id])
+  await pool.query('delete from bookings where project_id::text=$1',[req.params.id])
+  await pool.query('delete from payments where project_id::text=$1',[req.params.id])
+  await pool.query('delete from invoices where project_id::text=$1',[req.params.id])
+  await pool.query('delete from orders where project_id::text=$1',[req.params.id])
+  const deleted=await pool.query('delete from projects where id::text=$1 and studio_id::text=$2::text returning id',[req.params.id,req.user.studio_id])
+  if(!deleted.rows[0])return res.status(404).json({error:'Проект не найден'})
+  res.json({deleted:true})
+})
 app.patch('/api/projects/:id',async(req,res)=>{if(!pool){
   const p=memoryProjects.find(x=>(x.id===req.params.id||x.slug===req.params.id)&&x.studio_id===req.user.studio_id)
   if(!p)return res.status(404).json({error:'Проект не найден'})
