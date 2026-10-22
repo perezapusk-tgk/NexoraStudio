@@ -300,7 +300,19 @@ function App() {
     if (!name?.trim()) return
     try {
       const created = await api.createProject({ name: name.trim(), projectType, templateId })
-      const mapped = { id: created.id, type: projectType === 'miniapp' ? 'Mini App' : projectType === 'site' ? 'Сайт' : 'Сайт + Mini App', status: 'Черновик', color: 'dark', leads: 0, bookings: 0, revenue: '€0', updated: 'только что' }
+      const mapped = {
+        id: created.id,
+        name: created.name || name.trim(),
+        slug: created.slug || '',
+        domain: created.domain || null,
+        type: projectType === 'miniapp' ? 'Mini App' : projectType === 'site' ? 'Сайт' : 'Сайт + Mini App',
+        status: 'Черновик',
+        color: 'dark',
+        leads: 0,
+        bookings: 0,
+        revenue: '€0',
+        updated: 'только что'
+      }
       setProjectData(v => [mapped, ...v])
       setShowCreate(false)
       setActive('Проекты')
