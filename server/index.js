@@ -1573,7 +1573,7 @@ app.get('/api/orders/:id', async (req,res) => {
   const oq=await pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name,c.name as client_name,c.phone,c.email from orders o left join projects pr on pr.id::text=o.project_id::text left join clients c on c.id=o.client_id where o.id::text=$1::text and pr.studio_id::text=$2::text limit 1',[id,req.user.studio_id])
   if(!oq.rows[0])return res.status(404).json({error:'Заказ не найден'})
   const [payments,invoices]=await Promise.all([
-    pool.query('select id,amount,currency,status,description,created_at from payments where order_id=$1 order by created_at desc',[id]),
+    pool.query('select id,amount,currency,status,description,created_at from payments where order_id::text=$1::text order by created_at desc',[id]),
     pool.query('select id,number,amount,currency,status,due_date,description,created_at from invoices where description=$1 order by created_at desc limit 1',['Счёт по заказу '+oq.rows[0].number])
   ])
   const timeline=[{type:'order',text:'Заказ создан',date:oq.rows[0].created_at},...payments.rows.map(p=>({type:'payment',text:'Платёж · '+p.amount+' '+p.currency,date:p.created_at}))]
@@ -1653,7 +1653,7 @@ app.patch('/api/invoices/:id', async (req,res) => {
   const status=String(req.body?.status||'').trim()
   if(!['draft','sent','paid','overdue','cancelled'].includes(status))return res.status(400).json({error:'Недопустимый статус счёта'})
   if(!pool){const x=memoryInvoices.find(v=>v.id===req.params.id&&v.studio_id===req.user.studio_id);if(!x)return res.status(404).json({error:'Счёт не найден'});x.status=status;return res.json({invoice:x})}
-  const q=await pool.query('update invoices i set status=$1 from projects p where i.id::text=$2 and i.project_id=p.id and p.studio_id::text=$3::text returning i.*',[status,req.params.id,req.user.studio_id])
+  const q=await pool.query('update invoices i set status=$1 from projects p where i.id::text=$2 and i.project_id::text=p.id::text and p.studio_id::text=$3::text returning i.*',[status,req.params.id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Счёт не найден'})
   res.json({invoice:q.rows[0]})
 })
@@ -1698,7 +1698,7 @@ app.post('/api/payments', async (req,res) => {
     if(oq.rows[0].project_id!==projectId)return res.status(400).json({error:'Заказ относится к другому проекту'})
     if(Math.abs(Number(oq.rows[0].total||0)-amount)>0.01)return res.status(400).json({error:'Сумма платежа не совпадает с заказом'})
     if(status==='paid' && oq.rows[0].status==='paid')return res.status(409).json({error:'Заказ уже оплачен'})
-    const dup=await pool.query("select id from payments where order_id=$1 and status='paid' limit 1",[orderId])
+    const dup=await pool.query("select id from payments where order_id::text=$1::text and status='paid' limit 1",[orderId])
     if(status==='paid' && dup.rows[0])return res.status(409).json({error:'Заказ уже оплачен'})
   }
   const q=await pool.query('insert into payments(project_id,client_id,booking_id,order_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,req.body?.booking_id||null,orderId,amount,currency,status,description||null])
@@ -1718,7 +1718,7 @@ app.patch('/api/payments/:id', async (req,res) => {
     if(p.order_id){const o=memoryOrders.find(x=>x.id===p.order_id&&x.studio_id===req.user.studio_id);if(o)o.status=status==='paid'?'paid':status==='refunded'?'refunded':o.status}
     return res.json({payment:p})
   }
-  const q=await pool.query("update payments p set status=$1 from projects pr where p.id::text=$2 and p.project_id=pr.id and pr.studio_id::text=$3::text returning p.*",[status,req.params.id,req.user.studio_id])
+  const q=await pool.query("update payments p set status=$1 from projects pr where p.id::text=$2 and p.project_id::text=pr.id::text and pr.studio_id::text=$3::text returning p.*",[status,req.params.id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Платёж не найден'})
   if(q.rows[0].order_id) await pool.query("update orders set status=$1 where id=$2 and project_id in (select id from projects where studio_id::text=$3::text)",[status==='paid'?'paid':status==='refunded'?'refunded':'pending',q.rows[0].order_id,req.user.studio_id])
   res.json({payment:q.rows[0]})
