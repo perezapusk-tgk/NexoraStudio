@@ -1119,7 +1119,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
       const payment=await yookassaRequest('/payments','POST',{
         amount:{value:Number(total).toFixed(2),currency:'RUB'},
         capture:true,
-        confirmation:{type:'redirect',return_url:billingAppUrl()+'/?order='+encodeURIComponent(order.id)+'&payment=success&provider=yookassa&payment_id={payment_id}'},
+        confirmation:{type:'redirect',return_url:billingAppUrl()+'/?order='+encodeURIComponent(order.id)+'&payment=success&provider=yookassa&payment_id=return'},
         description:'Заказ '+number+' · '+project.name,
         metadata:{order_id:String(order.id),studio_id:String(project.studio_id),project_id:String(project.id)}
       })
