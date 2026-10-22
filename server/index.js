@@ -932,12 +932,15 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   const normalized=[]
   for(const item of items){
     const catalogId=String(item.catalog_id||item.id||'').trim()
-    const quantity=Math.max(1,Number(item.quantity||1))
+    const rawQuantity=Number(item.quantity||1)
+    if(!Number.isInteger(rawQuantity)||rawQuantity<1||rawQuantity>100) return res.status(400).json({error:'Некорректное количество товара'})
+    const quantity=rawQuantity
     let source
     if(pool) source=(await pool.query('select id,name,price,currency from catalog_items where id=$1 and project_id=$2 and active=true limit 1',[catalogId,project.id])).rows[0]
     else source=(memoryCatalog.get(project.id)||[]).find(x=>x.id===catalogId && x.active!==false)
     if(!source) return res.status(400).json({error:'Товар не найден'})
     const price=Number(source.price||0)
+    if(!Number.isFinite(price)||price<0) return res.status(400).json({error:'У товара некорректная цена'})
     const sourceCurrency=String(source.currency||'EUR').toUpperCase()
     if(currency && currency!==sourceCurrency) return res.status(400).json({error:'Нельзя оформить заказ с товарами в разных валютах'})
     currency=sourceCurrency
@@ -955,7 +958,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
     await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[project.id,'order_created','/checkout',total,JSON.stringify({order_id:order.id})])
   }
   let checkout_url=null
-  if(String(req.body?.payment_provider||'').toLowerCase()==='stripe' && String(req.body?.currency||'').toUpperCase()!=='RUB'){
+  if(String(req.body?.payment_provider||'').toLowerCase()==='stripe' && String(currency||'EUR').toUpperCase()!=='RUB'){
     try{
       let connectAccountId=null
       if(pool) connectAccountId=(await pool.query('select stripe_connect_account_id from studios where id=$1',[project.studio_id])).rows[0]?.stripe_connect_account_id
