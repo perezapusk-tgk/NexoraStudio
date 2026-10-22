@@ -174,7 +174,7 @@ function verifyPassword(password,stored) {
 const createSessionToken=()=>crypto.randomBytes(32).toString('hex')
 const createInviteToken=()=>crypto.randomBytes(32).toString('hex')
 const tokenHash=token=>crypto.createHash('sha256').update(token).digest('hex')
-const inviteUrl=token=>{const base=String(process.env.APP_URL||process.env.FRONTEND_URL||'http://localhost:5173').replace(/\/$/,'');return base+'/?invite='+encodeURIComponent(token)}
+const inviteUrl=token=>{const base=String(process.env.APP_URL||process.env.FRONTEND_URL||process.env.RENDER_EXTERNAL_URL||'http://localhost:5173').replace(/\/$/,'');return base+'/?invite='+encodeURIComponent(token)}
 const authPayload=(u,studio,token)=>({token,user:{id:u.id,name:u.name,email:u.email,role:u.role},studio:{id:studio.id,name:studio.name,ownerName:studio.owner_name||studio.ownerName,plan:studio.plan,projectLimit:studio.project_limit||studio.projectLimit,billingCurrency:studio.billing_currency||studio.billingCurrency||'RUB',planConfig:planConfig(studio.plan)}})
 
 async function requireAuth(req,res,next){
@@ -763,7 +763,10 @@ app.post('/api/projects', async (req, res) => {
   const usage=await pool.query('select count(*)::int as count from projects where studio_id=$1',[req.user.studio_id])
   const limit=Number(req.studio.project_limit||5)
   if(usage.rows[0].count>=limit)return res.status(409).json({error:'Достигнут лимит проектов вашего тарифа'})
-  const slug = slugify(name)
+  let slug = slugify(name)
+  const slugBase = slug
+  let suffix = 2
+  while ((await pool.query('select 1 from projects where slug=$1 limit 1',[slug])).rows[0]) slug = slugBase + '-' + suffix++
   const template=templateDefinition(templateId)
   const { rows } = await pool.query(
     'insert into projects (studio_id, name, slug, project_type, status, settings) values ($1,$2,$3,$4,$5,$6) returning *',
@@ -882,10 +885,14 @@ app.post('/api/public/:slug/bookings', async (req,res) => {
   const phone=String(req.body?.phone||'').trim()
   const startsAt=String(req.body?.starts_at||'').trim()
   const serviceName=String(req.body?.service_name||'').trim()
+  const startsDate=new Date(startsAt)
   if(!name || !phone || !startsAt) return res.status(400).json({error:'Заполните имя, телефон и время'})
-  if(!pool){const project=memoryProjects.find(p=>p.slug===slug && p.status==='published');if(!project) return res.status(404).json({error:'Публичный проект не найден'});let client=memoryClients.find(x=>x.studio_id===project.studio_id&&x.phone===phone);if(!client){if(!await requireClientCapacity(project.studio_id,res))return;client={id:crypto.randomUUID(),studio_id:project.studio_id,name,email:'',phone,created_at:new Date().toISOString()};memoryClients.unshift(client)}const booking={id:crypto.randomUUID(),studio_id:project.studio_id,project_slug:slug,project_id:project.id,client_id:client.id,customer_name:name,customer_phone:phone,starts_at:startsAt,service_name:serviceName,status:'pending'};memoryBookings.push(booking);memoryEvents.push({slug,event_type:'booking',path:'/booking',created_at:new Date().toISOString()});return res.status(201).json({booking})}
+  if(Number.isNaN(startsDate.getTime()) || startsDate.getTime() < Date.now()-60000) return res.status(400).json({error:'Укажите корректное будущее время записи'})
+  if(!pool){const project=memoryProjects.find(p=>p.slug===slug && p.status==='published');if(!project) return res.status(404).json({error:'Публичный проект не найден'});let client=memoryClients.find(x=>x.studio_id===project.studio_id&&x.phone===phone);if(!client){if(!await requireClientCapacity(project.studio_id,res))return;client={id:crypto.randomUUID(),studio_id:project.studio_id,name,email:'',phone,created_at:new Date().toISOString()};memoryClients.unshift(client)}const conflict=memoryBookings.find(x=>x.project_id===project.id&&x.status!=='cancelled'&&Math.abs(new Date(x.starts_at).getTime()-startsDate.getTime())<30*60000);if(conflict)return res.status(409).json({error:'На это время уже есть запись'});const booking={id:crypto.randomUUID(),studio_id:project.studio_id,project_slug:slug,project_id:project.id,client_id:client.id,customer_name:name,customer_phone:phone,starts_at:startsAt,service_name:serviceName,status:'pending'};memoryBookings.push(booking);memoryEvents.push({slug,event_type:'booking',path:'/booking',created_at:new Date().toISOString()});return res.status(201).json({booking})}
   const pr=await pool.query("select id,studio_id from projects where slug=$1 and status='published' limit 1",[slug])
   if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
+  const conflict=await pool.query("select id from bookings where project_id=$1 and status<>'cancelled' and starts_at between $2::timestamptz - interval '30 minutes' and $2::timestamptz + interval '30 minutes' limit 1",[pr.rows[0].id,startsAt]);
+  if(conflict.rows[0]) return res.status(409).json({error:'На это время уже есть запись'})
   const existingClient=await pool.query('select id from clients where studio_id=$1 and phone=$2 limit 1',[pr.rows[0].studio_id,phone]);const clientId=existingClient.rows[0]?.id||null;const q=await pool.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7) returning *',[pr.rows[0].id,clientId,name,phone,startsAt,serviceName||null,'pending'])
   await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[pr.rows[0].id,'booking','/booking',0,JSON.stringify({source:'public',service_name:serviceName})])
   res.status(201).json({booking:q.rows[0]})
@@ -921,6 +928,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
     }
   }
   let total=0
+  let currency=null
   const normalized=[]
   for(const item of items){
     const catalogId=String(item.catalog_id||item.id||'').trim()
@@ -930,17 +938,20 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
     else source=(memoryCatalog.get(project.id)||[]).find(x=>x.id===catalogId && x.active!==false)
     if(!source) return res.status(400).json({error:'Товар не найден'})
     const price=Number(source.price||0)
+    const sourceCurrency=String(source.currency||'EUR').toUpperCase()
+    if(currency && currency!==sourceCurrency) return res.status(400).json({error:'Нельзя оформить заказ с товарами в разных валютах'})
+    currency=sourceCurrency
     total+=price*quantity
     normalized.push({catalog_id:source.id,name:source.name,price,quantity})
   }
   const number='ORD-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
   let order
   if(!pool){
-    order={id:crypto.randomUUID(),studio_id:project.studio_id||demoStudio.id,project_id:project.id,client_id:clientId,number,status:'pending',total,currency:String(req.body?.currency||'EUR').toUpperCase(),items:normalized,created_at:new Date().toISOString()}
+    order={id:crypto.randomUUID(),studio_id:project.studio_id||demoStudio.id,project_id:project.id,client_id:clientId,number,status:'pending',total,currency:currency||'EUR',items:normalized,created_at:new Date().toISOString()}
     memoryOrders.unshift(order)
     memoryEvents.push({slug,event_type:'order_created',path:'/checkout',value:total,created_at:new Date().toISOString()})
   } else {
-    order=(await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[project.id,clientId,number,'pending',total,String(req.body?.currency||'EUR').toUpperCase(),JSON.stringify(normalized)])).rows[0]
+    order=(await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[project.id,clientId,number,'pending',total,currency||'EUR',JSON.stringify(normalized)]).rows[0]
     await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[project.id,'order_created','/checkout',total,JSON.stringify({order_id:order.id})])
   }
   let checkout_url=null
