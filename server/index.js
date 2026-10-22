@@ -106,41 +106,41 @@ const TEMPLATE_DEFINITIONS={
     {type:'testimonials',title:'Отзывы клиентов',items:['«Отличный сервис и атмосфера»','«Записываюсь каждый месяц»'],columns:2},
     {type:'contacts',title:'Мы рядом',text:'Адрес, телефон и часы работы.'},
     {type:'cta',title:'Готовы к обновлению?',text:'Выберите удобное время и запишитесь онлайн.',button:'Записаться',action:'booking'}
-  ],catalog:[{name:'Мужская стрижка',description:'Классическая стрижка',price:25,currency:'EUR'},{name:'Стрижка + борода',description:'Комплексная услуга',price:35,currency:'EUR'},{name:'Премиум уход',description:'Стрижка, борода и уход',price:50,currency:'EUR'}]},
+  ],catalog:[{name:'Мужская стрижка',description:'Классическая стрижка',price:25,currency:'RUB'},{name:'Стрижка + борода',description:'Комплексная услуга',price:35,currency:'RUB'},{name:'Премиум уход',description:'Стрижка, борода и уход',price:50,currency:'RUB'}]},
   beauty:{id:'beauty',name:'Салон красоты',category:'Красота',blocks:[
     {type:'hero',headline:'Красота начинается с заботы о себе',subheadline:'Услуги, специалисты и онлайн-запись.',cta:'Записаться',action:'booking'},
     {type:'services',title:'Популярные услуги',items:['Стрижка и укладка','Маникюр','Косметология'],action:'booking',columns:3},
     {type:'gallery',title:'Наши работы',items:['Новый образ','Маникюр','Уход'],columns:3},
     {type:'testimonials',title:'Отзывы',items:['«Очень понравилось»','«Вернусь снова»'],columns:2},
     {type:'cta',title:'Запишитесь онлайн',text:'Выберите услугу и удобное время.',button:'Записаться',action:'booking'}
-  ],catalog:[{name:'Стрижка и укладка',description:'Образ на каждый день',price:35,currency:'EUR'},{name:'Маникюр',description:'Маникюр с покрытием',price:30,currency:'EUR'},{name:'Косметология',description:'Консультация и уход',price:60,currency:'EUR'}]},
+  ],catalog:[{name:'Стрижка и укладка',description:'Образ на каждый день',price:35,currency:'RUB'},{name:'Маникюр',description:'Маникюр с покрытием',price:30,currency:'RUB'},{name:'Косметология',description:'Консультация и уход',price:60,currency:'RUB'}]},
   cafe:{id:'cafe',name:'Кафе / ресторан',category:'Ресторан',blocks:[
     {type:'hero',headline:'Вкусные встречи каждый день',subheadline:'Меню, заказ и бронирование столика онлайн.',cta:'Забронировать столик',action:'booking'},
     {type:'services',title:'Меню',items:['Завтраки','Основные блюда','Десерты'],action:'lead',columns:3},
     {type:'gallery',title:'Атмосфера',items:['Зал','Кухня','Вечер'],columns:3},
     {type:'contacts',title:'Контакты',text:'Адрес, часы работы и контакты.'},
     {type:'cta',title:'Забронируйте столик',text:'Мы подготовим стол к вашему приходу.',button:'Забронировать',action:'booking'}
-  ],catalog:[{name:'Завтрак',description:'Кофе и блюдо на выбор',price:12,currency:'EUR'},{name:'Основное блюдо',description:'Блюдо дня',price:18,currency:'EUR'},{name:'Десерт',description:'Домашний десерт',price:8,currency:'EUR'}]},
+  ],catalog:[{name:'Завтрак',description:'Кофе и блюдо на выбор',price:12,currency:'RUB'},{name:'Основное блюдо',description:'Блюдо дня',price:18,currency:'RUB'},{name:'Десерт',description:'Домашний десерт',price:8,currency:'RUB'}]},
   fitness:{id:'fitness',name:'Фитнес',category:'Спорт',blocks:[
     {type:'hero',headline:'Тренируйтесь с удовольствием',subheadline:'Абонементы, тренеры и запись на занятия.',cta:'Начать',action:'booking'},
     {type:'services',title:'Направления',items:['Тренажёрный зал','Персональные тренировки','Групповые занятия'],action:'booking',columns:3},
     {type:'testimonials',title:'Что говорят участники',items:['«Наконец-то вошёл в режим»','«Отличные тренеры»'],columns:2},
     {type:'faq',title:'Частые вопросы',items:['Как проходит первое занятие — Подберём программу после знакомства.','Можно ли отменить запись — Да, заранее предупредите администратора.'],openFirst:true},
     {type:'cta',title:'Готовы начать?',text:'Запишитесь на первое занятие.',button:'Записаться',action:'booking'}
-  ],catalog:[{name:'Разовое занятие',description:'Доступ на один день',price:15,currency:'EUR'},{name:'Персональная тренировка',description:'Занятие с тренером',price:40,currency:'EUR'},{name:'Абонемент',description:'Месячный абонемент',price:59,currency:'EUR'}]},
+  ],catalog:[{name:'Разовое занятие',description:'Доступ на один день',price:15,currency:'RUB'},{name:'Персональная тренировка',description:'Занятие с тренером',price:40,currency:'RUB'},{name:'Абонемент',description:'Месячный абонемент',price:59,currency:'RUB'}]},
   shop:{id:'shop',name:'Интернет-магазин',category:'Магазин',blocks:[
     {type:'hero',headline:'Ваши любимые товары онлайн',subheadline:'Каталог, корзина и быстрый заказ.',cta:'Смотреть каталог',action:'lead'},
     {type:'services',title:'Категории',items:['Новинки','Хиты продаж','Спецпредложения'],action:'lead',columns:3},
     {type:'gallery',title:'Подборка товаров',items:['Новинки','Популярное','Акции'],columns:3},
     {type:'cta',title:'Есть вопросы?',text:'Оставьте заявку — мы поможем с выбором.',button:'Написать нам',action:'lead'}
-  ],catalog:[{name:'Хит продаж',description:'Популярный товар',price:29,currency:'EUR'},{name:'Новинка',description:'Новая позиция',price:39,currency:'EUR'},{name:'Спецпредложение',description:'Цена по акции',price:19,currency:'EUR'}]},
+  ],catalog:[{name:'Хит продаж',description:'Популярный товар',price:29,currency:'RUB'},{name:'Новинка',description:'Новая позиция',price:39,currency:'RUB'},{name:'Спецпредложение',description:'Цена по акции',price:19,currency:'RUB'}]},
   services:{id:'services',name:'Услуги',category:'Бизнес',blocks:[
     {type:'hero',headline:'Профессиональные услуги для бизнеса',subheadline:'Покажите экспертизу и принимайте заявки онлайн.',cta:'Получить консультацию',action:'lead'},
     {type:'services',title:'Наши услуги',items:['Консультация','Комплексное решение','Сопровождение'],action:'lead',columns:3},
     {type:'testimonials',title:'Клиенты о нас',items:['«Получили результат быстрее ожиданий»','«Отличная команда»'],columns:2},
     {type:'faq',title:'FAQ',items:['Как начать — Оставьте заявку и мы свяжемся с вами.','Сколько длится работа — Срок зависит от задачи.'],openFirst:true},
     {type:'cta',title:'Обсудим задачу?',text:'Расскажите, что нужно сделать.',button:'Оставить заявку',action:'lead'}
-  ],catalog:[{name:'Консультация',description:'Разбор задачи',price:50,currency:'EUR'},{name:'Комплексное решение',description:'Проект под ключ',price:250,currency:'EUR'},{name:'Сопровождение',description:'Поддержка проекта',price:90,currency:'EUR'}]}
+  ],catalog:[{name:'Консультация',description:'Разбор задачи',price:50,currency:'RUB'},{name:'Комплексное решение',description:'Проект под ключ',price:250,currency:'RUB'},{name:'Сопровождение',description:'Поддержка проекта',price:90,currency:'RUB'}]}
 }
 function templateDefinition(id=''){
   return TEMPLATE_DEFINITIONS[String(id||'').toLowerCase()] || TEMPLATE_DEFINITIONS.services
@@ -156,8 +156,8 @@ function demoCatalog(projectId){return TEMPLATE_DEFINITIONS.services.catalog.map
 function demoLeads(){return [{id:'lead-1',project_id:'demo-barber',project_slug:'barber-house',name:'Иван',phone:'+358 40 000 0001',email:'ivan@example.com',message:'Хочу записаться',status:'new',created_at:new Date().toISOString()}]}
 function demoClients(){return [{id:'client-1',studio_id:demoStudio.id,name:'Иван',phone:'+358 40 000 0001',email:'ivan@example.com',created_at:new Date().toISOString()}]}
 function demoBookings(){return [{id:'booking-1',project_id:'demo-barber',project_slug:'barber-house',client_id:'client-1',client_name:'Иван',service_name:'Мужская стрижка',starts_at:new Date(Date.now()+86400000).toISOString(),status:'confirmed',created_at:new Date().toISOString()}]}
-function demoPayments(){return [{id:'pay-1',project_id:'demo-barber',client_id:'client-1',amount:85,currency:'EUR',status:'paid',description:'Заказ',created_at:new Date().toISOString()}]}
-function demoInvoices(){return [{id:'inv-1',project_id:'demo-barber',client_id:'client-1',number:'INV-DEMO-001',amount:85,currency:'EUR',status:'paid',description:'Счёт',created_at:new Date().toISOString()}]}
+function demoPayments(){return [{id:'pay-1',project_id:'demo-barber',client_id:'client-1',amount:85,currency:'RUB',status:'paid',description:'Заказ',created_at:new Date().toISOString()}]}
+function demoInvoices(){return [{id:'inv-1',project_id:'demo-barber',client_id:'client-1',number:'INV-DEMO-001',amount:85,currency:'RUB',status:'paid',description:'Счёт',created_at:new Date().toISOString()}]}
 const memoryProjects = demoProjects()
 const memoryPages = new Map(memoryProjects.map(p => [p.id, [{id:'page-'+p.id,title:'Главная',slug:'home',published:p.status==='published',content:{blocks:[
   {type:'hero',headline:p.name,subheadline:'Современный цифровой опыт для ваших клиентов.',cta:'Оставить заявку'},
@@ -312,13 +312,6 @@ app.post('/api/auth/logout',requireAuth,async(req,res)=>{
   res.json({ok:true})
 })
 
-app.get('/api/health', async (_req, res) => {
-  let database = 'not_configured'
-  if (pool) {
-    try { await pool.query('select 1'); database = 'connected' } catch { database = 'error' }
-  }
-  res.json({ ok: true, service: 'nexora-api', version: '0.2.0', database })
-})
 
 function requireRole(req,res,roles){ if(!roles.includes(req.user.role)) { res.status(403).json({error:'Недостаточно прав для этой операции'}); return false } return true }
 async function ownedProject(req,projectId){
@@ -619,16 +612,29 @@ app.post('/api/connect/onboard', async (req,res)=>{
 app.post('/api/payments/yookassa/webhook', async (req,res)=>{
   try{
     const event=req.body||{}
-    const object=event.object||{}
-    const orderId=object.metadata?.order_id
-    if(orderId && pool){
-      if(event.event==='payment.succeeded' || (object.status==='succeeded' && object.paid===true)){
-        await pool.query("update orders set status='paid',paid_at=coalesce(paid_at,now()),payment_provider='yookassa',payment_external_id=$1 where id::text=$2 and status<>'paid'",[object.id,orderId])
-        const order=(await pool.query('select project_id,total from orders where id::text=$1 limit 1',[orderId])).rows[0]
-        if(order) await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[order.project_id,'payment','/checkout',Number(order.total||0),JSON.stringify({order_id:orderId,payment_provider:'yookassa',payment_id:object.id})])
-      }else if(event.event==='payment.canceled' || object.status==='canceled'){
-        await pool.query("update orders set status='cancelled',payment_provider='yookassa',payment_external_id=$1 where id::text=$2 and status='pending'",[object.id,orderId])
+    const posted=event.object||{}
+    const paymentId=String(posted.id||'').trim()
+    if(!paymentId || !pool) return res.status(200).json({received:true})
+    const payment=await yookassaRequest('/payments/'+encodeURIComponent(paymentId))
+    const orderId=String(payment?.metadata?.order_id||posted?.metadata?.order_id||'').trim()
+    if(!orderId) return res.status(200).json({received:true})
+    const order=(await pool.query('select id,project_id,total,currency,status from orders where id::text=$1 limit 1',[orderId])).rows[0]
+    if(!order) return res.status(200).json({received:true})
+    const paidAmount=Number(payment?.amount?.value||0)
+    const paymentCurrency=String(payment?.amount?.currency||'').toUpperCase()
+    const orderCurrency=String(order.currency||'').toUpperCase()
+    const amountMatches=Math.abs(paidAmount-Number(order.total||0))<0.01
+    const currencyMatches=paymentCurrency===orderCurrency && paymentCurrency==='RUB'
+    const succeeded=payment?.status==='succeeded' && payment?.paid===true
+    const cancelled=payment?.status==='canceled'
+    if(!amountMatches || !currencyMatches) return res.status(200).json({received:true})
+    if(succeeded){
+      const updated=await pool.query("update orders set status='paid',paid_at=coalesce(paid_at,now()),payment_provider='yookassa',payment_external_id=$1 where id::text=$2 and status<>'paid' returning id",[payment.id,orderId])
+      if(updated.rows[0]){
+        await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[order.project_id,'payment','/checkout',Number(order.total||0),JSON.stringify({order_id:orderId,payment_provider:'yookassa',payment_id:payment.id})])
       }
+    }else if(cancelled){
+      await pool.query("update orders set status='cancelled',payment_provider='yookassa',payment_external_id=$1 where id::text=$2 and status='pending'",[payment.id,orderId])
     }
     res.status(200).json({received:true})
   }catch(e){ console.error('YooKassa webhook error:',e.message); res.status(200).json({received:true}) }
@@ -885,7 +891,11 @@ app.post('/api/projects', async (req, res) => {
   const count=memoryProjects.filter(x=>x.studio_id===req.user.studio_id).length
   if(count>=limit)return res.status(409).json({error:'Достигнут лимит проектов вашего тарифа',code:'PLAN_LIMIT',limit,plan:cfg.name})
   const template=templateDefinition(templateId)
-  const project={id:crypto.randomUUID(),studio_id:req.user.studio_id,name,slug:slugify(name),project_type:projectType,status:'draft',domain:null,settings:{miniApp:{enabled:projectType.includes('miniapp')}}}
+  const slugBase=slugify(name)
+  let slug=slugBase
+  let suffix=2
+  while(memoryProjects.some(x=>x.slug===slug)) slug=slugBase+'-'+suffix++
+  const project={id:crypto.randomUUID(),studio_id:req.user.studio_id,name,slug,project_type:projectType,status:'draft',domain:null,settings:{miniApp:{enabled:projectType.includes('miniapp')}}}
   memoryProjects.unshift(project)
   memoryPages.set(project.id,[{id:crypto.randomUUID(),title:'Главная',slug:'home',published:false,content:{blocks:template.blocks}}])
   memoryCatalog.set(project.id,template.catalog.map(item=>({id:crypto.randomUUID(),project_id:project.id,...item})))
@@ -1094,7 +1104,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
     if(!source) return res.status(400).json({error:'Товар не найден'})
     const price=Number(source.price||0)
     if(!Number.isFinite(price)||price<0) return res.status(400).json({error:'У товара некорректная цена'})
-    const sourceCurrency=String(source.currency||'EUR').toUpperCase()
+    const sourceCurrency=String(source.currency||'RUB').toUpperCase()
     if(currency && currency!==sourceCurrency) return res.status(400).json({error:'Нельзя оформить заказ с товарами в разных валютах'})
     currency=sourceCurrency
     total+=price*quantity
@@ -1103,7 +1113,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   const number='ORD-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
   let order
   if(!pool){
-    order={id:crypto.randomUUID(),studio_id:project.studio_id||demoStudio.id,project_id:project.id,client_id:clientId,number,status:'pending',total,currency:currency||'EUR',items:normalized,created_at:new Date().toISOString()}
+    order={id:crypto.randomUUID(),studio_id:project.studio_id||demoStudio.id,project_id:project.id,client_id:clientId,number,status:'pending',total,currency:currency||'RUB',items:normalized,created_at:new Date().toISOString()}
     memoryOrders.unshift(order)
     memoryEvents.push({slug,event_type:'order_created',path:'/checkout',value:total,created_at:new Date().toISOString()})
   } else {
@@ -1380,7 +1390,7 @@ app.patch('/api/bookings/:id', async (req,res) => {
 app.post('/api/bookings/:id/payment', async (req,res) => {
   const id=req.params.id
   const amount=Number(req.body?.amount)
-  const currency=String(req.body?.currency||'EUR').trim().toUpperCase()
+  const currency=String(req.body?.currency||'RUB').trim().toUpperCase()
   if(!Number.isFinite(amount)||amount<=0)return res.status(400).json({error:'Укажите корректную сумму оплаты'})
   let booking
   if(!pool) booking=memoryBookings.find(x=>x.id===id)
@@ -1566,7 +1576,7 @@ app.get('/api/orders/:id', async (req,res) => {
 app.post('/api/orders', async (req,res) => {
   const projectId=String(req.body?.project_id||'').trim()
   const items=Array.isArray(req.body?.items)?req.body.items:[]
-  const currency=String(req.body?.currency||'EUR').trim().toUpperCase()
+  const currency=String(req.body?.currency||'RUB').trim().toUpperCase()
   const clientId=req.body?.client_id||null
   if(!projectId || !items.length) return res.status(400).json({error:'Проект и товары обязательны'})
   const owned=await ownedProject(req,projectId)
@@ -1627,7 +1637,7 @@ app.post('/api/invoices', async (req,res) => {
   if(!owned)return res.status(404).json({error:'Проект не найден'})
   if(req.body?.client_id && !(await ownedClient(req,req.body.client_id)))return res.status(404).json({error:'Клиент не найден'})
   const number=String(req.body?.number||('INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()))
-  const amount=Number(req.body?.amount||0),currency=String(req.body?.currency||'EUR'),status=String(req.body?.status||'sent')
+  const amount=Number(req.body?.amount||0),currency=String(req.body?.currency||'RUB'),status=String(req.body?.status||'sent')
   if(!pool){const x={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,client_id:req.body?.client_id||null,number,amount,currency,status,due_date:req.body?.due_date||null,description:String(req.body?.description||''),created_at:new Date().toISOString()};memoryInvoices.unshift(x);return res.status(201).json({invoice:x})}
   const q=await pool.query('insert into invoices(project_id,client_id,number,amount,currency,status,due_date,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,number,amount,currency,status,req.body?.due_date||null,String(req.body?.description||'')])
   res.status(201).json({invoice:q.rows[0]})
@@ -1649,7 +1659,7 @@ app.get('/api/payments', async (req,res) => {
 app.post('/api/payments', async (req,res) => {
   const projectId=String(req.body?.project_id||'').trim()
   const amount=Number(req.body?.amount)
-  const currency=String(req.body?.currency||'EUR').trim().toUpperCase()
+  const currency=String(req.body?.currency||'RUB').trim().toUpperCase()
   const description=String(req.body?.description||'').trim()
   const status=String(req.body?.status||'paid').trim()
   const orderId=req.body?.order_id||null
