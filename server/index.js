@@ -1084,7 +1084,7 @@ app.post('/api/public/:slug/events', async (req,res) => {
 app.get('/api/projects/:id/catalog', async (req,res) => {
   const id = req.params.id
   if (!pool) return res.json({ items: memoryCatalog.get(id) || [] })
-  const q = await pool.query('select id, project_id, name, description, price, currency, image_url, active, created_at from catalog_items where project_id::text=$1 order by created_at desc',[id])
+  const q = await pool.query('select id, project_id, name, description, price, currency, image_url, active, created_at from catalog_items where project_id::text=$1::text order by created_at desc',[id])
   res.json({ items: q.rows })
 })
 app.post('/api/projects/:id/catalog', async (req,res) => {
@@ -1173,7 +1173,7 @@ app.post('/api/bookings', async (req,res) => {
   }
   const project=(await pool.query('select id,name from projects where id::text=$1 and studio_id::text=$2::text limit 1',[projectId,req.user.studio_id])).rows[0]
   if(!project)return res.status(404).json({error:'Проект не найден'})
-  const conflict=(await pool.query("select id from bookings where project_id::text=$1 and status <> 'cancelled' and starts_at < $3 and ends_at > $2 limit 1",[projectId,startsAt,endsAt])).rows[0]
+  const conflict=(await pool.query("select id from bookings where project_id::text=$1::text and status <> 'cancelled' and starts_at < $3 and ends_at > $2 limit 1",[projectId,startsAt,endsAt])).rows[0]
   if(conflict)return res.status(409).json({error:'Это время уже занято другой записью'})
   const client=phone?(await pool.query('select id from clients where studio_id::text=$1::text and phone=$2 limit 1',[req.user.studio_id,phone])).rows[0]:null
   if(phone&&!client && !await requireClientCapacity(req.user.studio_id,res))return
@@ -1381,13 +1381,13 @@ app.get('/api/projects/:id/analytics', async (req,res) => {
     count(*) filter (where event_type='lead')::int as leads,
     count(*) filter (where event_type='booking')::int as bookings,
     coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue
-    from analytics_events where project_id::text=$1 and created_at >= now() - interval '30 days'`,[project.rows[0].id])
+    from analytics_events where project_id::text=$1::text and created_at >= now() - interval '30 days'`,[project.rows[0].id])
   const series=await pool.query(`select to_char(date_trunc('day',created_at),'YYYY-MM-DD') as day,
     count(*) filter (where event_type='page_view')::int as visits,
     count(*) filter (where event_type='lead')::int as leads,
     count(*) filter (where event_type='booking')::int as bookings,
     coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue
-    from analytics_events where project_id::text=$1 and created_at >= now() - interval '30 days'
+    from analytics_events where project_id::text=$1::text and created_at >= now() - interval '30 days'
     group by 1 order by 1`,[project.rows[0].id])
   res.json({metrics:q.rows[0],series:series.rows})
 })
