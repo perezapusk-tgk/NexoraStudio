@@ -8,7 +8,17 @@ async function request(path, options = {}) {
   const token=getAuthToken()
   const headers={ 'Content-Type':'application/json', ...(options.headers || {}) }
   if(token) headers.Authorization='Bearer '+token
-  const response = await fetch(API_BASE + path, { ...options, headers })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), options.timeout ?? 10000)
+  let response
+  try {
+    response = await fetch(API_BASE + path, { ...options, headers, signal: controller.signal })
+  } catch (error) {
+    if(error?.name==='AbortError') throw new Error('Сервер не отвечает. Попробуйте обновить страницу.')
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
   if (!response.ok) {
     if(response.status===401) setAuthToken('')
     throw new Error(await response.text())
