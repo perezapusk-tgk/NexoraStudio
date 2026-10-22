@@ -964,7 +964,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
       if(pool) connectAccountId=(await pool.query('select stripe_connect_account_id from studios where id=$1',[project.studio_id])).rows[0]?.stripe_connect_account_id
       else connectAccountId=(memoryStudios.find(x=>x.id===project.studio_id)||demoStudio).stripe_connect_account_id
       if(connectAccountId){
-        const currency=String(req.body?.currency||'EUR').toLowerCase()
+        const stripeCurrency=String(currency||'EUR').toLowerCase()
         const unit=Math.round(total*100)
         const feePercent=Math.max(0,Math.min(100,Number(process.env.STRIPE_PLATFORM_FEE_PERCENT||5)))
         const fee=Math.round(unit*feePercent/100)
@@ -973,7 +973,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
           'success_url':billingAppUrl()+'/?order='+encodeURIComponent(order.id)+'&payment=success&session_id={CHECKOUT_SESSION_ID}',
           'cancel_url':billingAppUrl()+'/?order='+encodeURIComponent(order.id)+'&payment=cancelled',
           'customer_email':email||'',
-          'line_items[0][price_data][currency]':currency,
+          'line_items[0][price_data][currency]':stripeCurrency,
           'line_items[0][price_data][product_data][name]':project.name+' — заказ '+number,
           'line_items[0][price_data][unit_amount]':unit,
           'line_items[0][quantity]':1,
