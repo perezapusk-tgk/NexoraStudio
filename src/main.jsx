@@ -33,7 +33,7 @@ const projects = [
   { name: 'Barber House', type: 'Сайт + Mini App', status: 'Опубликован', color: 'dark', leads: 18, bookings: 12, revenue: '€1 840', updated: 'сегодня' },
   { name: 'Nordic Beauty', type: 'Сайт', status: 'В работе', color: 'blue', leads: 11, bookings: 4, revenue: '€920', updated: '2 ч назад' },
   { name: 'Urban Fitness', type: 'Mini App', status: 'Опубликован', color: 'purple', leads: 8, bookings: 7, revenue: '€2 060', updated: 'вчера' },
-  { name: 'Mokka Coffee', type: 'Сайт + каталог', status: 'Черновик', color: 'orange', leads: 0, bookings: 0, revenue: '€0', updated: 'вчера' },
+  { name: 'Mokka Coffee', type: 'Сайт + каталог', status: 'Черновик', color: 'orange', leads: 0, bookings: 0, revenue: '₽0', updated: 'вчера' },
 ]
 
 const activities = [
@@ -212,7 +212,7 @@ function App() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [showCreate, setShowCreate] = useState(false)
-  const [projectData, setProjectData] = useState(projects)
+  const [projectData, setProjectData] = useState([])
   const [apiState, setApiState] = useState('loading')
   const [crm, setCrm] = useState({ leads: [], clients: [], bookings: [], payments: [], invoices: [], analytics: null })
   const [selectedProject, setSelectedProject] = useState(null)
@@ -261,7 +261,7 @@ function App() {
         project_type: p.project_type || '',
         type: p.project_type === 'miniapp' ? 'Mini App' : p.project_type === 'site' ? 'Сайт' : 'Сайт + Mini App',
         status: p.status === 'published' ? 'Опубликован' : p.status === 'draft' ? 'Черновик' : 'В работе',
-        color: 'dark', leads: Number(p.leads || 0), bookings: Number(p.bookings || 0), revenue: p.revenue || '€0', updated: 'только что'
+        color: 'dark', leads: Number(p.leads || 0), bookings: Number(p.bookings || 0), revenue: p.revenue || '₽0', updated: 'только что'
       })))
       setApiState('online')
     }).catch(() => alive && setApiState('offline'))
@@ -367,7 +367,7 @@ function App() {
         <div className="workspace"><div className="workspace-avatar">{initials||"NS"}</div><div><b>{studioName}</b><span>Рабочее пространство</span></div><ChevronRight size={15}/></div>
         <nav>
           <div className="nav-label">Рабочая область</div>
-          {nav.slice(0, 5).map(([label, Icon]) => <button key={label} className={active === label ? 'nav-item active' : 'nav-item'} onClick={() => go(label)}><Icon size={18}/><span>{label}</span>{label === 'Заявки' && <em>7</em>}</button>)}
+          {nav.slice(0, 5).map(([label, Icon]) => <button key={label} className={active === label ? 'nav-item active' : 'nav-item'} onClick={() => go(label)}><Icon size={18}/><span>{label}</span>{label === 'Заявки' && crm.leads.length>0 && <em>{crm.leads.length}</em>}</button>)}
           <div className="nav-label">Создание</div>
           {nav.slice(5, 13).map(([label, Icon]) => <button key={label} className={active === label ? 'nav-item active' : 'nav-item'} onClick={() => go(label)}><Icon size={18}/><span>{label}</span></button>)}
           <div className="nav-label">Система</div>
@@ -391,7 +391,7 @@ function App() {
         </header>
 
         <div className="content">
-          {active === 'Обзор' && !selectedProject && <Dashboard projects={filteredProjects} onCreate={() => setShowCreate(true)} onNavigate={go} onOpenProject={openProject} onDeleteProject={deleteProject}/>}
+          {active === 'Обзор' && !selectedProject && <Dashboard projects={filteredProjects} onCreate={() => setShowCreate(true)} onNavigate={go} onOpenProject={openProject} metrics={crm.analytics} onDeleteProject={deleteProject}/>}
           {active === 'Проекты' && !selectedProject && <Projects projects={filteredProjects} onCreate={() => setShowCreate(true)} onOpenProject={openProject} onDeleteProject={deleteProject}/>}
           {active === 'Заявки' && <InboxPage leads={crm.leads} />}
           {active === 'Клиенты' && !selectedClient && <Clients clients={crm.clients} onOpenClient={openClient} />}
@@ -419,14 +419,14 @@ function Header({ eyebrow, title, description, action }) {
   return <div className="page-head"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1>{description && <p>{description}</p>}</div>{action}</div>
 }
 
-function Dashboard({ projects, onCreate, onNavigate, onOpenProject }) {
+function Dashboard({ projects, onCreate, onNavigate, onOpenProject, metrics }) {
   return <>
     <Header eyebrow="Среда студии" title="Доброе утро 👋" description="Вот что происходит с вашими клиентскими проектами сегодня." action={<button className="primary" onClick={onCreate}><Plus size={17}/> Новый проект</button>}/>
     <div className="metrics">
-      <Metric title="Активные проекты" value="24" change="+12%" icon={FolderKanban}/>
-      <Metric title="Новые заявки" value="37" change="+18%" icon={Inbox}/>
-      <Metric title="Бронирования" value="18" change="+9%" icon={CalendarDays}/>
-      <Metric title="Продажи" value="€4 820" change="+24%" icon={CircleDollarSign}/>
+      <Metric title="Активные проекты" value={String(metrics?.projects ?? projects.length)} change="в рабочем пространстве" icon={FolderKanban}/>
+      <Metric title="Новые заявки" value={String(metrics?.leads ?? 0)} change="за последние 30 дней" icon={Inbox}/>
+      <Metric title="Бронирования" value={String(metrics?.bookings ?? 0)} change="за последние 30 дней" icon={CalendarDays}/>
+      <Metric title="Продажи" value={metrics?.revenue!=null?new Intl.NumberFormat('ru-RU',{style:'currency',currency:metrics?.currency||'RUB',maximumFractionDigits:0}).format(Number(metrics.revenue||0)):'—'} change="+24%" icon={CircleDollarSign}/>
     </div>
     <div className="grid-main">
       <section className="card projects-card">
@@ -477,7 +477,7 @@ function Invoices({invoices=[],projects=[]}) {
   const setStatus=async(id,status)=>{try{await api.updateInvoice(id,status);setItems(v=>v.map(x=>x.id===id?{...x,status}:x))}catch{window.alert('Не удалось изменить статус счёта')}};
   const total=items.filter(x=>x.status==='paid').reduce((sum,x)=>sum+Number(x.amount||0),0);
   return <><Header eyebrow="Финансы" title="Счета" description="Выставляйте счета клиентам и контролируйте оплату." action={<button className="primary" onClick={()=>setCreating(true)}><Plus size={17}/> Новый счёт</button>}/>
-    <div className="metrics compact"><Metric title="Оплачено" value={new Intl.NumberFormat('ru-RU',{style:'currency',currency:'EUR'}).format(total)} change="по счетам" icon={CheckCircle2}/><Metric title="Всего" value={String(items.length)} change="счетов" icon={Receipt}/><Metric title="Ожидают" value={String(items.filter(x=>x.status==='sent').length)} change="отправлены клиентам" icon={Clock3}/><Metric title="Просрочено" value={String(items.filter(x=>x.status==='overdue').length)} change="требуют внимания" icon={CircleDollarSign}/></div>
+    <div className="metrics compact"><Metric title="Оплачено" value={new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(total)} change="по счетам" icon={CheckCircle2}/><Metric title="Всего" value={String(items.length)} change="счетов" icon={Receipt}/><Metric title="Ожидают" value={String(items.filter(x=>x.status==='sent').length)} change="отправлены клиентам" icon={Clock3}/><Metric title="Просрочено" value={String(items.filter(x=>x.status==='overdue').length)} change="требуют внимания" icon={CircleDollarSign}/></div>
     <section className="card calendar-card"><div className="card-head"><div><h2>Реестр счетов</h2><span>Счёт → клиент → оплата</span></div><div className="calendar-actions">{[['all','Все'],['draft','Черновики'],['sent','Отправлены'],['paid','Оплачены'],['overdue','Просрочены']].map(([id,label])=><button key={id} className={filter===id?'filter active':'filter'} onClick={()=>setFilter(id)}>{label}</button>)}</div></div>
       {visible.length===0?<div className="empty-editor"><Receipt size={24}/><b>Счетов пока нет</b><span>Создайте первый счёт для клиента.</span></div>:visible.map((x,i)=><div className="slot invoice-row" key={x.id||i}><div className="invoice-number"><b>{x.number}</b><span>{x.description||'Без описания'}</span></div><div className="invoice-project"><b>{x.project_name||'Проект'}</b><span>{x.due_date?'до '+new Date(x.due_date).toLocaleDateString('ru-RU'):''}</span></div><strong>{new Intl.NumberFormat('ru-RU',{style:'currency',currency:x.currency||'EUR'}).format(Number(x.amount||0))}</strong>{x.id&&<select className="booking-status" value={x.status||'draft'} onChange={e=>setStatus(x.id,e.target.value)}>{Object.entries(statusLabel).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select>}</div>)}</section>
     {creating&&<div className="modal-backdrop" onMouseDown={()=>setCreating(false)}><div className="modal card" onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="eyebrow">Финансы</span><h2>Новый счёт</h2></div><button className="icon-btn" onClick={()=>setCreating(false)}><X size={18}/></button></div><div className="block-form"><label>Проект<select value={form.project_id} onChange={e=>setForm(v=>({...v,project_id:e.target.value}))}>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Сумма<input type="number" min="0.01" step="0.01" value={form.amount} onChange={e=>setForm(v=>({...v,amount:e.target.value}))}/></label><label>Описание<input value={form.description} onChange={e=>setForm(v=>({...v,description:e.target.value}))} placeholder="Например, абонемент"/></label><label>Срок оплаты<input type="date" value={form.due_date} onChange={e=>setForm(v=>({...v,due_date:e.target.value}))}/></label></div><div className="setting-actions"><button className="filter" onClick={()=>setCreating(false)}>Отмена</button><button className="primary" onClick={create} disabled={!form.project_id||!form.amount}>Создать счёт</button></div></div></div>}
@@ -643,7 +643,7 @@ function CatalogManager({projectId}) {
   const [loading,setLoading]=useState(true)
   const [saving,setSaving]=useState(false)
   const [editing,setEditing]=useState(null)
-  const [form,setForm]=useState({name:'',description:'',price:'',currency:'EUR',image_url:'',active:true})
+  const [form,setForm]=useState({name:'',description:'',price:'',currency:'RUB',image_url:'',active:true})
   const [orderOpen,setOrderOpen]=useState(false)
   const [orderItems,setOrderItems]=useState([])
   const [orderClient,setOrderClient]=useState('')
