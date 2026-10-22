@@ -524,7 +524,7 @@ app.post('/api/connect/account', async (req,res)=>{
       'business_profile[product_description]':'Payments for websites and Telegram Mini Apps managed through Nexora Studio',
       'controller[stripe_dashboard][type]':'express',
       'controller[fees][payer]':'application',
-      'controller[losses][payments]':'stripe',
+      'controller[losses][payments]':'application',
       'capabilities[card_payments][requested]':'true',
       'capabilities[transfers][requested]':'true',
       'email':email
