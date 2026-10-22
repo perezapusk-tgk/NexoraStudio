@@ -559,13 +559,12 @@ app.post('/api/connect/account', async (req,res)=>{
     const platform=await stripeRequest('/v1/account')
     const country=String(platform?.country||'').toUpperCase()
     if(!/^[A-Z]{2}$/.test(country)) throw new Error('Stripe не вернул страну платформы для создания Connect account')
-    const account=await stripeV2Request('/v2/core/accounts','POST',{
-      dashboard:'full',
-      contact_email:email,
-      identity:{country},
-      defaults:{responsibilities:{fees_collector:'stripe',losses_collector:'stripe'}},
-      configuration:{merchant:{capabilities:{card_payments:{requested:true}}}},
-      include:['configuration.merchant','identity','defaults','requirements']
+    const account=await stripeRequest('/v1/accounts','POST',{
+      type:'express',
+      country,
+      email,
+      'capabilities[card_payments][requested]':'true',
+      'capabilities[transfers][requested]':'true'
     })
     if(pool)await pool.query("update studios set stripe_connect_account_id=$1,stripe_connect_status='pending',updated_at=now() where id=$2",[account.id,req.user.studio_id])
     else {const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio;studio.stripe_connect_account_id=account.id;studio.stripe_connect_status='pending'}
@@ -580,9 +579,11 @@ app.post('/api/connect/onboard', async (req,res)=>{
     else accountId=(memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio).stripe_connect_account_id
     if(!accountId)return res.status(409).json({error:'Сначала создайте Stripe Connect account'})
     const base=billingAppUrl()
-    const link=await stripeV2Request('/v2/core/account-links','POST',{
+    const link=await stripeRequest('/v1/account_links','POST',{
       account:accountId,
-      use_case:{type:'account_onboarding',account_onboarding:{configurations:['merchant'],refresh_url:base+'/?connect=refresh',return_url:base+'/?connect=complete'}}
+      type:'account_onboarding',
+      refresh_url:base+'/?connect=refresh',
+      return_url:base+'/?connect=complete'
     })
     res.json({url:link.url,account_id:accountId})
   }catch(e){res.status(503).json({error:e.message||'Не удалось создать ссылку Stripe Connect'})}
@@ -1074,9 +1075,9 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
     else connectAccountId=(memoryStudios.find(x=>x.id===project.studio_id)||demoStudio).stripe_connect_account_id
     if(!connectAccountId) return res.status(409).json({error:'Stripe Connect ещё не подключён для этого проекта. Сначала подключите Stripe в настройках студии.'})
     try{
-      const account=await stripeV2Request('/v2/core/accounts/'+encodeURIComponent(connectAccountId),'GET',null,{include:'configuration.merchant,requirements'})
-      const cardStatus=account?.configuration?.merchant?.capabilities?.card_payments?.status
-      if(cardStatus!=='active') return res.status(409).json({error:'Stripe Connect ещё не активирован. Завершите подключение Stripe и дождитесь разрешения на приём платежей.'})
+      const account=await stripeRequest('/v1/accounts/'+encodeURIComponent(connectAccountId))
+      const cardStatus=account?.capabilities?.card_payments
+      if(account?.charges_enabled!==true || account?.payouts_enabled!==true || cardStatus!=='active') return res.status(409).json({error:'Stripe Connect ещё не активирован. Завершите подключение Stripe и дождитесь разрешения на приём платежей.'})
       const stripeCurrency=String(currency||'EUR').toLowerCase()
       const unit=Math.round(total*100)
       const feePercent=Math.max(0,Math.min(100,Number(process.env.STRIPE_PLATFORM_FEE_PERCENT||5)))
