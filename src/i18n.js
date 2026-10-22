@@ -72,13 +72,29 @@ export const applyLanguage=(lang=getLanguage())=>{
     if(next!==node.nodeValue) node.nodeValue=next
   })
   root.querySelectorAll('input[placeholder],textarea[placeholder]').forEach(el=>{
-    el.placeholder=translateText(el.placeholder,lang)
+    const next=translateText(el.placeholder||'',lang)
+    if(next!==el.placeholder) el.placeholder=next
   })
 }
 
 export const installLanguageObserver=()=>{
-  applyLanguage()
-  const observer=new MutationObserver(()=>applyLanguage())
+  let scheduled=false
+  let observer
+  const run=()=>{
+    scheduled=false
+    if(!document.body) return
+    observer?.disconnect()
+    try { applyLanguage() } finally {
+      observer?.observe(document.body,{subtree:true,childList:true,characterData:true})
+    }
+  }
+  const schedule=()=>{
+    if(scheduled) return
+    scheduled=true
+    queueMicrotask(run)
+  }
+  observer=new MutationObserver(schedule)
   observer.observe(document.body,{subtree:true,childList:true,characterData:true})
+  run()
   return ()=>observer.disconnect()
 }
