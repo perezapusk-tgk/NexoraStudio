@@ -205,7 +205,7 @@ async function requireAuth(req,res,next){
   try {
     if(pool){
       const q=await pool.query(`select u.id,u.name,u.email,u.role,u.studio_id,s.name as studio_name,s.owner_name,s.plan,s.project_limit,s.billing_currency
-        from sessions se join users u on u.id=se.user_id join studios s on s.id=u.studio_id
+        from sessions se join users u on u.id::text=se.user_id::text join studios s on s.id::text=u.studio_id::text
         where se.token_hash=$1 and se.expires_at>now()`,[tokenHash(token)])
       if(!q.rows[0]) return res.status(401).json({error:'Сессия истекла или недействительна'})
       const x=q.rows[0]
@@ -278,7 +278,7 @@ app.post('/api/auth/accept-invite',async(req,res)=>{
     const hash=tokenHash(token)
     if(pool){
       const q=await pool.query(`select i.*,s.name as studio_name,s.owner_name,s.plan,s.project_limit
-        from team_invitations i join studios s on s.id=i.studio_id
+        from team_invitations i join studios s on s.id::text=i.studio_id::text
         where i.token_hash=$1 and i.expires_at>now() and i.accepted_at is null`,[hash])
       if(!q.rows[0])return res.status(400).json({error:'Приглашение недействительно или уже истекло'})
       const inv=q.rows[0]
