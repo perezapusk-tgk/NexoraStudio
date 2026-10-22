@@ -721,7 +721,27 @@ app.post('/api/billing/stripe/webhook', async (req,res)=>{
   }catch(e){res.status(400).json({error:'Не удалось обработать Stripe webhook'})}
 })
 
-app.post('/api/billing/yookassa/webhook', async (req,res)=>{\n  try{\n    if(!pool) return res.status(200).json({received:true})\n    const event=req.body||{}\n    const obj=event.object||{}\n    const paymentId=String(obj.id||'').trim()\n    if(!paymentId) return res.status(200).json({received:true})\n    const payment=await yookassaRequest('/payments/'+encodeURIComponent(paymentId))\n    const tx=(await pool.query('select * from billing_transactions where provider=\\'yookassa\\' and provider_payment_id=$1 order by created_at desc limit 1',[paymentId])).rows[0]\n    if(!tx) return res.status(200).json({received:true})\n    const paid=payment.status==='succeeded' && payment.paid===true && String(payment.amount?.currency||'').toUpperCase()==='RUB' && Math.abs(Number(payment.amount?.value||0)-Number(tx.amount||0))<0.01 && String(payment.metadata?.studio_id||'')===String(tx.studio_id) && String(payment.metadata?.plan||'').toLowerCase()===String(tx.plan||'').toLowerCase()\n    if(event.type==='payment.succeeded' && paid){\n      const changed=await pool.query('update billing_transactions set status=\\'paid\\',paid_at=coalesce(paid_at,now()) where id=$1 and status<>\\'paid\\' returning id',[tx.id])\n      if(changed.rows[0]) await pool.query("update studios set plan=$1,project_limit=$2,subscription_status='active',billing_provider='yookassa',subscription_started_at=now(),subscription_renews_at=now()+interval '30 days',updated_at=now() where id::text=$3::text",[tx.plan,planConfig(tx.plan).projectLimit,tx.studio_id])\n    }else if(event.type==='payment.canceled'){\n      await pool.query("update billing_transactions set status='cancelled' where id=$1 and status='pending'",[tx.id])\n    }\n    res.status(200).json({received:true})\n  }catch(e){ console.error('YooKassa billing webhook error:',e.message); res.status(200).json({received:true}) }\n})\napp.post('/api/billing/confirm', async (req,res)=>{
+app.post('/api/billing/yookassa/webhook', async (req,res)=>{
+  try{
+    if(!pool) return res.status(200).json({received:true})
+    const event=req.body||{}
+    const obj=event.object||{}
+    const paymentId=String(obj.id||'').trim()
+    if(!paymentId) return res.status(200).json({received:true})
+    const payment=await yookassaRequest('/payments/'+encodeURIComponent(paymentId))
+    const tx=(await pool.query('select * from billing_transactions where provider=\\'yookassa\\' and provider_payment_id=$1 order by created_at desc limit 1',[paymentId])).rows[0]
+    if(!tx) return res.status(200).json({received:true})
+    const paid=payment.status==='succeeded' && payment.paid===true && String(payment.amount?.currency||'').toUpperCase()==='RUB' && Math.abs(Number(payment.amount?.value||0)-Number(tx.amount||0))<0.01 && String(payment.metadata?.studio_id||'')===String(tx.studio_id) && String(payment.metadata?.plan||'').toLowerCase()===String(tx.plan||'').toLowerCase()
+    if(event.type==='payment.succeeded' && paid){
+      const changed=await pool.query('update billing_transactions set status=\\'paid\\',paid_at=coalesce(paid_at,now()) where id=$1 and status<>\\'paid\\' returning id',[tx.id])
+      if(changed.rows[0]) await pool.query("update studios set plan=$1,project_limit=$2,subscription_status='active',billing_provider='yookassa',subscription_started_at=now(),subscription_renews_at=now()+interval '30 days',updated_at=now() where id::text=$3::text",[tx.plan,planConfig(tx.plan).projectLimit,tx.studio_id])
+    }else if(event.type==='payment.canceled'){
+      await pool.query("update billing_transactions set status='cancelled' where id=$1 and status='pending'",[tx.id])
+    }
+    res.status(200).json({received:true})
+  }catch(e){ console.error('YooKassa billing webhook error:',e.message); res.status(200).json({received:true}) }
+})
+app.post('/api/billing/confirm', async (req,res)=>{
   if(!requireRole(req,res,['owner','admin'])) return
   const provider=String(req.body?.provider||'').toLowerCase()
   const paymentId=String(req.body?.payment_id||'').trim()
