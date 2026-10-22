@@ -340,7 +340,7 @@ app.use('/api',async(req,res,next)=>{
         const queries={
           projects:'select id from projects where studio_id::text=$1::text and (id::text=$2::text or slug=$2::text) limit 1',
           leads:'select l.id from leads l join projects p on p.id=l.project_id where p.studio_id::text=$1::text and l.id::text=$2::text limit 1',
-          clients:'select id from clients where studio_id::text=$1::text and id=$2 limit 1',
+          clients:'select id from clients where studio_id::text=$1::text and id::text=$2::text limit 1',
           bookings:'select b.id from bookings b join projects p on p.id=b.project_id where p.studio_id::text=$1::text and b.id::text=$2::text limit 1',
           payments:'select x.id from payments x join projects p on p.id=x.project_id where p.studio_id::text=$1::text and x.id::text=$2::text limit 1',
           invoices:'select x.id from invoices x join projects p on p.id=x.project_id where p.studio_id::text=$1::text and x.id::text=$2::text limit 1',
@@ -1451,7 +1451,7 @@ app.post('/api/leads/:id/convert', async (req,res) => {
   if(existingQ.rows[0])return res.json({client:existingQ.rows[0],existing:true})
   if(!await requireClientCapacity(lead.studio_id,res))return
   const q=await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id,name,email,phone,created_at',[lead.studio_id,lead.name,lead.email||null,lead.phone||null])
-  await pool.query("update leads set status='won' where id=$1",[id])
+  await pool.query("update leads set status='won' where id::text=$1::text",[id])
   res.status(201).json({client:q.rows[0],existing:false})
 })
 
@@ -1516,9 +1516,9 @@ app.get('/api/clients', async (req, res) => {
     return res.json({clients:rows})
   }
   const sql="select c.id,c.name,c.email,c.phone,c.created_at,"+
-    "(select count(distinct x.project_id)::int from (select project_id from leads where phone=c.phone or email=c.email union all select project_id from bookings where client_id=c.id or customer_phone=c.phone union all select project_id from orders where client_id=c.id) x) as project_count,"+
-    "((select count(*) from leads where phone=c.phone or email=c.email)+(select count(*) from bookings where client_id=c.id or customer_phone=c.phone)+(select count(*) from orders where client_id=c.id))::int as contact_count,"+
-    "greatest(c.created_at,(select max(created_at) from orders where client_id=c.id),(select max(created_at) from payments where client_id=c.id),(select max(starts_at) from bookings where client_id=c.id or customer_phone=c.phone)) as last_activity "+
+    "(select count(distinct x.project_id)::int from (select project_id from leads where phone=c.phone or email=c.email union all select project_id from bookings where client_id::text=c.id::text or customer_phone=c.phone union all select project_id from orders where client_id::text=c.id::text) x) as project_count,"+
+    "((select count(*) from leads where phone=c.phone or email=c.email)+(select count(*) from bookings where client_id::text=c.id::text or customer_phone=c.phone)+(select count(*) from orders where client_id::text=c.id::text))::int as contact_count,"+
+    "greatest(c.created_at,(select max(created_at) from orders where client_id::text=c.id::text),(select max(created_at) from payments where client_id::text=c.id::text),(select max(starts_at) from bookings where client_id::text=c.id::text or customer_phone=c.phone)) as last_activity "+
     "from clients c where c.studio_id::text=$1::text order by last_activity desc nulls last limit 500"
   const { rows } = await pool.query(sql,[req.user.studio_id])
   res.json({ clients: rows })
