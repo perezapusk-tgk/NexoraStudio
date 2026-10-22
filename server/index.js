@@ -2,6 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import pg from 'pg'
 import crypto from 'node:crypto'
+import path from 'node:path'
 
 const { Pool } = pg
 const app = express()
@@ -10,7 +11,8 @@ const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env
 
 app.use(cors())
 app.use(express.json({verify:(req,_res,buf)=>{req.rawBody=Buffer.from(buf)}}))
-app.use(express.static('dist'))
+const distDir = path.resolve(process.cwd(), 'dist')
+app.use(express.static(distDir, { index: 'index.html', maxAge: 0, etag: false }))
 
 const PLAN_CONFIG = { free:{name:'Free',price:0,projectLimit:1,teamLimit:1,clientLimit:100}, starter:{name:'Starter',price:9,projectLimit:10,teamLimit:3,clientLimit:1000}, pro:{name:'Pro',price:19,projectLimit:50,teamLimit:5,clientLimit:10000}, agency:{name:'Agency',price:39,projectLimit:200,teamLimit:15,clientLimit:50000} }
 const planConfig=plan=>PLAN_CONFIG[String(plan||'starter').toLowerCase()]||PLAN_CONFIG.starter
@@ -1466,7 +1468,9 @@ app.get('/api/analytics/overview', async (req, res) => {
 })
 
 app.use((req,res,next)=>{
-  if(req.method==='GET' && !req.path.startsWith('/api') && req.path!=='/health') return res.sendFile(process.cwd()+'/dist/index.html')
+  if(req.method==='GET' && !req.path.startsWith('/api') && req.path!=='/health') {
+    return res.sendFile(path.join(distDir,'index.html'), { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } })
+  }
   next()
 })
 
