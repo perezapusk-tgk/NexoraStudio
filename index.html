@@ -9,6 +9,27 @@
 </head>
 <body>
 <div id="root"><div class="boot"><div class="boot-card"><div class="boot-mark">N</div><b>Nexora Studio</b><span>Загрузка рабочей области…</span></div></div></div>
+<script>
+(function(){
+  var root=document.getElementById('root');
+  var started=Date.now();
+  function showError(message){
+    if(!root) return;
+    root.innerHTML='<div class="boot"><div class="boot-card"><div class="boot-mark">!</div><b>Nexora Studio</b><span style="display:block;max-width:520px;line-height:1.5">'+String(message||'Не удалось загрузить интерфейс.')+'</span><button onclick="location.reload()" style="margin-top:16px;border:0;border-radius:10px;padding:10px 14px;background:#18181b;color:#fff;cursor:pointer">Обновить</button></div></div>';
+  }
+  window.addEventListener('error',function(e){
+    if(e&&e.target&&e.target.tagName==='SCRIPT') showError('Не удалось загрузить интерфейс. Проверьте соединение и обновите страницу.');
+    else if(e&&e.message) showError('Ошибка интерфейса: '+e.message);
+  });
+  window.addEventListener('unhandledrejection',function(e){
+    var reason=e&&e.reason;
+    showError('Ошибка запуска: '+(reason&&reason.message?reason.message:String(reason||'неизвестная ошибка')));
+  });
+  window.setTimeout(function(){
+    if(Date.now()-started>7000 && root && root.querySelector('.boot')) showError('Интерфейс не запустился за 7 секунд. Нажмите «Обновить».');
+  },7500);
+})();
+</script>
 <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>
