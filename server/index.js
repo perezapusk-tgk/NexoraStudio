@@ -1509,7 +1509,7 @@ app.patch('/api/payments/:id', async (req,res) => {
     if(p.order_id){const o=memoryOrders.find(x=>x.id===p.order_id&&x.studio_id===req.user.studio_id);if(o)o.status=status==='paid'?'paid':status==='refunded'?'refunded':o.status}
     return res.json({payment:p})
   }
-  const q=await pool.query("update payments p set status=$1 from projects pr where p.id=$2 and p.project_id=pr.id and pr.studio_id=$3 returning p.*",[status,req.params.id,req.user.studio_id])
+  const q=await pool.query("update payments p set status=$1 from projects pr where p.id::text=$2 and p.project_id=pr.id and pr.studio_id=$3 returning p.*",[status,req.params.id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Платёж не найден'})
   if(q.rows[0].order_id) await pool.query("update orders set status=$1 where id=$2 and project_id in (select id from projects where studio_id=$3)",[status==='paid'?'paid':status==='refunded'?'refunded':'pending',q.rows[0].order_id,req.user.studio_id])
   res.json({payment:q.rows[0]})
