@@ -531,9 +531,13 @@ app.post('/api/connect/account', async (req,res)=>{
       const existing=(await pool.query('select stripe_connect_account_id from studios where id::text=$1',[req.user.studio_id])).rows[0]
       if(existing?.stripe_connect_account_id)return res.json({account_id:existing.stripe_connect_account_id,existing:true})
     }
+    const platform=await stripeRequest('/v1/account')
+    const country=String(platform?.country||'').toUpperCase()
+    if(!/^[A-Z]{2}$/.test(country)) throw new Error('Stripe не вернул страну платформы для создания Connect account')
     const account=await stripeV2Request('/v2/core/accounts','POST',{
       dashboard:'full',
       contact_email:email,
+      identity:{country},
       defaults:{responsibilities:{fees_collector:'stripe',losses_collector:'stripe'}},
       configuration:{merchant:{capabilities:{card_payments:{requested:true}}}},
       include:['configuration.merchant','identity','defaults','requirements']
