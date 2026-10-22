@@ -957,36 +957,46 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
     order=(await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[project.id,clientId,number,'pending',total,currency||'EUR',JSON.stringify(normalized)])).rows[0]
     await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[project.id,'order_created','/checkout',total,JSON.stringify({order_id:order.id})])
   }
+  const paymentProvider=String(req.body?.payment_provider||'').toLowerCase()
   let checkout_url=null
-  if(String(req.body?.payment_provider||'').toLowerCase()==='stripe' && String(currency||'EUR').toUpperCase()!=='RUB'){
+  if(paymentProvider==='stripe'){
+    if(String(currency||'EUR').toUpperCase()==='RUB') return res.status(400).json({error:'Stripe Checkout для этого заказа недоступен в RUB. Используйте валюту EUR, USD или другую поддерживаемую Stripe валюту.'})
+    let connectAccountId=null
+    if(pool) connectAccountId=(await pool.query('select stripe_connect_account_id from studios where id=$1',[project.studio_id])).rows[0]?.stripe_connect_account_id
+    else connectAccountId=(memoryStudios.find(x=>x.id===project.studio_id)||demoStudio).stripe_connect_account_id
+    if(!connectAccountId) return res.status(409).json({error:'Stripe Connect ещё не подключён для этого проекта. Сначала подключите Stripe в настройках студии.'})
     try{
-      let connectAccountId=null
-      if(pool) connectAccountId=(await pool.query('select stripe_connect_account_id from studios where id=$1',[project.studio_id])).rows[0]?.stripe_connect_account_id
-      else connectAccountId=(memoryStudios.find(x=>x.id===project.studio_id)||demoStudio).stripe_connect_account_id
-      if(connectAccountId){
-        const stripeCurrency=String(currency||'EUR').toLowerCase()
-        const unit=Math.round(total*100)
-        const feePercent=Math.max(0,Math.min(100,Number(process.env.STRIPE_PLATFORM_FEE_PERCENT||5)))
-        const fee=Math.round(unit*feePercent/100)
-        const session=await stripeRequest('/v1/checkout/sessions','POST',{
-          mode:'payment',
-          'success_url':billingAppUrl()+'/?order='+encodeURIComponent(order.id)+'&payment=success&session_id={CHECKOUT_SESSION_ID}',
-          'cancel_url':billingAppUrl()+'/?order='+encodeURIComponent(order.id)+'&payment=cancelled',
-          'customer_email':email||'',
-          'line_items[0][price_data][currency]':stripeCurrency,
-          'line_items[0][price_data][product_data][name]':project.name+' — заказ '+number,
-          'line_items[0][price_data][unit_amount]':unit,
-          'line_items[0][quantity]':1,
-          'payment_intent_data[application_fee_amount]':fee,
-          'payment_intent_data[transfer_data][destination]':connectAccountId,
-          'metadata[order_id]':String(order.id),
-          'metadata[studio_id]':String(project.studio_id),
-          'metadata[project_id]':String(project.id)
-        })
-        checkout_url=session.url||null
-        if(pool) await pool.query("update orders set status='pending' where id=$1",[order.id])
-      }
-    }catch(e){ console.error('Stripe project checkout:',e.message) }
+      const account=await stripeRequest('/v1/accounts/'+encodeURIComponent(connectAccountId))
+      if(!account.charges_enabled || !account.payouts_enabled) return res.status(409).json({error:'Stripe Connect ещё не активирован. Завершите подключение Stripe и дождитесь разрешения на приём платежей.'})
+      const stripeCurrency=String(currency||'EUR').toLowerCase()
+      const unit=Math.round(total*100)
+      const feePercent=Math.max(0,Math.min(100,Number(process.env.STRIPE_PLATFORM_FEE_PERCENT||5)))
+      const fee=Math.round(unit*feePercent/100)
+      const session=await stripeRequest('/v1/checkout/sessions','POST',{
+        mode:'payment',
+        'success_url':billingAppUrl()+'/?order='+encodeURIComponent(order.id)+'&payment=success&session_id={CHECKOUT_SESSION_ID}',
+        'cancel_url':billingAppUrl()+'/?order='+encodeURIComponent(order.id)+'&payment=cancelled',
+        'customer_email':email||'',
+        'line_items[0][price_data][currency]':stripeCurrency,
+        'line_items[0][price_data][product_data][name]':project.name+' — заказ '+number,
+        'line_items[0][price_data][unit_amount]':unit,
+        'line_items[0][quantity]':1,
+        'payment_intent_data[application_fee_amount]':fee,
+        'payment_intent_data[transfer_data][destination]':connectAccountId,
+        'metadata[order_id]':String(order.id),
+        'metadata[studio_id]':String(project.studio_id),
+        'metadata[project_id]':String(project.id),
+        'payment_intent_data[metadata][order_id]':String(order.id),
+        'payment_intent_data[metadata][studio_id]':String(project.studio_id),
+        'payment_intent_data[metadata][project_id]':String(project.id)
+      })
+      checkout_url=session.url||null
+      if(!checkout_url) throw new Error('Stripe не вернул ссылку Checkout')
+      if(pool) await pool.query("update orders set status='pending',stripe_checkout_session_id=$1 where id=$2",[session.id,order.id])
+    }catch(e){
+      console.error('Stripe project checkout:',e.message)
+      return res.status(503).json({error:'Не удалось создать оплату Stripe: '+(e.message||'неизвестная ошибка')})
+    }
   }
   res.status(201).json({order,checkout_url})
 })
@@ -1002,10 +1012,16 @@ app.post('/api/stripe/connect/webhook', async (req,res)=>{
     const event=JSON.parse(payload),obj=event.data?.object||{}
     if(pool&&event.type==='account.updated'&&obj.id){
       await pool.query("update studios set stripe_connect_status=$1,updated_at=now() where stripe_connect_account_id=$2",[obj.charges_enabled&&obj.payouts_enabled?'active':'pending',obj.id])
+    }else if(pool&&event.type==='checkout.session.completed'&&obj.id){
+      const orderId=obj.metadata?.order_id
+      if(orderId){
+        const pi=typeof obj.payment_intent==='string'?obj.payment_intent:(obj.payment_intent?.id||null)
+        await pool.query("update orders set status='paid',paid_at=coalesce(paid_at,now()),stripe_checkout_session_id=$1,stripe_payment_intent_id=coalesce($2,stripe_payment_intent_id) where id=$3 and status<>'paid'",[obj.id,pi,orderId])
+      }
     }else if(pool&&event.type==='payment_intent.succeeded'&&obj.id){
       const orderId=obj.metadata?.order_id
       if(orderId){
-        await pool.query("update orders set status='paid',paid_at=coalesce(paid_at,now()),stripe_payment_intent_id=$1 where id=$2",[obj.id,orderId])
+        await pool.query("update orders set status='paid',paid_at=coalesce(paid_at,now()),stripe_payment_intent_id=$1 where id=$2 and status<>'paid'",[obj.id,orderId])
       }
     }else if(pool&&event.type==='payment_intent.payment_failed'&&obj.id){
       const orderId=obj.metadata?.order_id
