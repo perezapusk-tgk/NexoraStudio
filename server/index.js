@@ -551,6 +551,38 @@ app.post('/api/connect/onboard', async (req,res)=>{
     res.json({url:link.url,account_id:accountId})
   }catch(e){res.status(503).json({error:e.message||'Не удалось создать ссылку Stripe Connect'})}
 })
+
+app.post('/api/stripe/connect/webhook', async (req,res)=>{
+  const signing=String(process.env.STRIPE_CONNECT_WEBHOOK_SECRET||process.env.STRIPE_WEBHOOK_SECRET||'').trim()
+  if(!signing)return res.status(503).json({error:'STRIPE_CONNECT_WEBHOOK_SECRET не настроен'})
+  const signature=String(req.headers['stripe-signature']||'')
+  const timestamp=Number((signature.match(/(?:^|,)t=(\\d+)/)||[])[1]||0)
+  const providedList=[...signature.matchAll(/(?:^|,)v1=([^,]+)/g)].map(m=>m[1])
+  const payload=(req.rawBody||Buffer.from('')).toString('utf8')
+  const expected=crypto.createHmac('sha256',signing).update(String(timestamp)+'.'+payload).digest('hex')
+  const valid=timestamp>0&&providedList.some(v=>v.length===expected.length&&crypto.timingSafeEqual(Buffer.from(v),Buffer.from(expected)))&&Math.abs(Date.now()/1000-timestamp)<=300
+  if(!valid)return res.status(400).json({error:'Недействительная подпись Stripe Connect webhook'})
+  try{
+    const event=JSON.parse(payload),obj=event.data?.object||{}
+    if(!pool)return res.json({received:true})
+    if(event.type==='account.updated'&&obj.id){
+      await pool.query("update studios set stripe_connect_status=$1,updated_at=now() where stripe_connect_account_id=$2",[obj.charges_enabled&&obj.payouts_enabled?'active':'pending',obj.id])
+    }else if(event.type==='checkout.session.completed'&&obj.id){
+      const orderId=obj.metadata?.order_id
+      if(orderId){
+        const pi=typeof obj.payment_intent==='string'?obj.payment_intent:(obj.payment_intent?.id||null)
+        await pool.query("update orders set status='paid',paid_at=coalesce(paid_at,now()),stripe_checkout_session_id=$1,stripe_payment_intent_id=coalesce($2,stripe_payment_intent_id) where id::text=$3 and status<>'paid'",[obj.id,pi,orderId])
+      }
+    }else if(event.type==='payment_intent.succeeded'&&obj.id){
+      const orderId=obj.metadata?.order_id
+      if(orderId)await pool.query("update orders set status='paid',paid_at=coalesce(paid_at,now()),stripe_payment_intent_id=$1 where id::text=$2 and status<>'paid'",[obj.id,orderId])
+    }else if(event.type==='payment_intent.payment_failed'&&obj.id){
+      const orderId=obj.metadata?.order_id
+      if(orderId)await pool.query("update orders set status='cancelled' where id::text=$1 and status='pending'",[orderId])
+    }
+    res.json({received:true})
+  }catch(e){console.error('Stripe Connect webhook error',e);res.status(400).json({error:'Не удалось обработать Stripe Connect webhook'})}
+})
 app.post('/api/billing/stripe/webhook', async (req,res)=>{
   const signing=String(process.env.STRIPE_WEBHOOK_SECRET||'').trim()
   if(!signing)return res.status(503).json({error:'STRIPE_WEBHOOK_SECRET не настроен'})
