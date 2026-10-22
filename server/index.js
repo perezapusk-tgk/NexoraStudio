@@ -30,9 +30,14 @@ const noStore = {
 }
 
 // Health must be available independently of the frontend bundle.
+const healthPayload = () => ({ok:true,service:'nexora-api',version:'0.8.0',storage:pool?'postgres':'memory',auth:'development-session'})
 app.get('/health', (_req,res) => {
   res.set(noStore)
-  res.status(200).json({ok:true,service:'nexora-api',version:'0.3.0',storage:pool?'postgres':'memory'})
+  res.status(200).json(healthPayload())
+})
+app.get('/api/health', (_req,res) => {
+  res.set(noStore)
+  res.status(200).json(healthPayload())
 })
 
 // Production frontend: always return a fresh HTML shell so a browser/CDN cannot
