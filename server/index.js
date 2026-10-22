@@ -1048,7 +1048,7 @@ app.post('/api/stripe/connect/webhook', async (req,res)=>{
       const orderId=obj.metadata?.order_id
       if(orderId){
         const pi=typeof obj.payment_intent==='string'?obj.payment_intent:(obj.payment_intent?.id||null)
-        await pool.query("update orders set status='paid',paid_at=coalesce(paid_at,now()),stripe_checkout_session_id=$1,stripe_payment_intent_id=coalesce($2,stripe_payment_intent_id) where id=$3 and status<>'paid'",[obj.id,pi,orderId])
+        await pool.query("update orders set status='paid',paid_at=coalesce(paid_at,now()),stripe_checkout_session_id=$1,stripe_payment_intent_id=coalesce($2,stripe_payment_intent_id) where id::text=$3 and status<>'paid'",[obj.id,pi,orderId])
       }
     }else if(pool&&event.type==='payment_intent.succeeded'&&obj.id){
       const orderId=obj.metadata?.order_id
