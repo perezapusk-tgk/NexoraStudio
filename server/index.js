@@ -61,7 +61,7 @@ async function clientLimitState(studioId){
   if(pool){
     const q=await pool.query('select plan from studios where id=$1',[studioIdText])
     const plan=planConfig(q.rows[0]?.plan)
-    const count=(await pool.query('select count(*)::int as count from clients where studio_id=$1',[studioIdText])).rows[0]?.count||0
+    const count=(await pool.query('select count(*)::int as count from clients where studio_id::text=$1::text',[studioIdText])).rows[0]?.count||0
     return {count,limit:plan.clientLimit,plan:plan.name,exceeded:count>=plan.clientLimit}
   }
   const studio=memoryStudios?.find?.(x=>x.id===studioIdText)||demoStudio
@@ -312,13 +312,13 @@ app.use('/api',async(req,res,next)=>{
       if(!id)return next()
       if(pool){
         const queries={
-          projects:'select id from projects where studio_id=$1 and (id=$2 or slug=$2) limit 1',
-          leads:'select l.id from leads l join projects p on p.id=l.project_id where p.studio_id=$1 and l.id=$2 limit 1',
-          clients:'select id from clients where studio_id=$1 and id=$2 limit 1',
-          bookings:'select b.id from bookings b join projects p on p.id=b.project_id where p.studio_id=$1 and b.id=$2 limit 1',
-          payments:'select x.id from payments x join projects p on p.id=x.project_id where p.studio_id=$1 and x.id=$2 limit 1',
-          invoices:'select x.id from invoices x join projects p on p.id=x.project_id where p.studio_id=$1 and x.id=$2 limit 1',
-          orders:'select x.id from orders x join projects p on p.id=x.project_id where p.studio_id=$1 and x.id=$2 limit 1'
+          projects:'select id from projects where studio_id::text=$1::text and (id=$2 or slug=$2) limit 1',
+          leads:'select l.id from leads l join projects p on p.id=l.project_id where p.studio_id::text=$1::text and l.id=$2 limit 1',
+          clients:'select id from clients where studio_id::text=$1::text and id=$2 limit 1',
+          bookings:'select b.id from bookings b join projects p on p.id=b.project_id where p.studio_id::text=$1::text and b.id=$2 limit 1',
+          payments:'select x.id from payments x join projects p on p.id=x.project_id where p.studio_id::text=$1::text and x.id=$2 limit 1',
+          invoices:'select x.id from invoices x join projects p on p.id=x.project_id where p.studio_id::text=$1::text and x.id=$2 limit 1',
+          orders:'select x.id from orders x join projects p on p.id=x.project_id where p.studio_id::text=$1::text and x.id=$2 limit 1'
         }
         if(queries[type]){
           const q=await pool.query(queries[type],[req.user.studio_id,id])
@@ -356,7 +356,7 @@ app.get('/api/billing/account', async (req,res)=>{
     return res.json({plan:planConfig(studio.plan),currency:studio.billing_currency||'RUB',status:studio.subscription_status||'active',provider:studio.billing_provider||null,renews_at:studio.subscription_renews_at||null,transactions:[]})
   }
   const s=await pool.query('select plan,billing_currency,subscription_status,billing_provider,subscription_started_at,subscription_renews_at from studios where id=$1',[req.user.studio_id])
-  const t=await pool.query('select id,plan,amount,currency,status,provider,created_at,paid_at from billing_transactions where studio_id=$1 order by created_at desc limit 20',[req.user.studio_id])
+  const t=await pool.query('select id,plan,amount,currency,status,provider,created_at,paid_at from billing_transactions where studio_id::text=$1::text order by created_at desc limit 20',[req.user.studio_id])
   const row=s.rows[0]||{}
   res.json({plan:planConfig(row.plan),currency:row.billing_currency||'RUB',status:row.subscription_status||'active',provider:row.billing_provider||null,started_at:row.subscription_started_at,renews_at:row.subscription_renews_at,transactions:t.rows})
 })
@@ -612,7 +612,7 @@ app.post('/api/billing/stripe/webhook', async (req,res)=>{
       const studioId=obj.metadata?.studio_id,plan=String(obj.metadata?.plan||'').toLowerCase()
       if(studioId&&PLAN_CONFIG[plan]&&obj.payment_status==='paid'){
         const subId=typeof obj.subscription==='string'?obj.subscription:(obj.subscription?.id||null)
-        await pool.query("update billing_transactions set status='paid',paid_at=now(),stripe_customer_id=$1,stripe_subscription_id=$2 where studio_id=$3 and provider='stripe' and provider_payment_id=$4",[obj.customer||null,subId,studioId,obj.id])
+        await pool.query("update billing_transactions set status='paid',paid_at=now(),stripe_customer_id=$1,stripe_subscription_id=$2 where studio_id::text=$3::text and provider='stripe' and provider_payment_id=$4",[obj.customer||null,subId,studioId,obj.id])
         await pool.query("update studios set plan=$1,project_limit=$2,subscription_status='active',billing_provider='stripe',subscription_started_at=now(),subscription_renews_at=case when $3::bigint>0 then to_timestamp($3) else now()+interval '30 days' end,stripe_customer_id=$4,stripe_subscription_id=$5,updated_at=now() where id=$6",[plan,PLAN_CONFIG[plan].projectLimit,Number(obj.subscription?.current_period_end||0),obj.customer||null,subId,studioId])
       }
     }else if(event.type==='customer.subscription.updated'||event.type==='customer.subscription.deleted'){
@@ -636,7 +636,7 @@ app.post('/api/billing/confirm', async (req,res)=>{
   const paymentId=String(req.body?.payment_id||'').trim()
   if(!['stripe','yookassa'].includes(provider)||!paymentId) return res.status(400).json({error:'Нужны provider и payment_id'})
   if(!pool) return res.status(400).json({error:'Подтверждение реального платежа доступно только с базой данных'})
-  const tx=(await pool.query('select * from billing_transactions where studio_id=$1 and provider=$2 and provider_payment_id=$3 order by created_at desc limit 1',[req.user.studio_id,provider,paymentId])).rows[0]
+  const tx=(await pool.query('select * from billing_transactions where studio_id::text=$1::text and provider=$2 and provider_payment_id=$3 order by created_at desc limit 1',[req.user.studio_id,provider,paymentId])).rows[0]
   if(!tx) return res.status(404).json({error:'Платёж не найден'})
   let paid=false
   if(provider==='stripe'){
@@ -666,9 +666,9 @@ app.get('/api/studio/usage', async (req,res) => {
     const cfg=planConfig(demoStudio.plan); return res.json({studio:demoStudio,usage:{projects:activeProjects,clients:memoryClients.filter(x=>x.studio_id===req.user.studio_id).length,team:memoryUsers.filter(x=>x.studio_id===req.user.studio_id).length},limits:{projects:demoStudio.projectLimit,clients:cfg.clientLimit,team:cfg.teamLimit},plan:cfg})
   }
   const [projects,clients,team]=await Promise.all([
-    pool.query('select count(*)::int as count from projects where studio_id=$1',[req.user.studio_id]),
-    pool.query('select count(*)::int as count from clients where studio_id=$1',[req.user.studio_id]),
-    pool.query('select count(*)::int as count from users where studio_id=$1',[req.user.studio_id])
+    pool.query('select count(*)::int as count from projects where studio_id::text=$1::text',[req.user.studio_id]),
+    pool.query('select count(*)::int as count from clients where studio_id::text=$1::text',[req.user.studio_id]),
+    pool.query('select count(*)::int as count from users where studio_id::text=$1::text',[req.user.studio_id])
   ])
   const cfg=planConfig(req.studio.plan); res.json({studio:req.studio,usage:{projects:projects.rows[0].count,clients:clients.rows[0].count,team:team.rows[0].count},limits:{projects:req.studio.project_limit||cfg.projectLimit,clients:cfg.clientLimit,team:cfg.teamLimit},plan:cfg})
 })
@@ -680,8 +680,8 @@ app.get('/api/team', async (req,res) => {
     return res.json({members,invitations})
   }
   const [m,i]=await Promise.all([
-    pool.query('select id,name,email,role,created_at from users where studio_id=$1 order by created_at',[req.user.studio_id]),
-    pool.query("select id,email,role,expires_at,created_at from team_invitations where studio_id=$1 and accepted_at is null order by created_at desc",[req.user.studio_id])
+    pool.query('select id,name,email,role,created_at from users where studio_id::text=$1::text order by created_at',[req.user.studio_id]),
+    pool.query("select id,email,role,expires_at,created_at from team_invitations where studio_id::text=$1::text and accepted_at is null order by created_at desc",[req.user.studio_id])
   ])
   res.json({members:m.rows,invitations:i.rows.map(x=>({...x,invite_url:null}))})
 })
@@ -694,12 +694,12 @@ app.post('/api/team', async (req,res) => {
   try{
     if(pool){
       const [users,invites]=await Promise.all([
-        pool.query('select count(*)::int as count from users where studio_id=$1',[req.user.studio_id]),
-        pool.query("select count(*)::int as count from team_invitations where studio_id=$1 and accepted_at is null and expires_at>now()",[req.user.studio_id])
+        pool.query('select count(*)::int as count from users where studio_id::text=$1::text',[req.user.studio_id]),
+        pool.query("select count(*)::int as count from team_invitations where studio_id::text=$1::text and accepted_at is null and expires_at>now()",[req.user.studio_id])
       ])
       if(users.rows[0].count+invites.rows[0].count>=planConfig(req.studio.plan).teamLimit)return res.status(409).json({error:'Достигнут лимит участников тарифа'})
       if((await pool.query('select id from users where lower(email)=lower($1)',[email])).rows[0])return res.status(409).json({error:'Пользователь с таким email уже существует'})
-      if((await pool.query("select id from team_invitations where studio_id=$1 and lower(email)=lower($2) and accepted_at is null and expires_at>now()",[req.user.studio_id,email])).rows[0])return res.status(409).json({error:'Для этого email уже есть активное приглашение'})
+      if((await pool.query("select id from team_invitations where studio_id::text=$1::text and lower(email)=lower($2) and accepted_at is null and expires_at>now()",[req.user.studio_id,email])).rows[0])return res.status(409).json({error:'Для этого email уже есть активное приглашение'})
       const raw=createInviteToken()
       const q=await pool.query('insert into team_invitations(studio_id,email,role,token_hash,expires_at,invited_by) values($1,$2,$3,$4,now()+interval \'7 days\',$5) returning id,email,role,expires_at,created_at',[req.user.studio_id,email,role,tokenHash(raw),req.user.id])
       return res.status(201).json({invitation:{...q.rows[0],invite_url:inviteUrl(raw)}})
@@ -719,7 +719,7 @@ app.delete('/api/team/invitations/:id', async (req,res) => {
   if(!requireRole(req,res,['owner','admin'])) return
   const id=req.params.id
   if(pool){
-    const q=await pool.query('delete from team_invitations where id::text=$1 and studio_id=$2 and accepted_at is null returning id',[id,req.user.studio_id])
+    const q=await pool.query('delete from team_invitations where id::text=$1 and studio_id::text=$2::text and accepted_at is null returning id',[id,req.user.studio_id])
     if(!q.rows[0])return res.status(404).json({error:'Приглашение не найдено'})
   } else {
     const i=memoryInvitations.findIndex(x=>x.id===id&&x.studio_id===req.user.studio_id&&!x.accepted_at)
@@ -734,7 +734,7 @@ app.post('/api/team/invitations/:id/resend', async (req,res) => {
   const id=req.params.id
   try{
     if(pool){
-      const current=await pool.query("select * from team_invitations where id::text=$1 and studio_id=$2 and accepted_at is null",[id,req.user.studio_id])
+      const current=await pool.query("select * from team_invitations where id::text=$1 and studio_id::text=$2::text and accepted_at is null",[id,req.user.studio_id])
       if(!current.rows[0])return res.status(404).json({error:'Приглашение не найдено'})
       const raw=createInviteToken()
       const q=await pool.query('update team_invitations set token_hash=$1,expires_at=now()+interval \'7 days\' where id::text=$2 returning id,email,role,expires_at,created_at',[tokenHash(raw),id])
@@ -752,7 +752,7 @@ app.patch('/api/team/:id', async (req,res) => {
   const id=req.params.id, role=String(req.body?.role||'').trim()
   if(!['admin','member','viewer'].includes(role)) return res.status(400).json({error:'Недопустимая роль'})
   if(pool){
-    const q=await pool.query("update users set role=$1 where id::text=$2 and studio_id=$3 and role<>'owner' returning id,name,email,role,created_at",[role,id,req.user.studio_id])
+    const q=await pool.query("update users set role=$1 where id::text=$2 and studio_id::text=$3::text and role<>'owner' returning id,name,email,role,created_at",[role,id,req.user.studio_id])
     if(!q.rows[0]) return res.status(404).json({error:'Участник не найден'})
     return res.json({member:q.rows[0]})
   }
@@ -765,7 +765,7 @@ app.delete('/api/team/:id', async (req,res) => {
   if(!requireRole(req,res,['owner','admin'])) return
   const id=req.params.id
   if(pool){
-    const q=await pool.query("delete from users where id::text=$1 and studio_id=$2 and role<>'owner' returning id",[id,req.user.studio_id])
+    const q=await pool.query("delete from users where id::text=$1 and studio_id::text=$2::text and role<>'owner' returning id",[id,req.user.studio_id])
     if(!q.rows[0])return res.status(404).json({error:'Участник не найден'})
   } else {
     const i=memoryUsers.findIndex(x=>x.id===id&&x.studio_id===req.user.studio_id&&x.role!=='owner')
@@ -777,7 +777,7 @@ app.delete('/api/team/:id', async (req,res) => {
 
 app.get('/api/projects', async (req, res) => {
   if (!pool) return res.json({ projects: memoryProjects.filter(p=>p.studio_id===req.user.studio_id) })
-  const { rows } = await pool.query('select id, name, slug, project_type, status, domain, settings, created_at, updated_at from projects where studio_id=$1 order by updated_at desc',[req.user.studio_id])
+  const { rows } = await pool.query('select id, name, slug, project_type, status, domain, settings, created_at, updated_at from projects where studio_id::text=$1::text order by updated_at desc',[req.user.studio_id])
   res.json({ projects: rows })
 })
 
@@ -799,7 +799,7 @@ app.post('/api/projects', async (req, res) => {
   memoryCatalog.set(project.id,template.catalog.map(item=>({id:crypto.randomUUID(),project_id:project.id,...item})))
   return res.status(201).json({project})
 }
-  const usage=await pool.query('select count(*)::int as count from projects where studio_id=$1',[req.user.studio_id])
+  const usage=await pool.query('select count(*)::int as count from projects where studio_id::text=$1::text',[req.user.studio_id])
   const limit=Number(req.studio.project_limit||5)
   if(usage.rows[0].count>=limit)return res.status(409).json({error:'Достигнут лимит проектов вашего тарифа'})
   let slug = slugify(name)
@@ -825,7 +825,7 @@ app.get('/api/projects/:id', async (req,res)=>{const id=req.params.id;if(!pool){
   const project=memoryProjects.find(p=>(p.id===id||p.slug===id)&&p.studio_id===req.user.studio_id)
   if(!project) return res.status(404).json({error:'Проект не найден'})
   return res.json({project,pages:memoryPages.get(project.id)||[]})
-}const pr=await pool.query('select * from projects where studio_id=$2 and (id::text=$1 or slug=$1) limit 1',[id,req.user.studio_id]);if(!pr.rows[0])return res.status(404).json({error:'Проект не найден'});const pg=await pool.query('select * from pages where project_id::text=$1::text order by created_at',[pr.rows[0].id]);res.json({project:pr.rows[0],pages:pg.rows})});
+}const pr=await pool.query('select * from projects where studio_id::text=$2::text and (id::text=$1 or slug=$1) limit 1',[id,req.user.studio_id]);if(!pr.rows[0])return res.status(404).json({error:'Проект не найден'});const pg=await pool.query('select * from pages where project_id::text=$1::text order by created_at',[pr.rows[0].id]);res.json({project:pr.rows[0],pages:pg.rows})});
 app.patch('/api/projects/:id',async(req,res)=>{if(!pool){
   const p=memoryProjects.find(x=>(x.id===req.params.id||x.slug===req.params.id)&&x.studio_id===req.user.studio_id)
   if(!p)return res.status(404).json({error:'Проект не найден'})
@@ -833,9 +833,9 @@ app.patch('/api/projects/:id',async(req,res)=>{if(!pool){
   if(req.body?.domain!==undefined)p.domain=String(req.body.domain||'').trim()||null
   if(req.body?.settings)p.settings={...(p.settings||{}),...req.body.settings}
   return res.json({project:p})
-}const current=await pool.query('select * from projects where id::text=$1 and studio_id=$2',[req.params.id,req.user.studio_id]);if(!current.rows[0])return res.status(404).json({error:'Проект не найден'});const settings=req.body?.settings?{...(current.rows[0].settings||{}),...req.body.settings}:current.rows[0].settings;const q=await pool.query('update projects set name=coalesce($1,name),domain=case when $2 is null then domain else $2 end,settings=$3,updated_at=now() where id::text=$4 returning *',[req.body?.name,req.body?.domain===undefined?null:String(req.body.domain||'').trim()||null,JSON.stringify(settings),req.params.id]);res.json({project:q.rows[0]})});
+}const current=await pool.query('select * from projects where id::text=$1 and studio_id::text=$2::text',[req.params.id,req.user.studio_id]);if(!current.rows[0])return res.status(404).json({error:'Проект не найден'});const settings=req.body?.settings?{...(current.rows[0].settings||{}),...req.body.settings}:current.rows[0].settings;const q=await pool.query('update projects set name=coalesce($1,name),domain=case when $2 is null then domain else $2 end,settings=$3,updated_at=now() where id::text=$4 returning *',[req.body?.name,req.body?.domain===undefined?null:String(req.body.domain||'').trim()||null,JSON.stringify(settings),req.params.id]);res.json({project:q.rows[0]})});
 app.post('/api/projects/:id/pages',async(req,res)=>{const title=String(req.body?.title||'Новая страница'),slug=slugify(req.body?.slug||title);if(!pool){const project=memoryProjects.find(x=>(x.id===req.params.id||x.slug===req.params.id)&&x.studio_id===req.user.studio_id);if(!project)return res.status(404).json({error:'Проект не найден'});const page={id:crypto.randomUUID(),title,slug,content:{blocks:[]},published:false};const pages=memoryPages.get(project.id)||[];pages.push(page);memoryPages.set(project.id,pages);return res.status(201).json({page})};const q=await pool.query('insert into pages(project_id,title,slug,content) values($1::uuid,$2,$3,$4) returning *',[req.params.id,title,slug,JSON.stringify({blocks:[]})]);res.status(201).json({page:q.rows[0]})});
-app.patch('/api/projects/:id/pages/:pageId',async(req,res)=>{if(!pool){const project=memoryProjects.find(x=>x.id===req.params.id&&x.studio_id===req.user.studio_id);if(!project)return res.status(404).json({error:'Проект не найден'});const pages=memoryPages.get(req.params.id)||[];const p=pages.find(x=>x.id===req.params.pageId);if(!p)return res.status(404).json({error:'Страница не найдена'});if(req.body?.content)p.content=req.body.content;return res.json({page:p})}const ownership=await pool.query('select id from projects where id::text=$1 and studio_id=$2',[req.params.id,req.user.studio_id]);if(!ownership.rows[0])return res.status(404).json({error:'Проект не найден'});const q=await pool.query('update pages set content=coalesce($1,content),updated_at=now() where id::text=$2 and project_id::text=$3 returning *',[req.body?.content?JSON.stringify(req.body.content):null,req.params.pageId,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Страница не найдена'});res.json({page:q.rows[0]})});
+app.patch('/api/projects/:id/pages/:pageId',async(req,res)=>{if(!pool){const project=memoryProjects.find(x=>x.id===req.params.id&&x.studio_id===req.user.studio_id);if(!project)return res.status(404).json({error:'Проект не найден'});const pages=memoryPages.get(req.params.id)||[];const p=pages.find(x=>x.id===req.params.pageId);if(!p)return res.status(404).json({error:'Страница не найдена'});if(req.body?.content)p.content=req.body.content;return res.json({page:p})}const ownership=await pool.query('select id from projects where id::text=$1 and studio_id::text=$2::text',[req.params.id,req.user.studio_id]);if(!ownership.rows[0])return res.status(404).json({error:'Проект не найден'});const q=await pool.query('update pages set content=coalesce($1,content),updated_at=now() where id::text=$2 and project_id::text=$3 returning *',[req.body?.content?JSON.stringify(req.body.content):null,req.params.pageId,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Страница не найдена'});res.json({page:q.rows[0]})});
 app.get('/api/public/:slug', async (req,res) => {
   const slug = String(req.params.slug || '').trim()
   if (!pool) {
@@ -932,7 +932,7 @@ app.post('/api/public/:slug/bookings', async (req,res) => {
   if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
   const conflict=await pool.query("select id from bookings where project_id::text=$1::text and status<>'cancelled' and starts_at between $2::timestamptz - interval '30 minutes' and $2::timestamptz + interval '30 minutes' limit 1",[pr.rows[0].id,startsAt]);
   if(conflict.rows[0]) return res.status(409).json({error:'На это время уже есть запись'})
-  const existingClient=await pool.query('select id from clients where studio_id=$1 and phone=$2 limit 1',[pr.rows[0].studio_id,phone]);const clientId=existingClient.rows[0]?.id||null;const q=await pool.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7) returning *',[pr.rows[0].id,clientId,name,phone,startsAt,serviceName||null,'pending'])
+  const existingClient=await pool.query('select id from clients where studio_id::text=$1::text and phone=$2 limit 1',[pr.rows[0].studio_id,phone]);const clientId=existingClient.rows[0]?.id||null;const q=await pool.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7) returning *',[pr.rows[0].id,clientId,name,phone,startsAt,serviceName||null,'pending'])
   await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[pr.rows[0].id,'booking','/booking',0,JSON.stringify({source:'public',service_name:serviceName})])
   res.status(201).json({booking:q.rows[0]})
 })
@@ -950,7 +950,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   if(!project) return res.status(404).json({error:'Публичный проект не найден'})
   let clientId=null
   if(pool){
-    const existing=(await pool.query('select id from clients where studio_id=$1 and ((phone=$2 and $2 <> \'\') or (email=$3 and $3 <> \'\')) limit 1',[project.studio_id||demoStudio.id,phone,email])).rows[0]
+    const existing=(await pool.query('select id from clients where studio_id::text=$1::text and ((phone=$2 and $2 <> \'\') or (email=$3 and $3 <> \'\')) limit 1',[project.studio_id||demoStudio.id,phone,email])).rows[0]
     if(existing) clientId=existing.id
     else {
       if(!await requireClientCapacity(project.studio_id,res))return
@@ -1126,7 +1126,7 @@ app.post('/api/projects/:id/publish',async(req,res)=>{
     ;(memoryPages.get(p.id)||[]).forEach(x=>x.published=true)
     return res.json({published:true,project:p,url:'https://'+p.slug+'.nexora.site'})
   }
-  const q=await pool.query("update projects set status='published',updated_at=now() where id::text=$1 and studio_id=$2 returning *",[req.params.id,req.user.studio_id])
+  const q=await pool.query("update projects set status='published',updated_at=now() where id::text=$1 and studio_id::text=$2::text returning *",[req.params.id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Проект не найден'})
   await pool.query('update pages set published=true,updated_at=now() where project_id::text=$1',[req.params.id])
   res.json({published:true,project:q.rows[0],url:q.rows[0].domain?'https://'+q.rows[0].domain:'https://'+q.rows[0].slug+'.nexora.site'})
@@ -1134,13 +1134,13 @@ app.post('/api/projects/:id/publish',async(req,res)=>{
 
 app.get('/api/leads', async (req, res) => {
   if (!pool) return res.json({ leads: memoryLeads.filter(x=>x.studio_id===req.user.studio_id) })
-  const { rows } = await pool.query('select l.id, l.project_id, l.name, l.message, l.status, l.created_at, p.name as project_name from leads l left join projects p on p.id::text=l.project_id::text where p.studio_id=$1 order by created_at desc limit 100',[req.user.studio_id])
+  const { rows } = await pool.query('select l.id, l.project_id, l.name, l.message, l.status, l.created_at, p.name as project_name from leads l left join projects p on p.id::text=l.project_id::text where p.studio_id::text=$1::text order by created_at desc limit 100',[req.user.studio_id])
   res.json({ leads: rows })
 })
 
 app.get('/api/bookings', async (req, res) => {
   if (!pool) return res.json({ bookings: memoryBookings.filter(x=>x.studio_id===req.user.studio_id) })
-  const { rows } = await pool.query('select b.id, b.project_id, b.client_id, b.customer_name, b.customer_phone, b.starts_at, b.ends_at, b.service_name, b.status, p.name as project_name from bookings b left join projects p on p.id::text=b.project_id::text where p.studio_id=$1 order by starts_at asc limit 100',[req.user.studio_id])
+  const { rows } = await pool.query('select b.id, b.project_id, b.client_id, b.customer_name, b.customer_phone, b.starts_at, b.ends_at, b.service_name, b.status, p.name as project_name from bookings b left join projects p on p.id::text=b.project_id::text where p.studio_id::text=$1::text order by starts_at asc limit 100',[req.user.studio_id])
   res.json({ bookings: rows })
 })
 
@@ -1171,11 +1171,11 @@ app.post('/api/bookings', async (req,res) => {
     memoryBookings.push(booking)
     return res.status(201).json({booking})
   }
-  const project=(await pool.query('select id,name from projects where id::text=$1 and studio_id=$2 limit 1',[projectId,req.user.studio_id])).rows[0]
+  const project=(await pool.query('select id,name from projects where id::text=$1 and studio_id::text=$2::text limit 1',[projectId,req.user.studio_id])).rows[0]
   if(!project)return res.status(404).json({error:'Проект не найден'})
   const conflict=(await pool.query("select id from bookings where project_id::text=$1 and status <> 'cancelled' and starts_at < $3 and ends_at > $2 limit 1",[projectId,startsAt,endsAt])).rows[0]
   if(conflict)return res.status(409).json({error:'Это время уже занято другой записью'})
-  const client=phone?(await pool.query('select id from clients where studio_id=$1 and phone=$2 limit 1',[req.user.studio_id,phone])).rows[0]:null
+  const client=phone?(await pool.query('select id from clients where studio_id::text=$1::text and phone=$2 limit 1',[req.user.studio_id,phone])).rows[0]:null
   if(phone&&!client && !await requireClientCapacity(req.user.studio_id,res))return
   const q=await pool.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,ends_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,client?.id||null,name,phone||null,startsAt,endsAt,service||null,status])
   res.status(201).json({booking:{...q.rows[0],project_name:project.name}})
@@ -1216,7 +1216,7 @@ app.patch('/api/bookings/:id', async (req,res) => {
   const nextStart=startsAt!==undefined?startsAt:current.starts_at
   const nextEnd=endsAt!==undefined?endsAt:(current.ends_at||new Date(new Date(nextStart).getTime()+3600000).toISOString())
   if(startsAt!==undefined||endsAt!==undefined){
-    const conflict=(await pool.query("select id from bookings where project_id=$1 and id::text<>$2 and status <> 'cancelled' and starts_at < $4 and ends_at > $3 limit 1",[current.project_id,current.id,nextStart,nextEnd])).rows[0]
+    const conflict=(await pool.query("select id from bookings where project_id::text=$1::text and id::text<>$2 and status <> 'cancelled' and starts_at < $4 and ends_at > $3 limit 1",[current.project_id,current.id,nextStart,nextEnd])).rows[0]
     if(conflict)return res.status(409).json({error:'Это время уже занято другой записью'})
   }
   const fields=[],values=[]
@@ -1286,7 +1286,7 @@ app.post('/api/leads/:id/convert', async (req,res) => {
   const leadQ=await pool.query('select l.*,p.studio_id from leads l left join projects p on p.id::text=l.project_id::text where l.id=$1 limit 1',[id])
   if(!leadQ.rows[0])return res.status(404).json({error:'Заявка не найдена'})
   const lead=leadQ.rows[0]
-  const existingQ=await pool.query('select id,name,email,phone,created_at from clients where studio_id=$3 and ((phone=$1 and $1 is not null) or (email=$2 and $2 is not null)) limit 1',[lead.phone,lead.email,lead.studio_id])
+  const existingQ=await pool.query('select id,name,email,phone,created_at from clients where studio_id::text=$3::text and ((phone=$1 and $1 is not null) or (email=$2 and $2 is not null)) limit 1',[lead.phone,lead.email,lead.studio_id])
   if(existingQ.rows[0])return res.json({client:existingQ.rows[0],existing:true})
   if(!await requireClientCapacity(lead.studio_id,res))return
   const q=await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id,name,email,phone,created_at',[lead.studio_id,lead.name,lead.email||null,lead.phone||null])
@@ -1309,14 +1309,14 @@ app.get('/api/clients/:id', async (req,res) => {
       orders:memoryOrders.filter(x=>x.client_id===id)
     })
   }
-  const cq=await pool.query('select id,name,email,phone,created_at from clients where id=$1 and studio_id=$2 limit 1',[id,req.user.studio_id])
+  const cq=await pool.query('select id,name,email,phone,created_at from clients where id=$1 and studio_id::text=$2::text limit 1',[id,req.user.studio_id])
   if(!cq.rows[0])return res.status(404).json({error:'Клиент не найден'})
   const [leads,bookings,payments,invoices,orders]=await Promise.all([
-    pool.query('select l.id,l.project_id,l.name,l.message,l.status,l.created_at from leads l join projects pr on pr.id::text=l.project_id::text where pr.studio_id=$3 and (l.phone=$1 or l.email=$2) order by l.created_at desc',[cq.rows[0].phone,cq.rows[0].email,req.user.studio_id]),
-    pool.query('select b.id,b.project_id,b.customer_name,b.starts_at,b.status,b.service_name from bookings b join projects pr on pr.id=b.project_id where pr.studio_id=$3 and (b.client_id=$1 or b.customer_phone=$2) order by b.starts_at desc',[id,cq.rows[0].phone,req.user.studio_id]),
-    pool.query('select p.id,p.project_id,p.amount,p.currency,p.status,p.description,p.order_id,p.created_at from payments p join projects pr on pr.id=p.project_id where pr.studio_id=$2 and p.client_id=$1 order by p.created_at desc',[id,req.user.studio_id]),
-    pool.query('select i.id,i.project_id,i.number,i.amount,i.currency,i.status,i.due_date,i.description,i.created_at from invoices i join projects pr on pr.id::text=i.project_id::text where pr.studio_id=$2 and i.client_id=$1 order by i.created_at desc',[id,req.user.studio_id]),
-    pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name from orders o left join projects pr on pr.id::text=o.project_id::text where o.client_id=$1 and pr.studio_id=$2 order by o.created_at desc',[id,req.user.studio_id])
+    pool.query('select l.id,l.project_id,l.name,l.message,l.status,l.created_at from leads l join projects pr on pr.id::text=l.project_id::text where pr.studio_id::text=$3::text and (l.phone=$1 or l.email=$2) order by l.created_at desc',[cq.rows[0].phone,cq.rows[0].email,req.user.studio_id]),
+    pool.query('select b.id,b.project_id,b.customer_name,b.starts_at,b.status,b.service_name from bookings b join projects pr on pr.id=b.project_id where pr.studio_id::text=$3::text and (b.client_id::text=$1::text or b.customer_phone=$2) order by b.starts_at desc',[id,cq.rows[0].phone,req.user.studio_id]),
+    pool.query('select p.id,p.project_id,p.amount,p.currency,p.status,p.description,p.order_id,p.created_at from payments p join projects pr on pr.id=p.project_id where pr.studio_id::text=$2::text and p.client_id::text=$1::text order by p.created_at desc',[id,req.user.studio_id]),
+    pool.query('select i.id,i.project_id,i.number,i.amount,i.currency,i.status,i.due_date,i.description,i.created_at from invoices i join projects pr on pr.id::text=i.project_id::text where pr.studio_id::text=$2::text and i.client_id::text=$1::text order by i.created_at desc',[id,req.user.studio_id]),
+    pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name from orders o left join projects pr on pr.id::text=o.project_id::text where o.client_id::text=$1::text and pr.studio_id::text=$2::text order by o.created_at desc',[id,req.user.studio_id])
   ])
   res.json({client:cq.rows[0],leads:leads.rows,bookings:bookings.rows,payments:payments.rows,invoices:invoices.rows,orders:orders.rows})
 })
@@ -1334,9 +1334,9 @@ app.patch('/api/clients/:id', async (req,res) => {
     client.name=name;client.email=email;client.phone=phone
     return res.json({client})
   }
-  const duplicate=await pool.query('select id from clients where studio_id=$4 and id<>$1 and ((phone is not null and phone=$2) or (email is not null and email=$3)) limit 1',[id,phone,email,req.user.studio_id])
+  const duplicate=await pool.query('select id from clients where studio_id::text=$4::text and id<>$1 and ((phone is not null and phone=$2) or (email is not null and email=$3)) limit 1',[id,phone,email,req.user.studio_id])
   if(duplicate.rows[0])return res.status(409).json({error:'Клиент с таким телефоном или email уже существует'})
-  const q=await pool.query('update clients set name=$1,email=$2,phone=$3 where id=$4 and studio_id=$5 returning id,name,email,phone,created_at',[name,email,phone,id,req.user.studio_id])
+  const q=await pool.query('update clients set name=$1,email=$2,phone=$3 where id=$4 and studio_id::text=$5::text returning id,name,email,phone,created_at',[name,email,phone,id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Клиент не найден'})
   res.json({client:q.rows[0]})
 })
@@ -1358,7 +1358,7 @@ app.get('/api/clients', async (req, res) => {
     "(select count(distinct x.project_id)::int from (select project_id from leads where phone=c.phone or email=c.email union all select project_id from bookings where client_id=c.id or customer_phone=c.phone union all select project_id from orders where client_id=c.id) x) as project_count,"+
     "((select count(*) from leads where phone=c.phone or email=c.email)+(select count(*) from bookings where client_id=c.id or customer_phone=c.phone)+(select count(*) from orders where client_id=c.id))::int as contact_count,"+
     "greatest(c.created_at,(select max(created_at) from orders where client_id=c.id),(select max(created_at) from payments where client_id=c.id),(select max(starts_at) from bookings where client_id=c.id or customer_phone=c.phone)) as last_activity "+
-    "from clients c where c.studio_id=$1 order by last_activity desc nulls last limit 500"
+    "from clients c where c.studio_id::text=$1::text order by last_activity desc nulls last limit 500"
   const { rows } = await pool.query(sql,[req.user.studio_id])
   res.json({ clients: rows })
 })
@@ -1395,7 +1395,7 @@ app.get('/api/projects/:id/analytics', async (req,res) => {
 
 app.get('/api/orders', async (req,res) => {
   if (!pool) return res.json({orders: memoryOrders.filter(x=>x.studio_id===req.user.studio_id)})
-  const {rows}=await pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name,c.name as client_name from orders o left join projects pr on pr.id::text=o.project_id::text left join clients c on c.id=o.client_id where pr.studio_id=$1 order by o.created_at desc limit 200',[req.user.studio_id])
+  const {rows}=await pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name,c.name as client_name from orders o left join projects pr on pr.id::text=o.project_id::text left join clients c on c.id=o.client_id where pr.studio_id::text=$1::text order by o.created_at desc limit 200',[req.user.studio_id])
   res.json({orders:rows})
 })
 app.get('/api/orders/:id', async (req,res) => {
@@ -1470,7 +1470,7 @@ app.post('/api/orders/:id/invoice', async (req,res) => {
 
 app.get('/api/invoices', async (req,res) => {
   if (!pool) return res.json({invoices:memoryInvoices.filter(x=>x.studio_id===req.user.studio_id)})
-  const {rows}=await pool.query('select i.id,i.project_id,i.client_id,i.number,i.amount,i.currency,i.status,i.due_date,i.description,i.created_at,p.name as project_name,c.name as client_name from invoices i left join projects p on p.id::text=i.project_id::text left join clients c on c.id=i.client_id where p.studio_id=$1 order by i.created_at desc limit 200',[req.user.studio_id])
+  const {rows}=await pool.query('select i.id,i.project_id,i.client_id,i.number,i.amount,i.currency,i.status,i.due_date,i.description,i.created_at,p.name as project_name,c.name as client_name from invoices i left join projects p on p.id::text=i.project_id::text left join clients c on c.id=i.client_id where p.studio_id::text=$1::text order by i.created_at desc limit 200',[req.user.studio_id])
   res.json({invoices:rows})
 })
 app.post('/api/invoices', async (req,res) => {
@@ -1486,14 +1486,14 @@ app.patch('/api/invoices/:id', async (req,res) => {
   const status=String(req.body?.status||'').trim()
   if(!['draft','sent','paid','overdue','cancelled'].includes(status))return res.status(400).json({error:'Недопустимый статус счёта'})
   if(!pool){const x=memoryInvoices.find(v=>v.id===req.params.id&&v.studio_id===req.user.studio_id);if(!x)return res.status(404).json({error:'Счёт не найден'});x.status=status;return res.json({invoice:x})}
-  const q=await pool.query('update invoices i set status=$1 from projects p where i.id::text=$2 and i.project_id=p.id and p.studio_id=$3 returning i.*',[status,req.params.id,req.user.studio_id])
+  const q=await pool.query('update invoices i set status=$1 from projects p where i.id::text=$2 and i.project_id=p.id and p.studio_id::text=$3::text returning i.*',[status,req.params.id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Счёт не найден'})
   res.json({invoice:q.rows[0]})
 })
 
 app.get('/api/payments', async (req,res) => {
   if (!pool) return res.json({payments:memoryPayments.filter(x=>x.studio_id===req.user.studio_id)})
-  const {rows}=await pool.query('select p.id,p.project_id,p.client_id,p.booking_id,p.order_id,p.amount,p.currency,p.status,p.description,p.created_at,pr.name as project_name from payments p left join projects pr on pr.id::text=p.project_id::text where pr.studio_id=$1 order by p.created_at desc limit 200',[req.user.studio_id])
+  const {rows}=await pool.query('select p.id,p.project_id,p.client_id,p.booking_id,p.order_id,p.amount,p.currency,p.status,p.description,p.created_at,pr.name as project_name from payments p left join projects pr on pr.id::text=p.project_id::text where pr.studio_id::text=$1::text order by p.created_at desc limit 200',[req.user.studio_id])
   res.json({payments:rows})
 })
 app.post('/api/payments', async (req,res) => {
@@ -1548,9 +1548,9 @@ app.patch('/api/payments/:id', async (req,res) => {
     if(p.order_id){const o=memoryOrders.find(x=>x.id===p.order_id&&x.studio_id===req.user.studio_id);if(o)o.status=status==='paid'?'paid':status==='refunded'?'refunded':o.status}
     return res.json({payment:p})
   }
-  const q=await pool.query("update payments p set status=$1 from projects pr where p.id::text=$2 and p.project_id=pr.id and pr.studio_id=$3 returning p.*",[status,req.params.id,req.user.studio_id])
+  const q=await pool.query("update payments p set status=$1 from projects pr where p.id::text=$2 and p.project_id=pr.id and pr.studio_id::text=$3::text returning p.*",[status,req.params.id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Платёж не найден'})
-  if(q.rows[0].order_id) await pool.query("update orders set status=$1 where id=$2 and project_id in (select id from projects where studio_id=$3)",[status==='paid'?'paid':status==='refunded'?'refunded':'pending',q.rows[0].order_id,req.user.studio_id])
+  if(q.rows[0].order_id) await pool.query("update orders set status=$1 where id=$2 and project_id in (select id from projects where studio_id::text=$3::text)",[status==='paid'?'paid':status==='refunded'?'refunded':'pending',q.rows[0].order_id,req.user.studio_id])
   res.json({payment:q.rows[0]})
 })
 
@@ -1569,8 +1569,8 @@ app.get('/api/analytics/overview', async (req, res) => {
     count(*) filter (where event_type='lead')::int as leads,
     count(*) filter (where event_type='booking')::int as bookings,
     coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue
-    from analytics_events ae join projects pr on pr.id::text=ae.project_id::text where pr.studio_id=$1 and ae.created_at >= now() - interval '30 days'`,[req.user.studio_id])
-  const oq=await pool.query(`select count(*)::int as orders,count(*) filter (where o.status='paid')::int as paid_orders,coalesce(avg(o.total),0)::numeric as average_order from orders o join projects pr on pr.id=o.project_id where pr.studio_id=$1 and o.created_at >= now() - interval '30 days'`,[req.user.studio_id])
+    from analytics_events ae join projects pr on pr.id::text=ae.project_id::text where pr.studio_id::text=$1::text and ae.created_at >= now() - interval '30 days'`,[req.user.studio_id])
+  const oq=await pool.query(`select count(*)::int as orders,count(*) filter (where o.status='paid')::int as paid_orders,coalesce(avg(o.total),0)::numeric as average_order from orders o join projects pr on pr.id=o.project_id where pr.studio_id::text=$1::text and o.created_at >= now() - interval '30 days'`,[req.user.studio_id])
   const s=await pool.query(`select to_char(date_trunc('day',created_at),'YYYY-MM-DD') as day,count(*) filter (where event_type='page_view')::int as visits,count(*) filter (where event_type='lead')::int as leads,count(*) filter (where event_type='booking')::int as bookings,coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue from analytics_events where created_at >= now() - interval '30 days' group by 1 order by 1`)
   const metrics={...q.rows[0],orders:oq.rows[0].orders,paidOrders:oq.rows[0].paid_orders,averageOrder:oq.rows[0].average_order,paymentConversion:oq.rows[0].orders?Number(oq.rows[0].paid_orders)/Number(oq.rows[0].orders)*100:0,series:s.rows}
   res.json({metrics})
