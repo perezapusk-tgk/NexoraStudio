@@ -323,7 +323,9 @@ function App() {
       let message = err?.message || 'Не удалось создать проект.'
       try { message = JSON.parse(message)?.error || message } catch {}
       if (message.includes('Достигнут лимит проектов')) {
-        window.alert(message + '\\n\\nОткройте Настройки → Тариф, чтобы увеличить лимит.')
+        window.alert(message + '\
+\
+Откройте Настройки → Тариф, чтобы увеличить лимит.')
       } else {
         window.alert(message)
       }
@@ -595,7 +597,10 @@ function SettingsPage(){
   const labels={profile:'Профиль студии',branding:'Брендинг',team:'Команда',notifications:'Уведомления',integrations:'Интеграции',security:'Безопасность',billing:'Тариф и оплата'}
   const loadTeam=async()=>{try{const r=await api.team();setTeam(r.members||[]);setInvites(r.invitations||[])}catch{}}
   useEffect(()=>{if(tab==='team')loadTeam();if(tab==='billing'){api.billingPlans().then(r=>setPlans(r.plans||[])).catch(()=>{});api.studioUsage().then(setUsage).catch(()=>{});api.billingAccount().then(setBillingAccount).catch(()=>{})}},[tab])
-  useEffect(()=>{const params=new URLSearchParams(window.location.search);const provider=params.get('provider');const sessionId=params.get('session_id');if(params.get('billing')!=='success'||!provider)return;\n    if(provider==='stripe'&&sessionId){api.billingConfirm(provider,sessionId).then(()=>{window.history.replaceState({},'',window.location.pathname);return Promise.all([api.studioUsage(),api.billingAccount()])}).then(([u,b])=>{setUsage(u);setBillingAccount(b);setTab('billing');window.alert('Оплата подтверждена. Тариф активирован.')}).catch(e=>{window.history.replaceState({},'',window.location.pathname);setTab('billing');window.alert(e.message||'Оплата прошла, но тариф ещё не удалось подтвердить. Обновите страницу через несколько секунд.')})}\n    else if(provider==='yookassa'){let alive=true,attempts=0;const poll=async()=>{attempts++;try{const b=await api.billingAccount();if(!alive)return;setBillingAccount(b);if(b.status==='active'&&b.provider==='yookassa'){const u=await api.studioUsage();if(!alive)return;setUsage(u);window.history.replaceState({},'',window.location.pathname);setTab('billing');window.alert('Оплата подтверждена. Тариф активирован.');return}}catch{}if(alive&&attempts<10)setTimeout(poll,1500)};poll();return()=>{alive=false}}\n  },[])
+  useEffect(()=>{const params=new URLSearchParams(window.location.search);const provider=params.get('provider');const sessionId=params.get('session_id');if(params.get('billing')!=='success'||!provider)return;
+    if(provider==='stripe'&&sessionId){api.billingConfirm(provider,sessionId).then(()=>{window.history.replaceState({},'',window.location.pathname);return Promise.all([api.studioUsage(),api.billingAccount()])}).then(([u,b])=>{setUsage(u);setBillingAccount(b);setTab('billing');window.alert('Оплата подтверждена. Тариф активирован.')}).catch(e=>{window.history.replaceState({},'',window.location.pathname);setTab('billing');window.alert(e.message||'Оплата прошла, но тариф ещё не удалось подтвердить. Обновите страницу через несколько секунд.')})}
+    else if(provider==='yookassa'){let alive=true,attempts=0;const poll=async()=>{attempts++;try{const b=await api.billingAccount();if(!alive)return;setBillingAccount(b);if(b.status==='active'&&b.provider==='yookassa'){const u=await api.studioUsage();if(!alive)return;setUsage(u);window.history.replaceState({},'',window.location.pathname);setTab('billing');window.alert('Оплата подтверждена. Тариф активирован.');return}}catch{}if(alive&&attempts<10)setTimeout(poll,1500)};poll();return()=>{alive=false}}
+  },[])
   const changeLanguage=v=>{setUiLanguage(v);setLanguage(v)}
   const changeCurrency=async v=>{setBillingCurrency(v);setCurrency(v);try{await api.updateBillingSettings(v)}catch{}}
   const add=async()=>{if(!form.email)return;setBusy(true);try{await api.addTeamMember(form);setForm({email:'',role:'member'});await loadTeam();window.alert('Приглашение создано. Скопируйте ссылку из списка приглашений.')}catch(e){window.alert(e.message||'Не удалось создать приглашение')}finally{setBusy(false)}}
