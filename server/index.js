@@ -67,6 +67,14 @@ app.use(express.static(distDir, {
   }
 }))
 
+async function ensurePaymentColumns(){
+  if(!pool) return
+  try{
+    await pool.query('alter table orders add column if not exists payment_provider text')
+    await pool.query('alter table orders add column if not exists payment_external_id text')
+  }catch(e){ console.error('Payment schema migration:',e.message) }
+}
+ensurePaymentColumns()
 const PLAN_CONFIG = { free:{name:'Free',price:0,projectLimit:1,teamLimit:1,clientLimit:100}, starter:{name:'Starter',price:9,projectLimit:10,teamLimit:3,clientLimit:1000}, pro:{name:'Pro',price:19,projectLimit:50,teamLimit:5,clientLimit:10000}, agency:{name:'Agency',price:39,projectLimit:200,teamLimit:15,clientLimit:50000} }
 const planConfig=plan=>PLAN_CONFIG[String(plan||'starter').toLowerCase()]||PLAN_CONFIG.starter
 async function clientLimitState(studioId){
@@ -421,6 +429,20 @@ function billingAmount(plan,currency){
   const base=planConfig(plan).price
   return currency==='USD'?Number(base.toFixed(2)):Number((base*100).toFixed(2))
 }
+async function yookassaRequest(pathname,method='GET',body=null){
+  const shopId=String(process.env.YOOKASSA_SHOP_ID||'').trim()
+  const secret=String(process.env.YOOKASSA_SECRET_KEY||'').trim()
+  if(!shopId||!secret) throw new Error('ЮKassa не настроена: добавьте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY')
+  const headers={'Content-Type':'application/json','Idempotence-Key':crypto.randomUUID()}
+  const auth=Buffer.from(shopId+':'+secret).toString('base64')
+  headers.Authorization='Basic '+auth
+  const response=await fetch('https://api.yookassa.ru/v3'+pathname,{method,headers,body:body?JSON.stringify(body):undefined})
+  const textBody=await response.text()
+  let data=null
+  try{data=textBody?JSON.parse(textBody):null}catch{data={description:textBody}}
+  if(!response.ok) throw new Error(data?.description||data?.message||('ЮKassa API HTTP '+response.status))
+  return data
+}
 function billingAppUrl(){
   return String(process.env.APP_URL||process.env.FRONTEND_URL||process.env.RENDER_EXTERNAL_URL||'http://localhost:5173').replace(/\/$/,'')
 }
@@ -594,6 +616,23 @@ app.post('/api/connect/onboard', async (req,res)=>{
   }catch(e){res.status(503).json({error:e.message||'Не удалось создать ссылку Stripe Connect'})}
 })
 
+app.post('/api/payments/yookassa/webhook', async (req,res)=>{
+  try{
+    const event=req.body||{}
+    const object=event.object||{}
+    const orderId=object.metadata?.order_id
+    if(orderId && pool){
+      if(event.event==='payment.succeeded' || (object.status==='succeeded' && object.paid===true)){
+        await pool.query("update orders set status='paid',paid_at=coalesce(paid_at,now()),payment_provider='yookassa',payment_external_id=$1 where id::text=$2 and status<>'paid'",[object.id,orderId])
+        const order=(await pool.query('select project_id,total from orders where id::text=$1 limit 1',[orderId])).rows[0]
+        if(order) await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[order.project_id,'payment','/checkout',Number(order.total||0),JSON.stringify({order_id:orderId,payment_provider:'yookassa',payment_id:object.id})])
+      }else if(event.event==='payment.canceled' || object.status==='canceled'){
+        await pool.query("update orders set status='cancelled',payment_provider='yookassa',payment_external_id=$1 where id::text=$2 and status='pending'",[object.id,orderId])
+      }
+    }
+    res.status(200).json({received:true})
+  }catch(e){ console.error('YooKassa webhook error:',e.message); res.status(200).json({received:true}) }
+})
 app.post('/api/stripe/connect/webhook', async (req,res)=>{
   const signing=String(process.env.STRIPE_CONNECT_WEBHOOK_SECRET||process.env.STRIPE_WEBHOOK_SECRET||'').trim()
   if(!signing)return res.status(503).json({error:'STRIPE_CONNECT_WEBHOOK_SECRET не настроен'})
@@ -1073,6 +1112,27 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   }
   const paymentProvider=String(req.body?.payment_provider||'').toLowerCase()
   let checkout_url=null
+  if(paymentProvider==='yookassa'){
+    if(String(currency||'RUB').toUpperCase()!=='RUB') return res.status(400).json({error:'Для ЮKassa в Nexora сейчас используйте RUB.'})
+    if(!process.env.YOOKASSA_SHOP_ID||!process.env.YOOKASSA_SECRET_KEY) return res.status(503).json({error:'ЮKassa ещё не настроена в Nexora. Добавьте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY.'})
+    try{
+      const payment=await yookassaRequest('/payments','POST',{
+        amount:{value:Number(total).toFixed(2),currency:'RUB'},
+        capture:true,
+        confirmation:{type:'redirect',return_url:billingAppUrl()+'/?order='+encodeURIComponent(order.id)+'&payment=success&provider=yookassa&payment_id={payment_id}'},
+        description:'Заказ '+number+' · '+project.name,
+        metadata:{order_id:String(order.id),studio_id:String(project.studio_id),project_id:String(project.id)}
+      })
+      checkout_url=payment?.confirmation?.confirmation_url||null
+      if(!checkout_url) throw new Error('ЮKassa не вернула ссылку на оплату')
+      if(pool) await pool.query("update orders set status='pending',payment_provider='yookassa',payment_external_id=$1 where id::text=$2",[payment.id,order.id])
+      else order.payment_provider='yookassa',order.payment_external_id=payment.id
+    }catch(e){
+      console.error('YooKassa project checkout:',e.message)
+      if(pool) await pool.query("update orders set status='cancelled' where id::text=$1 and status='pending'",[order.id]).catch(()=>{})
+      return res.status(503).json({error:'Не удалось создать оплату ЮKassa: '+(e.message||'неизвестная ошибка')})
+    }
+  }
   if(paymentProvider==='stripe'){
     if(String(currency||'EUR').toUpperCase()==='RUB') return res.status(400).json({error:'Stripe Checkout для этого заказа недоступен в RUB. Используйте валюту EUR, USD или другую поддерживаемую Stripe валюту.'})
     let connectAccountId=null
@@ -1117,6 +1177,30 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
 })
 
 
+app.get('/api/public/order/:id/payment-status', async (req,res)=>{
+  const id=String(req.params.id||'').trim()
+  if(!id) return res.status(400).json({error:'Заказ не указан'})
+  if(!pool){
+    const order=memoryOrders.find(x=>x.id===id)
+    if(!order) return res.status(404).json({error:'Заказ не найден'})
+    return res.json({status:order.status,payment_provider:order.payment_provider||null,payment_external_id:order.payment_external_id||null})
+  }
+  const order=(await pool.query('select id,status,payment_provider,payment_external_id from orders where id::text=$1 limit 1',[id])).rows[0]
+  if(!order) return res.status(404).json({error:'Заказ не найден'})
+  if(order.payment_provider==='yookassa' && order.payment_external_id && order.status!=='paid'){
+    try{
+      const payment=await yookassaRequest('/payments/'+encodeURIComponent(order.payment_external_id))
+      if(payment?.status==='succeeded' && payment?.paid===true){
+        await pool.query("update orders set status='paid',paid_at=coalesce(paid_at,now()) where id::text=$1",[id])
+        order.status='paid'
+      }else if(payment?.status==='canceled'){
+        await pool.query("update orders set status='cancelled' where id::text=$1 and status='pending'",[id])
+        order.status='cancelled'
+      }
+    }catch(e){ console.error('YooKassa payment status:',e.message) }
+  }
+  res.json({status:order.status,payment_provider:order.payment_provider||null,payment_external_id:order.payment_external_id||null})
+})
 app.post('/api/public/:slug/events', async (req,res) => {
   const slug=String(req.params.slug||'').trim()
   if(!pool){memoryEvents.push({slug,event_type:String(req.body?.event_type||'page_view'),path:String(req.body?.path||''),created_at:new Date().toISOString()});return res.status(204).end()}
