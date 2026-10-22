@@ -1034,7 +1034,7 @@ app.post('/api/public/:slug/leads', async (req,res) => {
   const phone=String(req.body?.phone||'').trim()
   const message=String(req.body?.message||'').trim()
   if(!name || (!phone && !String(req.body?.email||'').trim())) return res.status(400).json({error:'Укажите имя и телефон или email'})
-  if(!pool){const project=memoryProjects.find(p=>p.slug===slug && p.status==='published');if(!project) return res.status(404).json({error:'Публичный проект не найден'});const lead={id:crypto.randomUUID(),project_slug:slug,project_id:project.id,name,phone,email:String(req.body?.email||''),message,status:'new',source:'public',created_at:new Date().toISOString()};memoryLeads.unshift(lead);memoryEvents.push({slug,event_type:'lead',path:'/lead',created_at:new Date().toISOString()});return res.status(201).json({lead})}
+  if(!pool){const project=memoryProjects.find(p=>p.slug===slug && p.status==='published');if(!project) return res.status(404).json({error:'Публичный проект не найден'});const lead={id:crypto.randomUUID(),project_slug:slug,project_id:project.id,name,phone,email:String(req.body?.email||''),message,status:'new',source:'public',created_at:new Date().toISOString()};memoryLeads.unshift(lead);memoryEvents.push({slug,studio_id:project.studio_id,event_type:'lead',path:'/lead',created_at:new Date().toISOString()});return res.status(201).json({lead})}
   const pr=await pool.query("select id from projects where slug=$1 and status='published' limit 1",[slug])
   if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
   const q=await pool.query('insert into leads(project_id,name,email,phone,message,status,source) values($1,$2,$3,$4,$5,$6,$7) returning id,name,email,phone,message,status,source,created_at',[pr.rows[0].id,name,String(req.body?.email||'').trim()||null,phone||null,message,'new','public'])
@@ -1051,7 +1051,7 @@ app.post('/api/public/:slug/bookings', async (req,res) => {
   const startsDate=new Date(startsAt)
   if(!name || !phone || !startsAt) return res.status(400).json({error:'Заполните имя, телефон и время'})
   if(Number.isNaN(startsDate.getTime()) || startsDate.getTime() < Date.now()-60000) return res.status(400).json({error:'Укажите корректное будущее время записи'})
-  if(!pool){const project=memoryProjects.find(p=>p.slug===slug && p.status==='published');if(!project) return res.status(404).json({error:'Публичный проект не найден'});let client=memoryClients.find(x=>x.studio_id===project.studio_id&&x.phone===phone);if(!client){if(!await requireClientCapacity(project.studio_id,res))return;client={id:crypto.randomUUID(),studio_id:project.studio_id,name,email:'',phone,created_at:new Date().toISOString()};memoryClients.unshift(client)}const conflict=memoryBookings.find(x=>x.project_id===project.id&&x.status!=='cancelled'&&Math.abs(new Date(x.starts_at).getTime()-startsDate.getTime())<30*60000);if(conflict)return res.status(409).json({error:'На это время уже есть запись'});const booking={id:crypto.randomUUID(),studio_id:project.studio_id,project_slug:slug,project_id:project.id,client_id:client.id,customer_name:name,customer_phone:phone,starts_at:startsAt,service_name:serviceName,status:'pending'};memoryBookings.push(booking);memoryEvents.push({slug,event_type:'booking',path:'/booking',created_at:new Date().toISOString()});return res.status(201).json({booking})}
+  if(!pool){const project=memoryProjects.find(p=>p.slug===slug && p.status==='published');if(!project) return res.status(404).json({error:'Публичный проект не найден'});let client=memoryClients.find(x=>x.studio_id===project.studio_id&&x.phone===phone);if(!client){if(!await requireClientCapacity(project.studio_id,res))return;client={id:crypto.randomUUID(),studio_id:project.studio_id,name,email:'',phone,created_at:new Date().toISOString()};memoryClients.unshift(client)}const conflict=memoryBookings.find(x=>x.project_id===project.id&&x.status!=='cancelled'&&Math.abs(new Date(x.starts_at).getTime()-startsDate.getTime())<30*60000);if(conflict)return res.status(409).json({error:'На это время уже есть запись'});const booking={id:crypto.randomUUID(),studio_id:project.studio_id,project_slug:slug,project_id:project.id,client_id:client.id,customer_name:name,customer_phone:phone,starts_at:startsAt,service_name:serviceName,status:'pending'};memoryBookings.push(booking);memoryEvents.push({slug,studio_id:project.studio_id,event_type:'booking',path:'/booking',created_at:new Date().toISOString()});return res.status(201).json({booking})}
   const pr=await pool.query("select id,studio_id from projects where slug=$1 and status='published' limit 1",[slug])
   if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
   const conflict=await pool.query("select id from bookings where project_id::text=$1::text and status<>'cancelled' and starts_at between $2::timestamptz - interval '30 minutes' and $2::timestamptz + interval '30 minutes' limit 1",[pr.rows[0].id,startsAt]);
@@ -1115,7 +1115,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   if(!pool){
     order={id:crypto.randomUUID(),studio_id:project.studio_id||demoStudio.id,project_id:project.id,client_id:clientId,number,status:'pending',total,currency:currency||'RUB',items:normalized,created_at:new Date().toISOString()}
     memoryOrders.unshift(order)
-    memoryEvents.push({slug,event_type:'order_created',path:'/checkout',value:total,created_at:new Date().toISOString()})
+    memoryEvents.push({slug,studio_id:project.studio_id,event_type:'order_created',path:'/checkout',value:total,created_at:new Date().toISOString()})
   } else {
     order=(await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[project.id,clientId,number,'pending',total,currency||'EUR',JSON.stringify(normalized)])).rows[0]
     await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[project.id,'order_created','/checkout',total,JSON.stringify({order_id:order.id})])
@@ -1213,12 +1213,19 @@ app.get('/api/public/order/:id/payment-status', async (req,res)=>{
 })
 app.post('/api/public/:slug/events', async (req,res) => {
   const slug=String(req.params.slug||'').trim()
-  if(!pool){memoryEvents.push({slug,event_type:String(req.body?.event_type||'page_view'),path:String(req.body?.path||''),created_at:new Date().toISOString()});return res.status(204).end()}
-  const pr=await pool.query('select id from projects where slug=$1 limit 1',[slug])
-  if(!pr.rows[0]) return res.status(404).json({error:'Проект не найден'})
-  const type=String(req.body?.event_type||'page_view')
+  const type=String(req.body?.event_type||'page_view').slice(0,64)
+  const pathValue=String(req.body?.path||'').slice(0,500)
   const value=Number(req.body?.value||0)
-  await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[pr.rows[0].id,type,String(req.body?.path||''),value,JSON.stringify(req.body?.metadata||{})])
+  if(!Number.isFinite(value)) return res.status(400).json({error:'Некорректное значение события'})
+  if(!pool){
+    const project=memoryProjects.find(p=>p.slug===slug && p.status==='published')
+    if(!project)return res.status(404).json({error:'Публичный проект не найден'})
+    memoryEvents.push({slug,studio_id:project.studio_id,event_type:type,path:pathValue,value,metadata:req.body?.metadata||{},created_at:new Date().toISOString()})
+    return res.status(204).end()
+  }
+  const pr=await pool.query("select id from projects where slug=$1 and status='published' limit 1",[slug])
+  if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
+  await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[pr.rows[0].id,type,pathValue,value,JSON.stringify(req.body?.metadata||{})])
   res.status(204).end()
 })
 
@@ -1313,8 +1320,8 @@ app.post('/api/bookings', async (req,res) => {
   if(!pool){
     const project=memoryProjects.find(x=>x.id===projectId&&x.studio_id===req.user.studio_id)
     if(!project)return res.status(404).json({error:'Проект не найден'})
-    const conflict=memoryBookings.find(x=>x.project_id===projectId&&x.status!=='cancelled'&&new Date(x.starts_at)<new Date(endsAt)&&new Date(x.ends_at||x.starts_at)<new Date(startsAt)===false)
-    if(conflict&&new Date(conflict.starts_at)<new Date(endsAt)&&new Date(conflict.ends_at||new Date(new Date(conflict.starts_at).getTime()+3600000))>new Date(startsAt))return res.status(409).json({error:'Это время уже занято другой записью'})
+    const conflict=memoryBookings.find(x=>x.project_id===projectId&&x.status!=='cancelled'&&new Date(x.starts_at)<new Date(endsAt)&&new Date(x.ends_at||new Date(new Date(x.starts_at).getTime()+3600000))>new Date(startsAt))
+    if(conflict)return res.status(409).json({error:'Это время уже занято другой записью'})
     let client=phone?memoryClients.find(x=>x.studio_id===req.user.studio_id&&x.phone===phone):null
     if(!client){
       if(!await requireClientCapacity(req.user.studio_id,res))return
@@ -1394,7 +1401,7 @@ app.post('/api/bookings/:id/payment', async (req,res) => {
   if(!Number.isFinite(amount)||amount<=0)return res.status(400).json({error:'Укажите корректную сумму оплаты'})
   let booking
   if(!pool) booking=memoryBookings.find(x=>x.id===id)
-  else booking=(await pool.query('select * from bookings where id::text=$1 limit 1',[id])).rows[0]
+  else booking=(await pool.query('select b.* from bookings b join projects p on p.id=b.project_id where b.id::text=$1 and p.studio_id::text=$2::text limit 1',[id,req.user.studio_id])).rows[0]
   if(!booking)return res.status(404).json({error:'Бронирование не найдено'})
   const projectId=booking.project_id||null
   if(!projectId)return res.status(400).json({error:'У бронирования не указан проект'})
@@ -1520,10 +1527,10 @@ app.get('/api/clients', async (req, res) => {
 app.get('/api/projects/:id/analytics', async (req,res) => {
   const id=req.params.id
   if(!pool){
-    const project=memoryProjects.find(p=>p.id===id||p.slug===id)
+    const project=memoryProjects.find(p=>(p.id===id||p.slug===id)&&p.studio_id===req.user.studio_id)
     if(!project)return res.status(404).json({error:'Проект не найден'})
     const slug=project.slug
-    const events=memoryEvents.filter(e=>e.slug===slug)
+    const events=memoryEvents.filter(e=>e.slug===slug&&e.studio_id===req.user.studio_id)
     const leads=memoryLeads.filter(l=>l.project_slug===slug)
     const bookings=memoryBookings.filter(b=>b.project_slug===slug)
     return res.json({metrics:{visits:events.filter(e=>e.event_type==='page_view').length,leads:leads.length,bookings:bookings.length,revenue:memoryPayments.filter(p=>p.project_id===project.id&&p.status==='paid').reduce((a,p)=>a+Number(p.amount||0),0)}})
@@ -1563,7 +1570,7 @@ app.get('/api/orders/:id', async (req,res) => {
     const timeline=[{type:'order',text:'Заказ создан',date:order.created_at},...payments.map(p=>({type:'payment',text:'Платёж · '+Number(p.amount||0)+' '+(p.currency||order.currency||'EUR'),date:p.created_at}))]
     return res.json({order,client,payments,invoice,timeline})
   }
-  const oq=await pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name,c.name as client_name,c.phone,c.email from orders o left join projects pr on pr.id::text=o.project_id::text left join clients c on c.id=o.client_id where o.id=$1 limit 1',[id])
+  const oq=await pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name,c.name as client_name,c.phone,c.email from orders o left join projects pr on pr.id::text=o.project_id::text left join clients c on c.id=o.client_id where o.id=$1 and pr.studio_id::text=$2::text limit 1',[id,req.user.studio_id])
   if(!oq.rows[0])return res.status(404).json({error:'Заказ не найден'})
   const [payments,invoices]=await Promise.all([
     pool.query('select id,amount,currency,status,description,created_at from payments where order_id=$1 order by created_at desc',[id]),
