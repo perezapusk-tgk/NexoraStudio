@@ -346,7 +346,7 @@ function Metric({title,value,change,icon:Icon}) {
 }
 
 function ProjectTable({projects,onOpenProject}) {
-  return <div className="table">{projects.map((p,i)=><button className="project-row project-row-button" key={p.id||p.name} onClick={() => onOpenProject?.(p)}><div className={`project-logo ${p.color}`}>{p.name.slice(0,1)}</div><div className="project-name"><b>{p.name}</b><span>{p.type}</span></div><span className={`status ${p.status === 'Опубликован' ? 'success' : p.status === 'В работе' ? 'working' : 'draft'}`}><i/>{p.status}</span><div className="project-stat"><b>{p.leads}</b><span>заявок</span></div><div className="project-stat"><b>{p.revenue}</b><span>выручка</span></div><span className="updated">{p.updated}</span><span className="row-more"><MoreHorizontal size={17}/></span></button>)}</div>
+  return <div className="table">{projects.map((p,i)=><div className="project-row project-row-button" key={p.id||p.name} role="button" tabIndex={0} onClick={() => onOpenProject?.(p)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' ')onOpenProject?.(p)}}><div className={`project-logo ${p.color}`}>{p.name.slice(0,1)}</div><div className="project-name"><b>{p.name}</b><span>{p.type}</span></div><span className={`status ${p.status === 'Опубликован' ? 'success' : p.status === 'В работе' ? 'working' : 'draft'}`}><i/>{p.status}</span><div className="project-stat"><b>{p.leads}</b><span>заявок</span></div><div className="project-stat"><b>{p.revenue}</b><span>выручка</span></div><span className="updated">{p.updated}</span><button type="button" className="filter project-open-button" onClick={e=>{e.stopPropagation();onOpenProject?.(p)}}>Открыть рабочее пространство</button></div>)}</div>
 }
 
 function Activity() {
