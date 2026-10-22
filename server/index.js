@@ -545,20 +545,25 @@ app.get('/api/connect/status', async (req,res)=>{
   if(!row.stripe_connect_account_id)return res.json({connected:false,account_id:null,status:'not_connected'})
   try{
     const account=await stripeRequest('/v1/accounts/'+encodeURIComponent(row.stripe_connect_account_id))
-    return res.json({connected:true,account_id:account.id,status:account.charges_enabled&&account.payouts_enabled?'active':'pending',charges_enabled:!!account.charges_enabled,payouts_enabled:!!account.payouts_enabled,details_submitted:!!account.details_submitted,disabled_reason:account.requirements?.disabled_reason||null,currently_due:account.requirements?.currently_due||[],past_due:account.requirements?.past_due||[]})
+    return res.json({connected:true,account_id:account.id,country:account.country||null,status:account.charges_enabled&&account.payouts_enabled?'active':'pending',charges_enabled:!!account.charges_enabled,payouts_enabled:!!account.payouts_enabled,details_submitted:!!account.details_submitted,disabled_reason:account.requirements?.disabled_reason||null,currently_due:account.requirements?.currently_due||[],past_due:account.requirements?.past_due||[]})
   }catch(e){return res.json({connected:true,account_id:row.stripe_connect_account_id,status:'pending'})}
 })
 app.post('/api/connect/account', async (req,res)=>{
   if(!requireRole(req,res,['owner','admin'])) return
   try{
     const email=String(req.body?.email||req.user.email||'').trim()
+    const country=String(req.body?.country||'').trim().toUpperCase()
+    if(!/^[A-Z]{2}$/.test(country)) return res.status(400).json({error:'Укажите страну регистрации/деятельности для Stripe Connect',code:'STRIPE_COUNTRY_REQUIRED'})
+    if(country==='RU') return res.status(400).json({error:'Stripe сейчас не поддерживает пользователей и компании, находящиеся в России. Не выбирайте Финляндию или другую страну без реальных подтверждающих данных.',code:'STRIPE_COUNTRY_UNSUPPORTED'})
     if(pool){
       const existing=(await pool.query('select stripe_connect_account_id from studios where id::text=$1',[req.user.studio_id])).rows[0]
-      if(existing?.stripe_connect_account_id)return res.json({account_id:existing.stripe_connect_account_id,existing:true})
+      if(existing?.stripe_connect_account_id){
+        const existingAccount=await stripeRequest('/v1/accounts/'+encodeURIComponent(existing.stripe_connect_account_id))
+        const existingCountry=String(existingAccount?.country||'').toUpperCase()
+        if(existingCountry && existingCountry!==country)return res.status(409).json({error:'У студии уже есть Stripe Connect аккаунт в стране '+existingCountry+'. Страну существующего аккаунта изменить нельзя.',code:'STRIPE_COUNTRY_LOCKED',account_id:existing.account_id||existing.stripe_connect_account_id,country:existingCountry})
+        return res.json({account_id:existing.stripe_connect_account_id,existing:true,country:existingCountry||country})
+      }
     }
-    const platform=await stripeRequest('/v1/account')
-    const country=String(platform?.country||'').toUpperCase()
-    if(!/^[A-Z]{2}$/.test(country)) throw new Error('Stripe не вернул страну платформы для создания Connect account')
     const account=await stripeRequest('/v1/accounts','POST',{
       type:'express',
       country,
@@ -568,7 +573,7 @@ app.post('/api/connect/account', async (req,res)=>{
     })
     if(pool)await pool.query("update studios set stripe_connect_account_id=$1,stripe_connect_status='pending',updated_at=now() where id=$2",[account.id,req.user.studio_id])
     else {const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio;studio.stripe_connect_account_id=account.id;studio.stripe_connect_status='pending'}
-    res.status(201).json({account_id:account.id,status:'pending'})
+    res.status(201).json({account_id:account.id,status:'pending',country:account.country||country})
   }catch(e){res.status(503).json({error:e.message||'Не удалось создать Stripe Connect account'})}
 })
 app.post('/api/connect/onboard', async (req,res)=>{
