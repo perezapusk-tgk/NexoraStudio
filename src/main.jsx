@@ -256,6 +256,9 @@ function App() {
       setProjectData(list.map(p => ({
         id: p.id,
         name: p.name || p.title || 'Без названия',
+        slug: p.slug || '',
+        domain: p.domain || null,
+        project_type: p.project_type || '',
         type: p.project_type === 'miniapp' ? 'Mini App' : p.project_type === 'site' ? 'Сайт' : 'Сайт + Mini App',
         status: p.status === 'published' ? 'Опубликован' : p.status === 'draft' ? 'Черновик' : 'В работе',
         color: 'dark', leads: Number(p.leads || 0), bookings: Number(p.bookings || 0), revenue: p.revenue || '€0', updated: 'только что'
