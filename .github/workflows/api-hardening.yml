@@ -26,12 +26,18 @@ jobs:
           anchor2="app.use((req,res,next)=>{\n  if(req.method==='GET' && !req.path.startsWith('/api')"
           if 'API route not found' not in s: s=s.replace(anchor2,fallback+'\n'+anchor2,1)
           p.write_text(s)
+          p=Path('src/api.js')
+          s=p.read_text()
+          old="const API_BASE = import.meta.env.VITE_API_URL || '/api'"
+          new="""const rawApiBase=String(import.meta.env.VITE_API_URL||'/api').trim().replace(/\\/+$/,'')\nconst API_BASE=rawApiBase==='/'?'/api':(rawApiBase.startsWith('http')?(rawApiBase.endsWith('/api')?rawApiBase:rawApiBase+'/api'):(rawApiBase||'/api'))"""
+          if old in s: s=s.replace(old,new,1)
+          p.write_text(s)
           PY
           node --check server/index.js
       - name: Commit API hardening
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add server/index.js
-          git diff --cached --quiet || git commit -m "fix: harden production API routing [api-hardening]"
+          git add server/index.js src/api.js
+          git diff --cached --quiet || git commit -m "fix: harden production API client routing [api-hardening]"
           git push
