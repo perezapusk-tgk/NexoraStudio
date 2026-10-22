@@ -517,7 +517,7 @@ app.post('/api/connect/account', async (req,res)=>{
   try{
     const email=String(req.body?.email||req.user.email||'').trim()
     if(pool){
-      const existing=(await pool.query('select stripe_connect_account_id from studios where id=$1',[req.user.studio_id])).rows[0]
+      const existing=(await pool.query('select stripe_connect_account_id from studios where id::text=$1',[req.user.studio_id])).rows[0]
       if(existing?.stripe_connect_account_id)return res.json({account_id:existing.stripe_connect_account_id,existing:true})
     }
     const account=await stripeRequest('/v1/accounts','POST',{
@@ -538,7 +538,7 @@ app.post('/api/connect/onboard', async (req,res)=>{
   if(!requireRole(req,res,['owner','admin'])) return
   try{
     let accountId
-    if(pool)accountId=(await pool.query('select stripe_connect_account_id from studios where id=$1',[req.user.studio_id])).rows[0]?.stripe_connect_account_id
+    if(pool)accountId=(await pool.query('select stripe_connect_account_id from studios where id::text=$1',[req.user.studio_id])).rows[0]?.stripe_connect_account_id
     else accountId=(memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio).stripe_connect_account_id
     if(!accountId)return res.status(409).json({error:'Сначала создайте Stripe Connect account'})
     const base=billingAppUrl()
@@ -556,7 +556,7 @@ app.post('/api/stripe/connect/webhook', async (req,res)=>{
   const signing=String(process.env.STRIPE_CONNECT_WEBHOOK_SECRET||process.env.STRIPE_WEBHOOK_SECRET||'').trim()
   if(!signing)return res.status(503).json({error:'STRIPE_CONNECT_WEBHOOK_SECRET не настроен'})
   const signature=String(req.headers['stripe-signature']||'')
-  const timestamp=Number((signature.match(/(?:^|,)t=(\\d+)/)||[])[1]||0)
+  const timestamp=Number((signature.match(/(?:^|,)t=(\d+)/)||[])[1]||0)
   const providedList=[...signature.matchAll(/(?:^|,)v1=([^,]+)/g)].map(m=>m[1])
   const payload=(req.rawBody||Buffer.from('')).toString('utf8')
   const expected=crypto.createHmac('sha256',signing).update(String(timestamp)+'.'+payload).digest('hex')
@@ -587,7 +587,7 @@ app.post('/api/billing/stripe/webhook', async (req,res)=>{
   const signing=String(process.env.STRIPE_WEBHOOK_SECRET||'').trim()
   if(!signing)return res.status(503).json({error:'STRIPE_WEBHOOK_SECRET не настроен'})
   const signature=String(req.headers['stripe-signature']||'')
-  const timestamp=Number((signature.match(/(?:^|,)t=(\\d+)/)||[])[1]||0)
+  const timestamp=Number((signature.match(/(?:^|,)t=(\d+)/)||[])[1]||0)
   const providedList=[...signature.matchAll(/(?:^|,)v1=([^,]+)/g)].map(m=>m[1])
   const payload=(req.rawBody||Buffer.from('')).toString('utf8')
   const expected=crypto.createHmac('sha256',signing).update(String(timestamp)+'.'+payload).digest('hex')
@@ -968,7 +968,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
     if(!Number.isInteger(rawQuantity)||rawQuantity<1||rawQuantity>100) return res.status(400).json({error:'Некорректное количество товара'})
     const quantity=rawQuantity
     let source
-    if(pool) source=(await pool.query('select id,name,price,currency from catalog_items where id=$1 and project_id=$2 and active=true limit 1',[catalogId,project.id])).rows[0]
+    if(pool) source=(await pool.query('select id,name,price,currency from catalog_items where id::text=$1 and project_id::text=$2 and active=true limit 1',[catalogId,project.id])).rows[0]
     else source=(memoryCatalog.get(project.id)||[]).find(x=>x.id===catalogId && x.active!==false)
     if(!source) return res.status(400).json({error:'Товар не найден'})
     const price=Number(source.price||0)
@@ -994,7 +994,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   if(paymentProvider==='stripe'){
     if(String(currency||'EUR').toUpperCase()==='RUB') return res.status(400).json({error:'Stripe Checkout для этого заказа недоступен в RUB. Используйте валюту EUR, USD или другую поддерживаемую Stripe валюту.'})
     let connectAccountId=null
-    if(pool) connectAccountId=(await pool.query('select stripe_connect_account_id from studios where id=$1',[project.studio_id])).rows[0]?.stripe_connect_account_id
+    if(pool) connectAccountId=(await pool.query('select stripe_connect_account_id from studios where id::text=$1',[project.studio_id])).rows[0]?.stripe_connect_account_id
     else connectAccountId=(memoryStudios.find(x=>x.id===project.studio_id)||demoStudio).stripe_connect_account_id
     if(!connectAccountId) return res.status(409).json({error:'Stripe Connect ещё не подключён для этого проекта. Сначала подключите Stripe в настройках студии.'})
     try{
@@ -1164,7 +1164,7 @@ app.post('/api/bookings', async (req,res) => {
     memoryBookings.push(booking)
     return res.status(201).json({booking})
   }
-  const project=(await pool.query('select id,name from projects where id=$1 and studio_id=$2 limit 1',[projectId,req.user.studio_id])).rows[0]
+  const project=(await pool.query('select id,name from projects where id::text=$1 and studio_id=$2 limit 1',[projectId,req.user.studio_id])).rows[0]
   if(!project)return res.status(404).json({error:'Проект не найден'})
   const conflict=(await pool.query("select id from bookings where project_id=$1 and status <> 'cancelled' and starts_at < $3 and ends_at > $2 limit 1",[projectId,startsAt,endsAt])).rows[0]
   if(conflict)return res.status(409).json({error:'Это время уже занято другой записью'})
@@ -1209,7 +1209,7 @@ app.patch('/api/bookings/:id', async (req,res) => {
   const nextStart=startsAt!==undefined?startsAt:current.starts_at
   const nextEnd=endsAt!==undefined?endsAt:(current.ends_at||new Date(new Date(nextStart).getTime()+3600000).toISOString())
   if(startsAt!==undefined||endsAt!==undefined){
-    const conflict=(await pool.query("select id from bookings where project_id=$1 and id<>$2 and status <> 'cancelled' and starts_at < $4 and ends_at > $3 limit 1",[current.project_id,current.id,nextStart,nextEnd])).rows[0]
+    const conflict=(await pool.query("select id from bookings where project_id=$1 and id::text<>$2 and status <> 'cancelled' and starts_at < $4 and ends_at > $3 limit 1",[current.project_id,current.id,nextStart,nextEnd])).rows[0]
     if(conflict)return res.status(409).json({error:'Это время уже занято другой записью'})
   }
   const fields=[],values=[]
@@ -1222,7 +1222,7 @@ app.patch('/api/bookings/:id', async (req,res) => {
   if(serviceName!==undefined)add('service_name',serviceName)
   if(!fields.length)return res.status(400).json({error:'Нет изменений'})
   values.push(req.params.id)
-  const q=await pool.query('update bookings set '+fields.join(', ')+' where id=$'+values.length+' returning *',values)
+  const q=await pool.query('update bookings set '+fields.join(', ')+' where id::text=$'+values.length+' returning *',values)
   res.json({booking:q.rows[0]})
 })
 
@@ -1233,14 +1233,14 @@ app.post('/api/bookings/:id/payment', async (req,res) => {
   if(!Number.isFinite(amount)||amount<=0)return res.status(400).json({error:'Укажите корректную сумму оплаты'})
   let booking
   if(!pool) booking=memoryBookings.find(x=>x.id===id)
-  else booking=(await pool.query('select * from bookings where id=$1 limit 1',[id])).rows[0]
+  else booking=(await pool.query('select * from bookings where id::text=$1 limit 1',[id])).rows[0]
   if(!booking)return res.status(404).json({error:'Бронирование не найдено'})
   const projectId=booking.project_id||null
   if(!projectId)return res.status(400).json({error:'У бронирования не указан проект'})
   const description='Оплата бронирования'+(booking.service_name?' · '+booking.service_name:'')
   if(!pool){const payment={id:crypto.randomUUID(),project_id:projectId,client_id:booking.client_id||null,booking_id:id,order_id:null,amount,currency,status:'paid',description,created_at:new Date().toISOString()};memoryPayments.unshift(payment);booking.status='completed';memoryEvents.push({slug:booking.project_slug,event_type:'payment',path:'/booking',value:amount,created_at:new Date().toISOString()});return res.status(201).json({payment,booking})}
   const q=await pool.query('insert into payments(project_id,client_id,booking_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7) returning *',[projectId,booking.client_id||null,id,amount,currency,'paid',description])
-  await pool.query("update bookings set status='completed' where id=$1",[id])
+  await pool.query("update bookings set status='completed' where id::text=$1",[id])
   await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[projectId,'payment','/booking',amount,JSON.stringify({booking_id:id})])
   res.status(201).json({payment:q.rows[0],booking:{...booking,status:'completed'}})
 })
@@ -1424,7 +1424,7 @@ app.post('/api/orders', async (req,res) => {
     const catalogId=String(item.catalog_id||item.id||'').trim()
     const quantity=Math.max(1,Number(item.quantity||1))
     let source=null
-    if(pool){const q=await pool.query('select id,name,price,currency from catalog_items where id=$1 and project_id=$2 limit 1',[catalogId,projectId]);source=q.rows[0]}
+    if(pool){const q=await pool.query('select id,name,price,currency from catalog_items where id::text=$1 and project_id::text=$2 limit 1',[catalogId,projectId]);source=q.rows[0]}
     else source=(memoryCatalog.get(projectId)||[]).find(x=>x.id===catalogId)
     if(!source) return res.status(400).json({error:'Товар не найден: '+catalogId})
     const price=Number(source.price||0)
@@ -1526,7 +1526,7 @@ app.post('/api/payments', async (req,res) => {
   }
   const q=await pool.query('insert into payments(project_id,client_id,booking_id,order_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,req.body?.booking_id||null,orderId,amount,currency,status,description||null])
   if(orderId && status==='paid'){
-    await pool.query("update orders set status='paid' where id=$1",[orderId])
+    await pool.query("update orders set status='paid' where id::text=$1",[orderId])
     await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[projectId,'payment','/payment',amount,JSON.stringify({order_id:orderId,payment_id:q.rows[0].id})])
   }
   res.status(201).json({payment:q.rows[0]})
