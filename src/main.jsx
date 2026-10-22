@@ -248,8 +248,11 @@ function App() {
     try { setClientData(await api.client(client.id)) } catch { setClientData({client,leads:[],bookings:[],payments:[],invoices:[]}) }
   }
   const openProject = async (project) => {
-    if (!project.id) return
-    setSelectedProject(project); setProjectView('overview')
+    if (!project?.id) return
+    setActive('Проекты')
+    setSelectedClient(null); setClientData(null)
+    setSelectedProject(project); setProjectView('overview'); setWorkspaceProjectId(String(project.id))
+    const url=new URL(window.location.href); url.searchParams.set('project',String(project.id)); url.searchParams.delete('miniapp'); url.searchParams.delete('published'); window.history.pushState({project:String(project.id)},'',url.pathname+url.search)
     try { setWorkspaceData(await api.project(project.id)) } catch { setWorkspaceData({project,pages:[]}) }
   }
 
@@ -306,7 +309,7 @@ function App() {
           {active === 'Интеграции' && <Integrations />}
           {active === 'Шаблоны' && <Templates onCreate={createProject} />}
           {active === 'Настройки' && !selectedProject && <SettingsPage />}
-          {selectedProject && <ProjectWorkspace project={selectedProject} data={workspaceData} view={projectView} setView={setProjectView} onBack={() => { setSelectedProject(null); setWorkspaceData(null) }} onRefresh={async()=>setWorkspaceData(await api.project(selectedProject.id))} />}
+          {selectedProject && <ProjectWorkspace project={selectedProject} data={workspaceData} view={projectView} setView={setProjectView} onBack={() => { setSelectedProject(null); setWorkspaceData(null); setWorkspaceProjectId(''); const url=new URL(window.location.href); url.searchParams.delete('project'); window.history.replaceState({},'',url.pathname+url.search) }} onRefresh={async()=>setWorkspaceData(await api.project(selectedProject.id))} />}
         </div>
       </main>
 
