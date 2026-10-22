@@ -167,8 +167,9 @@ function App() {
 
   useEffect(() => {
     let alive = true
+    const timer = setTimeout(() => { if(alive) setAuthLoading(false) }, 6500)
     api.authMe().then(session=>{ if(alive) setAuth(session) }).catch(()=>{ if(alive) setAuth(null) }).finally(()=>{ if(alive) setAuthLoading(false) })
-    return () => { alive = false }
+    return () => { alive = false; clearTimeout(timer) }
   }, [])
 
   useEffect(() => {
