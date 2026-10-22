@@ -680,7 +680,7 @@ app.delete('/api/team/invitations/:id', async (req,res) => {
   if(!requireRole(req,res,['owner','admin'])) return
   const id=req.params.id
   if(pool){
-    const q=await pool.query('delete from team_invitations where id=$1 and studio_id=$2 and accepted_at is null returning id',[id,req.user.studio_id])
+    const q=await pool.query('delete from team_invitations where id::text=$1 and studio_id=$2 and accepted_at is null returning id',[id,req.user.studio_id])
     if(!q.rows[0])return res.status(404).json({error:'Приглашение не найдено'})
   } else {
     const i=memoryInvitations.findIndex(x=>x.id===id&&x.studio_id===req.user.studio_id&&!x.accepted_at)
@@ -698,7 +698,7 @@ app.post('/api/team/invitations/:id/resend', async (req,res) => {
       const current=await pool.query("select * from team_invitations where id=$1 and studio_id=$2 and accepted_at is null",[id,req.user.studio_id])
       if(!current.rows[0])return res.status(404).json({error:'Приглашение не найдено'})
       const raw=createInviteToken()
-      const q=await pool.query('update team_invitations set token_hash=$1,expires_at=now()+interval \'7 days\' where id=$2 returning id,email,role,expires_at,created_at',[tokenHash(raw),id])
+      const q=await pool.query('update team_invitations set token_hash=$1,expires_at=now()+interval \'7 days\' where id::text=$2 returning id,email,role,expires_at,created_at',[tokenHash(raw),id])
       return res.json({invitation:{...q.rows[0],invite_url:inviteUrl(raw)}})
     }
     const inv=memoryInvitations.find(x=>x.id===id&&x.studio_id===req.user.studio_id&&!x.accepted_at)
@@ -794,9 +794,9 @@ app.patch('/api/projects/:id',async(req,res)=>{if(!pool){
   if(req.body?.domain!==undefined)p.domain=String(req.body.domain||'').trim()||null
   if(req.body?.settings)p.settings={...(p.settings||{}),...req.body.settings}
   return res.json({project:p})
-}const current=await pool.query('select * from projects where id=$1 and studio_id=$2',[req.params.id,req.user.studio_id]);if(!current.rows[0])return res.status(404).json({error:'Проект не найден'});const settings=req.body?.settings?{...(current.rows[0].settings||{}),...req.body.settings}:current.rows[0].settings;const q=await pool.query('update projects set name=coalesce($1,name),domain=case when $2 is null then domain else $2 end,settings=$3,updated_at=now() where id=$4 returning *',[req.body?.name,req.body?.domain===undefined?null:String(req.body.domain||'').trim()||null,JSON.stringify(settings),req.params.id]);res.json({project:q.rows[0]})});
+}const current=await pool.query('select * from projects where id::text=$1 and studio_id=$2',[req.params.id,req.user.studio_id]);if(!current.rows[0])return res.status(404).json({error:'Проект не найден'});const settings=req.body?.settings?{...(current.rows[0].settings||{}),...req.body.settings}:current.rows[0].settings;const q=await pool.query('update projects set name=coalesce($1,name),domain=case when $2 is null then domain else $2 end,settings=$3,updated_at=now() where id::text=$4 returning *',[req.body?.name,req.body?.domain===undefined?null:String(req.body.domain||'').trim()||null,JSON.stringify(settings),req.params.id]);res.json({project:q.rows[0]})});
 app.post('/api/projects/:id/pages',async(req,res)=>{const title=String(req.body?.title||'Новая страница'),slug=slugify(req.body?.slug||title);if(!pool){const project=memoryProjects.find(x=>(x.id===req.params.id||x.slug===req.params.id)&&x.studio_id===req.user.studio_id);if(!project)return res.status(404).json({error:'Проект не найден'});const page={id:crypto.randomUUID(),title,slug,content:{blocks:[]},published:false};const pages=memoryPages.get(project.id)||[];pages.push(page);memoryPages.set(project.id,pages);return res.status(201).json({page})};const q=await pool.query('insert into pages(project_id,title,slug,content) values($1,$2,$3,$4) returning *',[req.params.id,title,slug,JSON.stringify({blocks:[]})]);res.status(201).json({page:q.rows[0]})});
-app.patch('/api/projects/:id/pages/:pageId',async(req,res)=>{if(!pool){const project=memoryProjects.find(x=>x.id===req.params.id&&x.studio_id===req.user.studio_id);if(!project)return res.status(404).json({error:'Проект не найден'});const pages=memoryPages.get(req.params.id)||[];const p=pages.find(x=>x.id===req.params.pageId);if(!p)return res.status(404).json({error:'Страница не найдена'});if(req.body?.content)p.content=req.body.content;return res.json({page:p})}const ownership=await pool.query('select id from projects where id=$1 and studio_id=$2',[req.params.id,req.user.studio_id]);if(!ownership.rows[0])return res.status(404).json({error:'Проект не найден'});const q=await pool.query('update pages set content=coalesce($1,content),updated_at=now() where id=$2 and project_id=$3 returning *',[req.body?.content?JSON.stringify(req.body.content):null,req.params.pageId,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Страница не найдена'});res.json({page:q.rows[0]})});
+app.patch('/api/projects/:id/pages/:pageId',async(req,res)=>{if(!pool){const project=memoryProjects.find(x=>x.id===req.params.id&&x.studio_id===req.user.studio_id);if(!project)return res.status(404).json({error:'Проект не найден'});const pages=memoryPages.get(req.params.id)||[];const p=pages.find(x=>x.id===req.params.pageId);if(!p)return res.status(404).json({error:'Страница не найдена'});if(req.body?.content)p.content=req.body.content;return res.json({page:p})}const ownership=await pool.query('select id from projects where id::text=$1 and studio_id=$2',[req.params.id,req.user.studio_id]);if(!ownership.rows[0])return res.status(404).json({error:'Проект не найден'});const q=await pool.query('update pages set content=coalesce($1,content),updated_at=now() where id::text=$2 and project_id::text=$3 returning *',[req.body?.content?JSON.stringify(req.body.content):null,req.params.pageId,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Страница не найдена'});res.json({page:q.rows[0]})});
 app.get('/api/public/:slug', async (req,res) => {
   const slug = String(req.params.slug || '').trim()
   if (!pool) {
@@ -1063,7 +1063,7 @@ app.post('/api/projects/:id/catalog', async (req,res) => {
     active: req.body?.active !== false
   }
   if (!pool) { const item={id:crypto.randomUUID(),project_id:req.params.id,...payload};const list=memoryCatalog.get(req.params.id)||[];list.unshift(item);memoryCatalog.set(req.params.id,list);return res.status(201).json({item}) }
-  const q = await pool.query('insert into catalog_items(project_id,name,description,price,currency,image_url,active) values($1,$2,$3,$4,$5,$6,$7) returning *',[req.params.id,payload.name,payload.description,payload.price,payload.currency,payload.image_url,payload.active])
+  const q = await pool.query('insert into catalog_items(project_id,name,description,price,currency,image_url,active) values($1::uuid,$2,$3,$4,$5,$6,$7) returning *',[req.params.id,payload.name,payload.description,payload.price,payload.currency,payload.image_url,payload.active])
   res.status(201).json({ item:q.rows[0] })
 })
 app.patch('/api/projects/:id/catalog/:itemId', async (req,res) => {
@@ -1172,7 +1172,7 @@ app.patch('/api/bookings/:id', async (req,res) => {
     if(serviceName!==undefined)booking.service_name=serviceName
     return res.json({booking})
   }
-  const current=(await pool.query('select * from bookings where id=$1 limit 1',[req.params.id])).rows[0]
+  const current=(await pool.query('select * from bookings where id::text=$1 limit 1',[req.params.id])).rows[0]
   if(!current)return res.status(404).json({error:'Бронирование не найдено'})
   const nextStart=startsAt!==undefined?startsAt:current.starts_at
   const nextEnd=endsAt!==undefined?endsAt:(current.ends_at||new Date(new Date(nextStart).getTime()+3600000).toISOString())
@@ -1410,7 +1410,7 @@ app.patch('/api/orders/:id', async (req,res) => {
   const status=String(req.body?.status||'').trim()
   if(!['pending','paid','cancelled','refunded'].includes(status)) return res.status(400).json({error:'Недопустимый статус заказа'})
   if(!pool){const x=memoryOrders.find(v=>v.id===req.params.id);if(!x)return res.status(404).json({error:'Заказ не найден'});x.status=status;return res.json({order:x})}
-  const q=await pool.query('update orders set status=$1 where id=$2 returning *',[status,req.params.id])
+  const q=await pool.query('update orders set status=$1 where id::text=$2 returning *',[status,req.params.id])
   if(!q.rows[0])return res.status(404).json({error:'Заказ не найден'})
   res.json({order:q.rows[0]})
 })
@@ -1447,7 +1447,7 @@ app.patch('/api/invoices/:id', async (req,res) => {
   const status=String(req.body?.status||'').trim()
   if(!['draft','sent','paid','overdue','cancelled'].includes(status))return res.status(400).json({error:'Недопустимый статус счёта'})
   if(!pool){const x=memoryInvoices.find(v=>v.id===req.params.id&&v.studio_id===req.user.studio_id);if(!x)return res.status(404).json({error:'Счёт не найден'});x.status=status;return res.json({invoice:x})}
-  const q=await pool.query('update invoices i set status=$1 from projects p where i.id=$2 and i.project_id=p.id and p.studio_id=$3 returning i.*',[status,req.params.id,req.user.studio_id])
+  const q=await pool.query('update invoices i set status=$1 from projects p where i.id::text=$2 and i.project_id=p.id and p.studio_id=$3 returning i.*',[status,req.params.id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Счёт не найден'})
   res.json({invoice:q.rows[0]})
 })
