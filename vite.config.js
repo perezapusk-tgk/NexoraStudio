@@ -7,5 +7,14 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:4000'
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/nexora-app.js',
+        chunkFileNames: 'assets/chunk-[name].js',
+        assetFileNames: 'assets/[name][extname]'
+      }
+    }
   }
 })
