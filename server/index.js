@@ -1063,13 +1063,13 @@ app.post('/api/projects/:id/publish',async(req,res)=>{
   res.json({published:true,project:q.rows[0],url:q.rows[0].domain?'https://'+q.rows[0].domain:'https://'+q.rows[0].slug+'.nexora.site'})
 })
 
-app.get('/api/leads', async (_req, res) => {
+app.get('/api/leads', async (req, res) => {
   if (!pool) return res.json({ leads: memoryLeads.filter(x=>x.studio_id===req.user.studio_id) })
   const { rows } = await pool.query('select l.id, l.project_id, l.name, l.message, l.status, l.created_at, p.name as project_name from leads l left join projects p on p.id=l.project_id where p.studio_id=$1 order by created_at desc limit 100',[req.user.studio_id])
   res.json({ leads: rows })
 })
 
-app.get('/api/bookings', async (_req, res) => {
+app.get('/api/bookings', async (req, res) => {
   if (!pool) return res.json({ bookings: memoryBookings.filter(x=>x.studio_id===req.user.studio_id) })
   const { rows } = await pool.query('select b.id, b.project_id, b.client_id, b.customer_name, b.customer_phone, b.starts_at, b.ends_at, b.service_name, b.status, p.name as project_name from bookings b left join projects p on p.id=b.project_id where p.studio_id=$1 order by starts_at asc limit 100',[req.user.studio_id])
   res.json({ bookings: rows })
@@ -1324,7 +1324,7 @@ app.get('/api/projects/:id/analytics', async (req,res) => {
 })
 
 
-app.get('/api/orders', async (_req,res) => {
+app.get('/api/orders', async (req,res) => {
   if (!pool) return res.json({orders: memoryOrders.filter(x=>x.studio_id===req.user.studio_id)})
   const {rows}=await pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name,c.name as client_name from orders o left join projects pr on pr.id=o.project_id left join clients c on c.id=o.client_id where pr.studio_id=$1 order by o.created_at desc limit 200',[req.user.studio_id])
   res.json({orders:rows})
@@ -1422,7 +1422,7 @@ app.patch('/api/invoices/:id', async (req,res) => {
   res.json({invoice:q.rows[0]})
 })
 
-app.get('/api/payments', async (_req,res) => {
+app.get('/api/payments', async (req,res) => {
   if (!pool) return res.json({payments:memoryPayments.filter(x=>x.studio_id===req.user.studio_id)})
   const {rows}=await pool.query('select p.id,p.project_id,p.client_id,p.booking_id,p.order_id,p.amount,p.currency,p.status,p.description,p.created_at,pr.name as project_name from payments p left join projects pr on pr.id=p.project_id where pr.studio_id=$1 order by p.created_at desc limit 200',[req.user.studio_id])
   res.json({payments:rows})
