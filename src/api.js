@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_URL || '/api'
+const rawApiBase=String(import.meta.env.VITE_API_URL||'/api').trim().replace(/\/+$/,'')
+const API_BASE=rawApiBase==='/'?'/api':(rawApiBase.startsWith('http')?(rawApiBase.endsWith('/api')?rawApiBase:rawApiBase+'/api'):(rawApiBase||'/api'))
 const AUTH_KEY = 'nexora_auth_token'
 
 export function getAuthToken(){ return localStorage.getItem(AUTH_KEY) || '' }
