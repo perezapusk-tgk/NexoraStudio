@@ -259,3 +259,77 @@ button,input,select,textarea{transition:border-color .16s ease,background-color 
  .page-head .primary{width:100%;justify-content:center}
  .modal{padding:16px}
 }
+
+
+/* Nexora final visual system */
+:root{
+  --nexora-accent:#635bff;
+  --nexora-accent-soft:#f1efff;
+  --nexora-blue:#2563eb;
+  --nexora-green:#16a34a;
+  --nexora-shadow:0 12px 35px rgba(15,23,42,.06);
+}
+.sidebar{width:244px;padding:18px 11px;box-shadow:8px 0 30px rgba(15,23,42,.025)}
+.main{margin-left:244px}
+.brand-mark{background:linear-gradient(135deg,#635bff,#4f46e5);box-shadow:0 7px 18px rgba(99,91,255,.22)}
+.nav-item{height:39px;border-radius:10px}
+.nav-item.active{background:var(--nexora-accent-soft);color:#554dd9;font-weight:700}
+.nav-item.active svg{color:var(--nexora-accent)}
+.workspace{border-radius:13px;background:#fbfbfe}
+.plan-icon{background:linear-gradient(135deg,#635bff,#4f46e5)}
+.topbar{height:70px;padding:0 32px;background:rgba(255,255,255,.94);backdrop-filter:blur(16px)}
+.content{padding:32px;max-width:1520px}
+.page-head{margin-bottom:24px}
+.page-head h1{font-size:29px}
+.primary{min-height:38px;border-radius:10px;background:linear-gradient(135deg,#635bff,#5146e5);box-shadow:0 7px 18px rgba(99,91,255,.2)}
+.card{border-radius:16px;box-shadow:0 1px 2px rgba(15,23,42,.025)}
+.card:hover{box-shadow:var(--nexora-shadow)}
+.metric{padding:17px}
+.metric-icon{background:#f4f2ff;color:#635bff}
+.metric-value{font-size:28px}
+.quick-card{border-radius:14px;padding:15px}
+.quick-icon{background:#f4f2ff;color:#635bff}
+.filter{border-radius:9px}
+.filter.active{background:#18181b;border-color:#18181b}
+.project-logo{border-radius:10px}
+.status.success{font-weight:600}
+.modal,.public-modal,.order-detail,.booking-editor,.order-creator{border-radius:18px}
+.auth-shell{background:radial-gradient(circle at 50% 0,#f0edff 0,#f7f8fa 34%,#f6f7f9 70%)}
+.auth-card{border-radius:20px}
+.auth-submit{background:linear-gradient(135deg,#635bff,#5146e5)}
+.site-card,.integration,.template-card{border-radius:16px;overflow:hidden}
+.mini-hero{border-radius:18px;background:radial-gradient(circle at 80% 20%,#eeebff 0,#f8f8fb 34%,#fff 72%)}
+.pill{background:#f1efff;color:#5b52d6}
+.mini-copy h2{font-size:40px}
+.phone{border-radius:34px;box-shadow:0 28px 65px rgba(15,23,42,.22)}
+.tg-logo{background:linear-gradient(135deg,#635bff,#4f46e5)}
+.phone-body>button{background:linear-gradient(135deg,#635bff,#5146e5)}
+.phone-card{border-radius:10px}
+.public-cards article{border-radius:16px}
+.public-cards article img{border-radius:12px}
+.public-modal{border-radius:20px}
+@media(max-width:1100px){
+  .sidebar{width:220px}
+  .main{margin-left:220px}
+  .content{padding:24px}
+  .topbar{padding:0 24px}
+}
+@media(max-width:760px){
+  .sidebar{width:100%;position:relative;height:auto;border-right:0;border-bottom:1px solid var(--border);box-shadow:none}
+  .sidebar-bottom{margin-top:12px}
+  .main{margin-left:0}
+  .topbar{position:sticky;padding:0 16px}
+  .content{padding:18px 14px 28px}
+  .metrics,.quick-grid{grid-template-columns:repeat(2,1fr)}
+  .grid-main,.inbox-layout{grid-template-columns:1fr}
+  .client-grid,.integration-grid,.template-grid,.site-grid{grid-template-columns:1fr}
+  .mini-hero{padding:24px 18px;display:grid;gap:20px}
+  .mini-copy h2{font-size:32px}
+  .phone{margin:0 auto;transform:none}
+}
+@media(max-width:520px){
+  .metrics,.quick-grid{grid-template-columns:1fr}
+  .page-head{align-items:stretch;flex-direction:column}
+  .search{width:150px}
+  .topbar{height:62px}
+}
