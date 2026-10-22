@@ -786,7 +786,7 @@ app.get('/api/projects/:id', async (req,res)=>{const id=req.params.id;if(!pool){
   const project=memoryProjects.find(p=>(p.id===id||p.slug===id)&&p.studio_id===req.user.studio_id)
   if(!project) return res.status(404).json({error:'Проект не найден'})
   return res.json({project,pages:memoryPages.get(project.id)||[]})
-}const pr=await pool.query('select * from projects where studio_id=$2 and (id=$1 or slug=$1) limit 1',[id,req.user.studio_id]);if(!pr.rows[0])return res.status(404).json({error:'Проект не найден'});const pg=await pool.query('select * from pages where project_id=$1 order by created_at',[pr.rows[0].id]);res.json({project:pr.rows[0],pages:pg.rows})});
+}const pr=await pool.query('select * from projects where studio_id=$2 and (id::text=$1 or slug=$1) limit 1',[id,req.user.studio_id]);if(!pr.rows[0])return res.status(404).json({error:'Проект не найден'});const pg=await pool.query('select * from pages where project_id=$1 order by created_at',[pr.rows[0].id]);res.json({project:pr.rows[0],pages:pg.rows})});
 app.patch('/api/projects/:id',async(req,res)=>{if(!pool){
   const p=memoryProjects.find(x=>(x.id===req.params.id||x.slug===req.params.id)&&x.studio_id===req.user.studio_id)
   if(!p)return res.status(404).json({error:'Проект не найден'})
@@ -815,7 +815,7 @@ app.get('/api/public/:slug', async (req,res) => {
 app.post('/api/projects/:id/domain/check', async (req,res) => {
   const raw=String(req.body?.domain||'').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,'').replace(/\.$/,'')
   if(!raw || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(raw)) return res.status(400).json({error:'Введите корректный домен, например client.ru'})
-  const project=!pool?memoryProjects.find(p=>p.id===req.params.id||p.slug===req.params.id):(await pool.query('select * from projects where id=$1 or slug=$1 limit 1',[req.params.id])).rows[0]
+  const project=!pool?memoryProjects.find(p=>p.id===req.params.id||p.slug===req.params.id):(await pool.query('select * from projects where id::text=$1 or slug=$1 limit 1',[req.params.id])).rows[0]
   if(!project)return res.status(404).json({error:'Проект не найден'})
   const others=!pool?memoryProjects.find(p=>p.id!==project.id&&String(p.domain||'').toLowerCase()===raw):(await pool.query('select id,name from projects where lower(domain)=lower($1) and id<>$2 limit 1',[raw,project.id])).rows[0]
   const dnsTarget=project.slug+'.nexora.site'
@@ -826,7 +826,7 @@ app.post('/api/projects/:id/domain/check', async (req,res) => {
 app.post('/api/projects/:id/domain/connect', async (req,res) => {
   const raw=String(req.body?.domain||'').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,'').replace(/\.$/,'')
   if(!raw)return res.status(400).json({error:'Домен обязателен'})
-  const project=!pool?memoryProjects.find(p=>p.id===req.params.id||p.slug===req.params.id):(await pool.query('select * from projects where id=$1 or slug=$1 limit 1',[req.params.id])).rows[0]
+  const project=!pool?memoryProjects.find(p=>p.id===req.params.id||p.slug===req.params.id):(await pool.query('select * from projects where id::text=$1 or slug=$1 limit 1',[req.params.id])).rows[0]
   if(!project)return res.status(404).json({error:'Проект не найден'})
   const taken=!pool?memoryProjects.find(p=>p.id!==project.id&&String(p.domain||'').toLowerCase()===raw):(await pool.query('select id from projects where lower(domain)=lower($1) and id<>$2 limit 1',[raw,project.id])).rows[0]
   if(taken)return res.status(409).json({error:'Этот домен уже подключён'})
@@ -841,7 +841,7 @@ app.post('/api/projects/:id/telegram/configure', async (req,res) => {
   if (!token) return res.status(503).json({ error: 'TELEGRAM_BOT_TOKEN не настроен на сервере' })
   const project = !pool
     ? memoryProjects.find(p => p.id === req.params.id || p.slug === req.params.id)
-    : (await pool.query('select * from projects where id=$1 or slug=$1 limit 1',[req.params.id])).rows[0]
+    : (await pool.query('select * from projects where id::text=$1 or slug=$1 limit 1',[req.params.id])).rows[0]
   if (!project) return res.status(404).json({ error: 'Проект не найден' })
   const domain = String(project.domain || '').trim()
   const base = domain ? 'https://' + domain.replace(/^https?:\/\//,'').replace(/\/$/,'') : 'https://' + project.slug + '.nexora.site'
@@ -1045,7 +1045,7 @@ app.post('/api/public/:slug/events', async (req,res) => {
 app.get('/api/projects/:id/catalog', async (req,res) => {
   const id = req.params.id
   if (!pool) return res.json({ items: memoryCatalog.get(id) || [] })
-  const q = await pool.query('select id, project_id, name, description, price, currency, image_url, active, created_at from catalog_items where project_id=$1 order by created_at desc',[id])
+  const q = await pool.query('select id, project_id, name, description, price, currency, image_url, active, created_at from catalog_items where project_id::text=$1 order by created_at desc',[id])
   res.json({ items: q.rows })
 })
 app.post('/api/projects/:id/catalog', async (req,res) => {
@@ -1068,13 +1068,13 @@ app.post('/api/projects/:id/catalog', async (req,res) => {
 })
 app.patch('/api/projects/:id/catalog/:itemId', async (req,res) => {
   if (!pool){const list=memoryCatalog.get(req.params.id)||[];const item=list.find(x=>x.id===req.params.itemId);if(!item)return res.status(404).json({error:'Позиция каталога не найдена'});Object.assign(item,req.body);return res.json({item})}
-  const q = await pool.query('update catalog_items set name=coalesce($1,name),description=coalesce($2,description),price=coalesce($3,price),currency=coalesce($4,currency),image_url=coalesce($5,image_url),active=coalesce($6,active) where id=$7 and project_id=$8 returning *',[req.body?.name,req.body?.description,req.body?.price === '' ? null : req.body?.price,req.body?.currency,req.body?.image_url,req.body?.active,req.params.itemId,req.params.id])
+  const q = await pool.query('update catalog_items set name=coalesce($1,name),description=coalesce($2,description),price=coalesce($3,price),currency=coalesce($4,currency),image_url=coalesce($5,image_url),active=coalesce($6,active) where id::text=$7 and project_id::text=$8 returning *',[req.body?.name,req.body?.description,req.body?.price === '' ? null : req.body?.price,req.body?.currency,req.body?.image_url,req.body?.active,req.params.itemId,req.params.id])
   if (!q.rows[0]) return res.status(404).json({error:'Позиция каталога не найдена'})
   res.json({item:q.rows[0]})
 })
 app.delete('/api/projects/:id/catalog/:itemId', async (req,res) => {
   if (!pool){const list=memoryCatalog.get(req.params.id)||[];const next=list.filter(x=>x.id!==req.params.itemId);if(next.length===list.length)return res.status(404).json({error:'Позиция каталога не найдена'});memoryCatalog.set(req.params.id,next);return res.json({deleted:true})}
-  const q = await pool.query('delete from catalog_items where id=$1 and project_id=$2 returning id',[req.params.itemId,req.params.id])
+  const q = await pool.query('delete from catalog_items where id::text=$1 and project_id::text=$2 returning id',[req.params.itemId,req.params.id])
   if (!q.rows[0]) return res.status(404).json({error:'Позиция каталога не найдена'})
   res.json({deleted:true})
 })
@@ -1087,9 +1087,9 @@ app.post('/api/projects/:id/publish',async(req,res)=>{
     ;(memoryPages.get(p.id)||[]).forEach(x=>x.published=true)
     return res.json({published:true,project:p,url:'https://'+p.slug+'.nexora.site'})
   }
-  const q=await pool.query("update projects set status='published',updated_at=now() where id=$1 and studio_id=$2 returning *",[req.params.id,req.user.studio_id])
+  const q=await pool.query("update projects set status='published',updated_at=now() where id::text=$1 and studio_id=$2 returning *",[req.params.id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Проект не найден'})
-  await pool.query('update pages set published=true,updated_at=now() where project_id=$1',[req.params.id])
+  await pool.query('update pages set published=true,updated_at=now() where project_id::text=$1',[req.params.id])
   res.json({published:true,project:q.rows[0],url:q.rows[0].domain?'https://'+q.rows[0].domain:'https://'+q.rows[0].slug+'.nexora.site'})
 })
 
@@ -1418,7 +1418,7 @@ app.post('/api/orders/:id/invoice', async (req,res) => {
   const id=req.params.id
   let order
   if(!pool) order=memoryOrders.find(x=>x.id===id)
-  else { const q=await pool.query('select * from orders where id=$1 limit 1',[id]); order=q.rows[0] }
+  else { const q=await pool.query('select * from orders where id::text=$1 limit 1',[id]); order=q.rows[0] }
   if(!order) return res.status(404).json({error:'Заказ не найден'})
   if(Number(order.total||0)<=0) return res.status(400).json({error:'У заказа некорректная сумма'})
   const number='INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
@@ -1484,7 +1484,7 @@ app.post('/api/payments', async (req,res) => {
     return res.status(201).json({payment})
   }
   if(orderId){
-    const oq=await pool.query('select id,project_id,total,status from orders where id=$1 limit 1',[orderId])
+    const oq=await pool.query('select id,project_id,total,status from orders where id::text=$1 limit 1',[orderId])
     if(!oq.rows[0])return res.status(404).json({error:'Заказ не найден'})
     if(oq.rows[0].project_id!==projectId)return res.status(400).json({error:'Заказ относится к другому проекту'})
     if(Math.abs(Number(oq.rows[0].total||0)-amount)>0.01)return res.status(400).json({error:'Сумма платежа не совпадает с заказом'})
