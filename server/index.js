@@ -954,7 +954,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
     memoryOrders.unshift(order)
     memoryEvents.push({slug,event_type:'order_created',path:'/checkout',value:total,created_at:new Date().toISOString()})
   } else {
-    order=(await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[project.id,clientId,number,'pending',total,currency||'EUR',JSON.stringify(normalized)]).rows[0]
+    order=(await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[project.id,clientId,number,'pending',total,currency||'EUR',JSON.stringify(normalized)])).rows[0]
     await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[project.id,'order_created','/checkout',total,JSON.stringify({order_id:order.id})])
   }
   let checkout_url=null
