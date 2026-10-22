@@ -302,7 +302,7 @@ function App() {
         </header>
 
         <div className="content">
-          {active === 'Обзор' && !selectedProject && <Dashboard projects={filteredProjects} onCreate={() => setShowCreate(true)} onNavigate={go} onOpenProject={openProject}/>}
+          {active === 'Обзор' && !selectedProject && <Dashboard projects={filteredProjects} onCreate={() => setShowCreate(true)} onNavigate={go} onOpenProject={openProject} onDeleteProject={async p=>{if(!window.confirm(`Удалить проект «${p.name}»? Это действие нельзя отменить.`))return;try{await api.deleteProject(p.id);setProjectData(v=>v.filter(x=>x.id!==p.id));if(selectedProject?.id===p.id)setSelectedProject(null)}catch(e){window.alert(e.message||'Не удалось удалить проект')}}}/>}
           {active === 'Проекты' && !selectedProject && <Projects projects={filteredProjects} onCreate={() => setShowCreate(true)} onOpenProject={openProject}/>}
           {active === 'Заявки' && <InboxPage leads={crm.leads} />}
           {active === 'Клиенты' && !selectedClient && <Clients clients={crm.clients} onOpenClient={openClient} />}
@@ -356,7 +356,7 @@ function Metric({title,value,change,icon:Icon}) {
   return <div className="metric card"><div className="metric-top"><span>{title}</span><div className="metric-icon"><Icon size={17}/></div></div><div className="metric-value">{value}</div><div className="metric-foot"><b>{change}</b><span>к прошлому месяцу</span></div></div>
 }
 
-function ProjectTable({projects,onOpenProject}) {
+function ProjectTable({projects,onOpenProject,onDeleteProject}) {
   return <div className="table">{projects.map((p,i)=><div className="project-row project-row-button" key={p.id||p.name} role="button" tabIndex={0} onClick={() => onOpenProject?.(p)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' ')onOpenProject?.(p)}}><div className={`project-logo ${p.color}`}>{p.name.slice(0,1)}</div><div className="project-name"><b>{p.name}</b><span>{p.type}</span></div><span className={`status ${p.status === 'Опубликован' ? 'success' : p.status === 'В работе' ? 'working' : 'draft'}`}><i/>{p.status}</span><div className="project-stat"><b>{p.leads}</b><span>заявок</span></div><div className="project-stat"><b>{p.revenue}</b><span>выручка</span></div><span className="updated">{p.updated}</span><button type="button" className="filter project-open-button" onClick={e=>{e.stopPropagation();onOpenProject?.(p)}}>Открыть рабочее пространство</button></div>)}</div>
 }
 
@@ -366,7 +366,7 @@ function Activity() {
 
 function Quick({icon:Icon,title,text,onClick}) { return <button className="quick-card card" onClick={onClick}><div className="quick-icon"><Icon size={19}/></div><div><b>{title}</b><span>{text}</span></div><ChevronRight size={17}/></button> }
 
-function Projects({projects,onCreate,onOpenProject}) { return <><Header eyebrow="Рабочая область" title="Проекты" description="Все сайты, Mini Apps и клиентские пространства студии." action={<button className="primary" onClick={onCreate}><Plus size={17}/> Новый проект</button>}/><div className="filterbar"><button className="filter active">Все <b>24</b></button><button className="filter">Опубликованные <b>18</b></button><button className="filter">В работе <b>4</b></button><button className="filter">Черновики <b>2</b></button><button className="filter"><Filter size={15}/> Фильтры</button></div><section className="card projects-full"><ProjectTable projects={projects} onOpenProject={onOpenProject}/></section></> }
+function Projects({projects,onCreate,onOpenProject,onDeleteProject}) { return <><Header eyebrow="Рабочая область" title="Проекты" description="Все сайты, Mini Apps и клиентские пространства студии." action={<button className="primary" onClick={onCreate}><Plus size={17}/> Новый проект</button>}/><div className="filterbar"><button className="filter active">Все <b>24</b></button><button className="filter">Опубликованные <b>18</b></button><button className="filter">В работе <b>4</b></button><button className="filter">Черновики <b>2</b></button><button className="filter"><Filter size={15}/> Фильтры</button></div><section className="card projects-full"><ProjectTable projects={projects} onOpenProject={onOpenProject} onDeleteProject={onDeleteProject}/></section></> }
 
 function InboxPage({leads=[]}) {
   const [items,setItems]=useState(leads)
