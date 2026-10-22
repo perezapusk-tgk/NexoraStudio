@@ -13,6 +13,14 @@ const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env
 app.disable('x-powered-by')
 app.use(cors({origin:true,credentials:true}))
 app.use(express.json({limit:'1mb',verify:(req,_res,buf)=>{req.rawBody=Buffer.from(buf)}}))
+
+// Production API compatibility: keep API requests on /api even when a client is configured with the bare Render origin.
+app.use((req,res,next)=>{
+  const apiPrefixes=['/auth','/studio','/projects','/leads','/clients','/bookings','/payments','/invoices','/orders','/analytics','/templates','/connect','/billing','/team','/public']
+  if(!req.path.startsWith('/api') && apiPrefixes.some(prefix=>req.path===prefix||req.path.startsWith(prefix+'/'))){ req.url='/api'+req.url }
+  next()
+})
+
 const distDir = path.resolve(process.cwd(), 'dist')
 
 const noStore = {
@@ -1654,6 +1662,10 @@ app.get('/api/analytics/overview', async (req, res) => {
   const metrics={...q.rows[0],orders:oq.rows[0].orders,paidOrders:oq.rows[0].paid_orders,averageOrder:oq.rows[0].average_order,paymentConversion:oq.rows[0].orders?Number(oq.rows[0].paid_orders)/Number(oq.rows[0].orders)*100:0,series:s.rows}
   res.json({metrics})
 })
+
+
+// Unknown API methods must return JSON, never the frontend HTML shell.
+app.use('/api',(req,res)=>res.status(404).json({error:'API route not found',path:req.originalUrl,method:req.method}))
 
 app.use((req,res,next)=>{
   if(req.method==='GET' && !req.path.startsWith('/api') && req.path!=='/health') {
