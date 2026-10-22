@@ -44,7 +44,7 @@ app.use(express.static(distDir, {
   maxAge: '1h',
   etag: true,
   setHeaders: (res, filePath) => {
-    if (filePath.endsWith('index.html')) {
+    if (filePath.endsWith('index.html') || filePath.endsWith('.js') || filePath.endsWith('.css')) {
       res.set({
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
         'Pragma': 'no-cache',
