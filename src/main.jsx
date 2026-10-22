@@ -403,7 +403,7 @@ function App() {
           {active === 'Интеграции' && <Integrations />}
           {active === 'Шаблоны' && <Templates onCreate={createProject} />}
           {active === 'Настройки' && !selectedProject && <SettingsPage />}
-          {selectedProject && <ProjectWorkspace project={selectedProject} data={workspaceData} view={projectView} setView={setProjectView} onBack={() => { setSelectedProject(null); setWorkspaceData(null); setWorkspaceProjectId(''); const url=new URL(window.location.href); url.searchParams.delete('project'); window.history.replaceState({},'',url.pathname+url.search) }} onRefresh={async()=>setWorkspaceData(await api.project(selectedProject.id))} />}
+          {selectedProject && <ProjectWorkspace project={selectedProject} data={workspaceData} view={projectView} setView={setProjectView} onProjectUpdated={(updated)=>setProjectData(v=>v.map(x=>x.id===updated.id?{...x,name:updated.name||x.name,slug:updated.slug||x.slug,domain:updated.domain||x.domain,status:updated.status==='published'?'Опубликован':x.status}:x))} onBack={() => { setSelectedProject(null); setWorkspaceData(null); setWorkspaceProjectId(''); const url=new URL(window.location.href); url.searchParams.delete('project'); window.history.replaceState({},'',url.pathname+url.search) }} onRefresh={async()=>setWorkspaceData(await api.project(selectedProject.id))} />}
         </div>
       </main>
 
@@ -713,7 +713,7 @@ function CatalogManager({projectId}) {
   </div>
 }
 
-function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
+function ProjectWorkspace({project,data,view,setView,onBack,onRefresh,onProjectUpdated}) {
   
   const current=data?.project||project, pages=data?.pages||[];
   const [saving,setSaving]=useState(false), [name,setName]=useState(''), [domain,setDomain]=useState('');
@@ -764,7 +764,7 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh}) {
   };
   const saveSettings=async()=>{setSaving(true);try{await api.updateProject(current.id,{name,domain,settings:{miniApp:{enabled:tg.enabled,buttonText:tg.buttonText}}});await onRefresh()}finally{setSaving(false)}};
   const configureTelegram=async()=>{setTelegramBusy(true);try{const result=await api.configureTelegram(current.id,{button_text:tg.buttonText});setTg(v=>({...v,enabled:true,configured:true,botUsername:result.bot?.username||v.botUsername,url:result.url||v.url}));await onRefresh();window.alert('Telegram Mini App подключён к боту @'+(result.bot?.username||'bot'))}catch(error){window.alert(error.message||'Не удалось подключить Telegram')}finally{setTelegramBusy(false)}};
-  const publish=async()=>{setSaving(true);try{await api.publishProject(current.id);await onRefresh()}finally{setSaving(false)}};
+  const publish=async()=>{setSaving(true);try{const result=await api.publishProject(current.id);onProjectUpdated?.(result?.project||{...current,status:'published'});await onRefresh()}finally{setSaving(false)}};
 
   return <div className="workspace-page">
     <div className="workspace-head">
