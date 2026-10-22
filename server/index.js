@@ -472,10 +472,10 @@ app.post('/api/billing/checkout', async (req,res)=>{
     res.json({ok:true,mode:'checkout',provider:currency==='USD'?'stripe':'yookassa',checkout_url:checkout.url,provider_payment_id:checkout.id,plan:planConfig(plan),currency,amount})
   }catch(e){res.status(503).json({error:e.message||'Не удалось создать платёж'})}
 })
-async function stripeRequest(path,method='GET',params=null){
+async function stripeRequest(path,method='GET',params=null,extraHeaders={}){
   const secret=String(process.env.STRIPE_SECRET_KEY||'').trim()
   if(!secret) throw new Error('STRIPE_SECRET_KEY не настроен')
-  const headers={Authorization:'Bearer '+secret}
+  const headers={Authorization:'Bearer '+secret,...extraHeaders}
   let url='https://api.stripe.com'+path,body
   if(method==='POST'){
     headers['Content-Type']='application/x-www-form-urlencoded'
@@ -486,6 +486,17 @@ async function stripeRequest(path,method='GET',params=null){
   const r=await fetch(url,{method,headers,body})
   const data=await r.json()
   if(!r.ok) throw new Error(data?.error?.message||'Stripe API error')
+  return data
+}
+async function stripeV2Request(path,method='GET',body=null,query=null){
+  const secret=String(process.env.STRIPE_SECRET_KEY||'').trim()
+  if(!secret) throw new Error('STRIPE_SECRET_KEY не настроен')
+  const headers={Authorization:'Bearer '+secret,'Content-Type':'application/json','Stripe-Version':'2025-12-15.clover'}
+  const qs=query?new URLSearchParams(query).toString():''
+  const url='https://api.stripe.com'+path+(qs?'?'+qs:'')
+  const r=await fetch(url,{method,headers,body:method==='GET'||method==='HEAD'?undefined:JSON.stringify(body||{})})
+  const data=await r.json()
+  if(!r.ok) throw new Error(data?.error?.message||'Stripe API v2 error')
   return data
 }
 app.post('/api/billing/portal', async (req,res)=>{
@@ -520,14 +531,12 @@ app.post('/api/connect/account', async (req,res)=>{
       const existing=(await pool.query('select stripe_connect_account_id from studios where id::text=$1',[req.user.studio_id])).rows[0]
       if(existing?.stripe_connect_account_id)return res.json({account_id:existing.stripe_connect_account_id,existing:true})
     }
-    const account=await stripeRequest('/v1/accounts','POST',{
-      'business_profile[product_description]':'Payments for websites and Telegram Mini Apps managed through Nexora Studio',
-      'controller[stripe_dashboard][type]':'express',
-      'controller[fees][payer]':'application',
-      'controller[losses][payments]':'application',
-      'capabilities[card_payments][requested]':'true',
-      'capabilities[transfers][requested]':'true',
-      'email':email
+    const account=await stripeV2Request('/v2/core/accounts','POST',{
+      dashboard:'express',
+      contact_email:email,
+      defaults:{responsibilities:{fees_collector:'stripe',losses_collector:'stripe'}},
+      configuration:{merchant:{capabilities:{card_payments:{requested:true}}}},
+      include:['configuration.merchant','identity','defaults','requirements']
     })
     if(pool)await pool.query("update studios set stripe_connect_account_id=$1,stripe_connect_status='pending',updated_at=now() where id=$2",[account.id,req.user.studio_id])
     else {const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio;studio.stripe_connect_account_id=account.id;studio.stripe_connect_status='pending'}
@@ -542,11 +551,9 @@ app.post('/api/connect/onboard', async (req,res)=>{
     else accountId=(memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio).stripe_connect_account_id
     if(!accountId)return res.status(409).json({error:'Сначала создайте Stripe Connect account'})
     const base=billingAppUrl()
-    const link=await stripeRequest('/v1/account_links','POST',{
+    const link=await stripeV2Request('/v2/core/account-links','POST',{
       account:accountId,
-      refresh_url:base+'/?connect=refresh',
-      return_url:base+'/?connect=complete',
-      type:'account_onboarding'
+      use_case:{type:'account_onboarding',account_onboarding:{configurations:['merchant'],refresh_url:base+'/?connect=refresh',return_url:base+'/?connect=complete'}}
     })
     res.json({url:link.url,account_id:accountId})
   }catch(e){res.status(503).json({error:e.message||'Не удалось создать ссылку Stripe Connect'})}
@@ -1014,17 +1021,16 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
         'line_items[0][price_data][unit_amount]':unit,
         'line_items[0][quantity]':1,
         'payment_intent_data[application_fee_amount]':fee,
-        'payment_intent_data[transfer_data][destination]':connectAccountId,
         'metadata[order_id]':String(order.id),
         'metadata[studio_id]':String(project.studio_id),
         'metadata[project_id]':String(project.id),
         'payment_intent_data[metadata][order_id]':String(order.id),
         'payment_intent_data[metadata][studio_id]':String(project.studio_id),
         'payment_intent_data[metadata][project_id]':String(project.id)
-      })
+      },{'Stripe-Account':connectAccountId})
       checkout_url=session.url||null
       if(!checkout_url) throw new Error('Stripe не вернул ссылку Checkout')
-      if(pool) await pool.query("update orders set status='pending',stripe_checkout_session_id=$1 where id=$2",[session.id,order.id])
+      if(pool) await pool.query("update orders set status='pending',stripe_checkout_session_id=$1 where id::text=$2",[session.id,order.id])
     }catch(e){
       console.error('Stripe project checkout:',e.message)
       return res.status(503).json({error:'Не удалось создать оплату Stripe: '+(e.message||'неизвестная ошибка')})
@@ -1166,7 +1172,7 @@ app.post('/api/bookings', async (req,res) => {
   }
   const project=(await pool.query('select id,name from projects where id::text=$1 and studio_id=$2 limit 1',[projectId,req.user.studio_id])).rows[0]
   if(!project)return res.status(404).json({error:'Проект не найден'})
-  const conflict=(await pool.query("select id from bookings where project_id=$1 and status <> 'cancelled' and starts_at < $3 and ends_at > $2 limit 1",[projectId,startsAt,endsAt])).rows[0]
+  const conflict=(await pool.query("select id from bookings where project_id::text=$1 and status <> 'cancelled' and starts_at < $3 and ends_at > $2 limit 1",[projectId,startsAt,endsAt])).rows[0]
   if(conflict)return res.status(409).json({error:'Это время уже занято другой записью'})
   const client=phone?(await pool.query('select id from clients where studio_id=$1 and phone=$2 limit 1',[req.user.studio_id,phone])).rows[0]:null
   if(phone&&!client && !await requireClientCapacity(req.user.studio_id,res))return
@@ -1367,20 +1373,20 @@ app.get('/api/projects/:id/analytics', async (req,res) => {
     const bookings=memoryBookings.filter(b=>b.project_slug===slug)
     return res.json({metrics:{visits:events.filter(e=>e.event_type==='page_view').length,leads:leads.length,bookings:bookings.length,revenue:memoryPayments.filter(p=>p.project_id===project.id&&p.status==='paid').reduce((a,p)=>a+Number(p.amount||0),0)}})
   }
-  const project=await pool.query('select id from projects where id=$1 or slug=$1 limit 1',[id])
+  const project=await pool.query('select id from projects where id::text=$1 or slug=$1 limit 1',[id])
   if(!project.rows[0])return res.status(404).json({error:'Проект не найден'})
   const q=await pool.query(`select
     count(*) filter (where event_type='page_view')::int as visits,
     count(*) filter (where event_type='lead')::int as leads,
     count(*) filter (where event_type='booking')::int as bookings,
     coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue
-    from analytics_events where project_id=$1 and created_at >= now() - interval '30 days'`,[project.rows[0].id])
+    from analytics_events where project_id::text=$1 and created_at >= now() - interval '30 days'`,[project.rows[0].id])
   const series=await pool.query(`select to_char(date_trunc('day',created_at),'YYYY-MM-DD') as day,
     count(*) filter (where event_type='page_view')::int as visits,
     count(*) filter (where event_type='lead')::int as leads,
     count(*) filter (where event_type='booking')::int as bookings,
     coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue
-    from analytics_events where project_id=$1 and created_at >= now() - interval '30 days'
+    from analytics_events where project_id::text=$1 and created_at >= now() - interval '30 days'
     group by 1 order by 1`,[project.rows[0].id])
   res.json({metrics:q.rows[0],series:series.rows})
 })
