@@ -230,7 +230,15 @@ function App() {
       setProjectData(v => [mapped, ...v])
       setShowCreate(false)
       setActive('Проекты')
-    } catch { window.alert('Не удалось создать проект. Проверьте API.') }
+    } catch (err) {
+      let message = err?.message || 'Не удалось создать проект.'
+      try { message = JSON.parse(message)?.error || message } catch {}
+      if (message.includes('Достигнут лимит проектов')) {
+        window.alert(message + '\\n\\nОткройте Настройки → Тариф, чтобы увеличить лимит.')
+      } else {
+        window.alert(message)
+      }
+    }
   }
 
   const filteredProjects = useMemo(
