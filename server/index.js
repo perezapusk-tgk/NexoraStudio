@@ -532,7 +532,7 @@ app.post('/api/connect/account', async (req,res)=>{
       if(existing?.stripe_connect_account_id)return res.json({account_id:existing.stripe_connect_account_id,existing:true})
     }
     const account=await stripeV2Request('/v2/core/accounts','POST',{
-      dashboard:'express',
+      dashboard:'full',
       contact_email:email,
       defaults:{responsibilities:{fees_collector:'stripe',losses_collector:'stripe'}},
       configuration:{merchant:{capabilities:{card_payments:{requested:true}}}},
@@ -1005,8 +1005,9 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
     else connectAccountId=(memoryStudios.find(x=>x.id===project.studio_id)||demoStudio).stripe_connect_account_id
     if(!connectAccountId) return res.status(409).json({error:'Stripe Connect ещё не подключён для этого проекта. Сначала подключите Stripe в настройках студии.'})
     try{
-      const account=await stripeRequest('/v1/accounts/'+encodeURIComponent(connectAccountId))
-      if(!account.charges_enabled || !account.payouts_enabled) return res.status(409).json({error:'Stripe Connect ещё не активирован. Завершите подключение Stripe и дождитесь разрешения на приём платежей.'})
+      const account=await stripeV2Request('/v2/core/accounts/'+encodeURIComponent(connectAccountId),'GET',null,{include:'configuration.merchant,requirements'})
+      const cardStatus=account?.configuration?.merchant?.capabilities?.card_payments?.status
+      if(cardStatus!=='active') return res.status(409).json({error:'Stripe Connect ещё не активирован. Завершите подключение Stripe и дождитесь разрешения на приём платежей.'})
       const stripeCurrency=String(currency||'EUR').toLowerCase()
       const unit=Math.round(total*100)
       const feePercent=Math.max(0,Math.min(100,Number(process.env.STRIPE_PLATFORM_FEE_PERCENT||5)))
