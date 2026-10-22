@@ -489,10 +489,41 @@ function Templates({onCreate}){const templates=[['barber','Барбершоп','
 
 function StripeConnectPanel(){
   const [status,setStatus]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('')
+  const [country,setCountry]=useState(localStorage.getItem('nexora_stripe_country')||'RU')
   const load=()=>api.stripeConnectStatus().then(setStatus).catch(e=>setError(e.message||'Не удалось получить статус Stripe'))
   useEffect(load,[])
-  const connect=async()=>{setBusy(true);setError('');try{if(!status?.account_id){const a=await api.stripeConnectAccount();setStatus(a)}const r=await api.stripeConnectOnboard();if(r.url)window.location.href=r.url}catch(e){setError(e.message||'Не удалось открыть Stripe')}finally{setBusy(false)}}
-  return <div className="card" style={{marginTop:18,padding:18}}><div className="section-head"><div><div className="eyebrow">Платежи клиентов</div><h3 style={{margin:'4px 0'}}>Stripe Connect</h3><p className="muted">Подключите Stripe для приёма платежей из сайтов и Telegram Mini Apps ваших клиентов.</p></div><span className={status?.status==='active'?'status success':'status'}>{status?.status==='active'?'Подключено':status?.account_id?'Требуется настройка':'Не подключено'}</span></div>{error&&<div className="form-error" style={{marginTop:12}}>{error}</div>}<div style={{display:'flex',gap:12,alignItems:'center',marginTop:16,flexWrap:'wrap'}}><span className="muted">{status?.status==='active'?'Stripe готов принимать платежи.':status?.account_id?'Аккаунт Stripe создан, но проверка и платёжные требования ещё не завершены.':'Аккаунт Stripe ещё не создан.'}</span><button className="primary" disabled={busy} onClick={connect}>{busy?'Открываем…':status?.account_id?'Продолжить подключение':'Подключить Stripe'}</button></div>{status?.account_id&&status?.status!=='active'&&<div className="form-error" style={{marginTop:12}}>Для активации оплаты завершите данные и требования Stripe. Осталось требований: {(status.currently_due||[]).length + (status.past_due||[]).length}. После этого вернитесь в Nexora и обновите страницу.</div>}</div>
+  useEffect(()=>localStorage.setItem('nexora_stripe_country',country),[country])
+  const connect=async()=>{
+    setBusy(true);setError('')
+    try{
+      if(country==='RU') throw new Error('Stripe сейчас не поддерживает пользователей и компании, находящиеся в России. Не выбирайте Финляндию или другую страну без реальных подтверждающих данных.')
+      if(!status?.account_id){
+        const a=await api.stripeConnectAccount('',country);setStatus(a)
+      }
+      const r=await api.stripeConnectOnboard();if(r.url)window.location.href=r.url
+    }catch(e){setError(e.message||'Не удалось открыть Stripe')}finally{setBusy(false)}
+  }
+  const unsupported=country==='RU'
+  return <div className="card" style={{marginTop:18,padding:18}}>
+    <div className="section-head"><div><div className="eyebrow">Платежи клиентов</div><h3 style={{margin:'4px 0'}}>Stripe Connect</h3><p className="muted">Подключение Stripe для приёма платежей из сайтов и Telegram Mini Apps ваших клиентов.</p></div><span className={status?.status==='active'?'status success':'status'}>{status?.status==='active'?'Подключено':status?.account_id?'Требуется настройка':'Не подключено'}</span></div>
+    <div style={{marginTop:14}}>
+      <label style={{display:'block',fontWeight:600,marginBottom:6}}>Страна Stripe Connect</label>
+      <select value={country} onChange={e=>setCountry(e.target.value)} disabled={Boolean(status?.account_id)||busy} style={{width:'100%',maxWidth:420}}>
+        <option value="RU">Россия — Stripe недоступен</option>
+        <option value="FI">Финляндия — только при наличии реальных данных и права на деятельность</option>
+        <option value="DE">Германия — только при наличии реальных данных и права на деятельность</option>
+        <option value="US">США — только при наличии реальных данных и права на деятельность</option>
+        <option value="GB">Великобритания — только при наличии реальных данных и права на деятельность</option>
+      </select>
+    </div>
+    {unsupported&&<div className="form-error" style={{marginTop:12}}>Для аккаунта с российскими данными Stripe Connect сейчас не подходит. Не вводите финский адрес, HETU или финское гражданство только ради прохождения KYC.</div>}
+    {error&&<div className="form-error" style={{marginTop:12}}>{error}</div>}
+    <div style={{display:'flex',gap:12,alignItems:'center',marginTop:16,flexWrap:'wrap'}}>
+      <span className="muted">{status?.status==='active'?'Stripe готов принимать платежи.':status?.account_id?'Аккаунт Stripe создан, но проверка и платёжные требования ещё не завершены.':unsupported?'Выберите только ту страну, по которой у вас действительно есть юридические, налоговые и банковские данные.':'Аккаунт Stripe ещё не создан.'}</span>
+      <button className="primary" disabled={busy||unsupported} onClick={connect}>{busy?'Открываем…':status?.account_id?'Продолжить подключение':'Подключить Stripe'}</button>
+    </div>
+    {status?.account_id&&status?.status!=='active'&&<div className="form-error" style={{marginTop:12}}>Для активации оплаты завершите данные и требования Stripe. Осталось требований: {(status.currently_due||[]).length + (status.past_due||[]).length}. После этого вернитесь в Nexora и обновите страницу.</div>}
+  </div>
 }
 function SettingsPage(){
   const [tab,setTab]=useState('profile')
