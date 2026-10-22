@@ -12,7 +12,32 @@ const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env
 app.use(cors())
 app.use(express.json({verify:(req,_res,buf)=>{req.rawBody=Buffer.from(buf)}}))
 const distDir = path.resolve(process.cwd(), 'dist')
-app.use(express.static(distDir, { index: 'index.html', maxAge: 0, etag: false }))
+
+// Production frontend: always return a fresh HTML shell so a browser/CDN cannot
+// keep an index.html that points at assets from an older deployment.
+app.get('/', (_req, res) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0'
+  })
+  res.sendFile(path.join(distDir, 'index.html'))
+})
+
+app.use(express.static(distDir, {
+  index: false,
+  maxAge: '1h',
+  etag: true,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('index.html')) {
+      res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      })
+    }
+  }
+}))
 
 const PLAN_CONFIG = { free:{name:'Free',price:0,projectLimit:1,teamLimit:1,clientLimit:100}, starter:{name:'Starter',price:9,projectLimit:10,teamLimit:3,clientLimit:1000}, pro:{name:'Pro',price:19,projectLimit:50,teamLimit:5,clientLimit:10000}, agency:{name:'Agency',price:39,projectLimit:200,teamLimit:15,clientLimit:50000} }
 const planConfig=plan=>PLAN_CONFIG[String(plan||'starter').toLowerCase()]||PLAN_CONFIG.starter
