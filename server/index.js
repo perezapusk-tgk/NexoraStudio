@@ -643,17 +643,18 @@ app.post('/api/billing/confirm', async (req,res)=>{
   const tx=(await pool.query('select * from billing_transactions where studio_id::text=$1::text and provider=$2 and provider_payment_id=$3 order by created_at desc limit 1',[req.user.studio_id,provider,paymentId])).rows[0]
   if(!tx) return res.status(404).json({error:'Платёж не найден'})
   let paid=false
+  let data=null
   if(provider==='stripe'){
     const secret=String(process.env.STRIPE_SECRET_KEY||'').trim()
     if(!secret) return res.status(503).json({error:'STRIPE_SECRET_KEY не настроен'})
     const r=await fetch('https://api.stripe.com/v1/checkout/sessions/'+encodeURIComponent(paymentId)+'?expand[]=subscription',{headers:{Authorization:'Bearer '+secret}})
-    const data=await r.json()
+    data=await r.json()
     paid=r.ok&&data.payment_status==='paid'&&data.mode==='subscription'
   }else{
     const shopId=String(process.env.YOOKASSA_SHOP_ID||'').trim(),secret=String(process.env.YOOKASSA_SECRET_KEY||'').trim()
     if(!shopId||!secret) return res.status(503).json({error:'YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY не настроены'})
     const r=await fetch('https://api.yookassa.ru/v3/payments/'+encodeURIComponent(paymentId),{headers:{Authorization:'Basic '+Buffer.from(shopId+':'+secret).toString('base64')}})
-    const data=await r.json()
+    data=await r.json()
     paid=r.ok&&data.status==='succeeded'&&data.paid===true
   }
   if(!paid) return res.status(409).json({error:'Оплата ещё не подтверждена'})
@@ -1060,6 +1061,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
       if(pool) await pool.query("update orders set status='pending',stripe_checkout_session_id=$1 where id::text=$2",[session.id,order.id])
     }catch(e){
       console.error('Stripe project checkout:',e.message)
+      if(pool) await pool.query("update orders set status='cancelled' where id::text=$1 and status='pending'",[order.id]).catch(()=>{})
       return res.status(503).json({error:'Не удалось создать оплату Stripe: '+(e.message||'неизвестная ошибка')})
     }
   }
