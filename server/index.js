@@ -397,7 +397,7 @@ function billingAmount(plan,currency){
   return currency==='USD'?Number(base.toFixed(2)):Number((base*100).toFixed(2))
 }
 function billingAppUrl(){
-  return String(process.env.APP_URL||process.env.FRONTEND_URL||'http://localhost:5173').replace(/\/$/,'')
+  return String(process.env.APP_URL||process.env.FRONTEND_URL||process.env.RENDER_EXTERNAL_URL||'http://localhost:5173').replace(/\/$/,'')
 }
 async function createStripeCheckout({studioId,plan,amount,currency,email}){
   const secret=String(process.env.STRIPE_SECRET_KEY||'').trim()
@@ -523,7 +523,7 @@ app.post('/api/connect/account', async (req,res)=>{
     const account=await stripeRequest('/v1/accounts','POST',{
       'business_profile[product_description]':'Payments for websites and Telegram Mini Apps managed through Nexora Studio',
       'controller[stripe_dashboard][type]':'express',
-      'controller[fees][payer]':'stripe',
+      'controller[fees][payer]':'application',
       'controller[losses][payments]':'stripe',
       'capabilities[card_payments][requested]':'true',
       'capabilities[transfers][requested]':'true',
