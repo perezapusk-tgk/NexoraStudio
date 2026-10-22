@@ -300,6 +300,18 @@ app.get('/api/health', async (_req, res) => {
 })
 
 function requireRole(req,res,roles){ if(!roles.includes(req.user.role)) { res.status(403).json({error:'Недостаточно прав для этой операции'}); return false } return true }
+async function ownedProject(req,projectId){
+  const id=String(projectId||'').trim()
+  if(!id)return null
+  if(!pool)return memoryProjects.find(x=>(x.id===id||x.slug===id)&&x.studio_id===req.user.studio_id)||null
+  return (await pool.query('select id,name,studio_id from projects where id::text=$1 and studio_id::text=$2::text limit 1',[id,req.user.studio_id])).rows[0]||null
+}
+async function ownedClient(req,clientId){
+  const id=String(clientId||'').trim()
+  if(!id)return null
+  if(!pool)return memoryClients.find(x=>x.id===id&&x.studio_id===req.user.studio_id)||null
+  return (await pool.query('select id from clients where id::text=$1 and studio_id::text=$2::text limit 1',[id,req.user.studio_id])).rows[0]||null
+}
 app.use('/api',async(req,res,next)=>{
   if(req.path==='/health'||req.path.startsWith('/auth/')||req.path.startsWith('/public/'))return next()
   try{
@@ -1483,6 +1495,9 @@ app.post('/api/orders', async (req,res) => {
   const currency=String(req.body?.currency||'EUR').trim().toUpperCase()
   const clientId=req.body?.client_id||null
   if(!projectId || !items.length) return res.status(400).json({error:'Проект и товары обязательны'})
+  const owned=await ownedProject(req,projectId)
+  if(!owned)return res.status(404).json({error:'Проект не найден'})
+  if(clientId && !(await ownedClient(req,clientId)))return res.status(404).json({error:'Клиент не найден'})
   let total=0
   const normalized=[]
   for(const item of items){
@@ -1534,6 +1549,9 @@ app.get('/api/invoices', async (req,res) => {
 app.post('/api/invoices', async (req,res) => {
   const projectId=String(req.body?.project_id||'').trim()
   if(!projectId)return res.status(400).json({error:'Проект обязателен'})
+  const owned=await ownedProject(req,projectId)
+  if(!owned)return res.status(404).json({error:'Проект не найден'})
+  if(req.body?.client_id && !(await ownedClient(req,req.body.client_id)))return res.status(404).json({error:'Клиент не найден'})
   const number=String(req.body?.number||('INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()))
   const amount=Number(req.body?.amount||0),currency=String(req.body?.currency||'EUR'),status=String(req.body?.status||'sent')
   if(!pool){const x={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,client_id:req.body?.client_id||null,number,amount,currency,status,due_date:req.body?.due_date||null,description:String(req.body?.description||''),created_at:new Date().toISOString()};memoryInvoices.unshift(x);return res.status(201).json({invoice:x})}
@@ -1562,6 +1580,9 @@ app.post('/api/payments', async (req,res) => {
   const status=String(req.body?.status||'paid').trim()
   const orderId=req.body?.order_id||null
   if(!projectId || !Number.isFinite(amount) || amount<=0) return res.status(400).json({error:'Проект и сумма обязательны'})
+  const owned=await ownedProject(req,projectId)
+  if(!owned)return res.status(404).json({error:'Проект не найден'})
+  if(req.body?.client_id && !(await ownedClient(req,req.body.client_id)))return res.status(404).json({error:'Клиент не найден'})
   if(!['pending','paid','refunded','failed'].includes(status)) return res.status(400).json({error:'Недопустимый статус платежа'})
   if(!pool){
     if(orderId){
@@ -1629,7 +1650,7 @@ app.get('/api/analytics/overview', async (req, res) => {
     coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue
     from analytics_events ae join projects pr on pr.id::text=ae.project_id::text where pr.studio_id::text=$1::text and ae.created_at >= now() - interval '30 days'`,[req.user.studio_id])
   const oq=await pool.query(`select count(*)::int as orders,count(*) filter (where o.status='paid')::int as paid_orders,coalesce(avg(o.total),0)::numeric as average_order from orders o join projects pr on pr.id=o.project_id where pr.studio_id::text=$1::text and o.created_at >= now() - interval '30 days'`,[req.user.studio_id])
-  const s=await pool.query(`select to_char(date_trunc('day',created_at),'YYYY-MM-DD') as day,count(*) filter (where event_type='page_view')::int as visits,count(*) filter (where event_type='lead')::int as leads,count(*) filter (where event_type='booking')::int as bookings,coalesce(sum(value) filter (where event_type='payment'),0)::numeric as revenue from analytics_events where created_at >= now() - interval '30 days' group by 1 order by 1`)
+  const s=await pool.query(`select to_char(date_trunc('day',ae.created_at),'YYYY-MM-DD') as day,count(*) filter (where ae.event_type='page_view')::int as visits,count(*) filter (where ae.event_type='lead')::int as leads,count(*) filter (where ae.event_type='booking')::int as bookings,coalesce(sum(ae.value) filter (where ae.event_type='payment'),0)::numeric as revenue from analytics_events ae join projects pr on pr.id=ae.project_id where pr.studio_id::text=$1::text and ae.created_at >= now() - interval '30 days' group by 1 order by 1`,[req.user.studio_id])
   const metrics={...q.rows[0],orders:oq.rows[0].orders,paidOrders:oq.rows[0].paid_orders,averageOrder:oq.rows[0].average_order,paymentConversion:oq.rows[0].orders?Number(oq.rows[0].paid_orders)/Number(oq.rows[0].orders)*100:0,series:s.rows}
   res.json({metrics})
 })
