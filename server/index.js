@@ -439,33 +439,6 @@ async function yookassaRequest(pathname,method='GET',body=null,idempotenceKey=nu
 function billingAppUrl(){
   return String(process.env.APP_URL||process.env.FRONTEND_URL||process.env.RENDER_EXTERNAL_URL||'http://localhost:5173').replace(/\/$/,'')
 }
-async function createStripeCheckout({studioId,plan,amount,currency,email}){
-  const secret=String(process.env.STRIPE_SECRET_KEY||'').trim()
-  if(!secret) throw new Error('STRIPE_SECRET_KEY не настроен')
-  const body=new URLSearchParams()
-  body.set('mode','subscription')
-  body.set('success_url',billingAppUrl()+'/?billing=success&provider=stripe&session_id={CHECKOUT_SESSION_ID}')
-  body.set('cancel_url',billingAppUrl()+'/?billing=cancelled')
-  if(email) body.set('customer_email',email)
-  const stablePriceId=String(process.env['STRIPE_PRICE_'+String(plan).toUpperCase()+'_USD']||'').trim()
-  if(stablePriceId){
-    body.set('line_items[0][price]',stablePriceId)
-  }else{
-    body.set('line_items[0][price_data][currency]','usd')
-    body.set('line_items[0][price_data][product_data][name]','Nexora Studio '+planConfig(plan).name)
-    body.set('line_items[0][price_data][unit_amount]',String(Math.round(amount*100)))
-    body.set('line_items[0][price_data][recurring][interval]','month')
-  }
-  body.set('line_items[0][quantity]','1')
-  body.set('subscription_data[metadata][studio_id]',studioId)
-  body.set('subscription_data[metadata][plan]',plan)
-  body.set('metadata[studio_id]',studioId)
-  body.set('metadata[plan]',plan)
-  const r=await fetch('https://api.stripe.com/v1/checkout/sessions',{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/x-www-form-urlencoded'},body})
-  const data=await r.json()
-  if(!r.ok) throw new Error(data?.error?.message||'Stripe не смог создать подписку')
-  return {id:data.id,url:data.url,customer_id:data.customer||null,subscription_id:data.subscription||null}
-}
 async function createYookassaCheckout({studioId,plan,amount}){
   const shopId=String(process.env.YOOKASSA_SHOP_ID||'').trim()
   const secret=String(process.env.YOOKASSA_SECRET_KEY||'').trim()
