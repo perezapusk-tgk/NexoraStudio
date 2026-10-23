@@ -1381,6 +1381,7 @@ app.post('/api/bookings', async (req,res) => {
   const name=String(body.customer_name||'').trim()
   const phone=String(body.customer_phone||'').trim()
   const service=String(body.service_name||'').trim()
+  const clientId=body.client_id?String(body.client_id).trim():null
   const startsAt=String(body.starts_at||'').trim()
   const endsAt=String(body.ends_at||'').trim()
   const status=String(body.status||'confirmed').trim()
@@ -1393,7 +1394,9 @@ app.post('/api/bookings', async (req,res) => {
     if(!project)return res.status(404).json({error:'Проект не найден'})
     const conflict=memoryBookings.find(x=>x.project_id===projectId&&x.status!=='cancelled'&&new Date(x.starts_at)<new Date(endsAt)&&new Date(x.ends_at||new Date(new Date(x.starts_at).getTime()+3600000))>new Date(startsAt))
     if(conflict)return res.status(409).json({error:'Это время уже занято другой записью'})
-    let client=phone?memoryClients.find(x=>x.studio_id===req.user.studio_id&&x.phone===phone):null
+    let client=clientId?memoryClients.find(x=>x.id===clientId&&x.studio_id===req.user.studio_id):null
+    if(clientId&&!client)return res.status(404).json({error:'Выбранный клиент не найден'})
+    if(!client && phone) client=memoryClients.find(x=>x.studio_id===req.user.studio_id&&x.phone===phone)
     if(!client){
       if(!await requireClientCapacity(req.user.studio_id,res))return
       client={id:crypto.randomUUID(),studio_id:req.user.studio_id,name,email:'',phone,created_at:new Date().toISOString()}
@@ -1407,9 +1410,15 @@ app.post('/api/bookings', async (req,res) => {
   if(!project)return res.status(404).json({error:'Проект не найден'})
   const conflict=(await pool.query("select id from bookings where project_id::text=$1::text and status <> 'cancelled' and starts_at < $3 and ends_at > $2 limit 1",[projectId,startsAt,endsAt])).rows[0]
   if(conflict)return res.status(409).json({error:'Это время уже занято другой записью'})
-  const client=phone?(await pool.query('select id from clients where studio_id::text=$1::text and phone=$2 limit 1',[req.user.studio_id,phone])).rows[0]:null
+  let client=null
+  if(clientId){
+    client=(await pool.query('select id,name,phone from clients where id::text=$1::text and studio_id::text=$2::text limit 1',[clientId,req.user.studio_id])).rows[0]
+    if(!client)return res.status(404).json({error:'Выбранный клиент не найден'})
+  }else if(phone){
+    client=(await pool.query('select id,name,phone from clients where studio_id::text=$1::text and phone=$2 limit 1',[req.user.studio_id,phone])).rows[0]
+  }
   if(phone&&!client && !await requireClientCapacity(req.user.studio_id,res))return
-  const q=await pool.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,ends_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,client?.id||null,name,phone||null,startsAt,endsAt,service||null,status])
+  const q=await pool.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,ends_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,client?.id||null,name,phone||client?.phone||null,startsAt,endsAt,service||null,status])
   res.status(201).json({booking:{...q.rows[0],project_name:project.name}})
 })
 
