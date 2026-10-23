@@ -1378,12 +1378,12 @@ app.patch('/api/bookings/:id', async (req,res) => {
   if(endsAt&&Number.isNaN(Date.parse(endsAt))) return res.status(400).json({error:'Некорректное время окончания'})
   if(startsAt&&endsAt&&new Date(endsAt)<=new Date(startsAt)) return res.status(400).json({error:'Время окончания должно быть позже начала'})
   if(!pool){
-    const booking=memoryBookings.find(x=>x.id===req.params.id)
+    const booking=memoryBookings.find(x=>x.id===req.params.id&&x.studio_id===req.user.studio_id)
     if(!booking)return res.status(404).json({error:'Бронирование не найдено'})
     const nextStart=startsAt!==undefined?new Date(startsAt):new Date(booking.starts_at)
     const nextEnd=endsAt!==undefined?new Date(endsAt):new Date(booking.ends_at||new Date(nextStart.getTime()+3600000))
     if(startsAt!==undefined||endsAt!==undefined){
-      const conflict=memoryBookings.find(x=>x.id!==booking.id&&x.project_id===booking.project_id&&x.status!=='cancelled'&&new Date(x.starts_at)<nextEnd&&new Date(x.ends_at||new Date(new Date(x.starts_at).getTime()+3600000))>nextStart)
+      const conflict=memoryBookings.find(x=>x.id!==booking.id&&x.studio_id===req.user.studio_id&&x.project_id===booking.project_id&&x.status!=='cancelled'&&new Date(x.starts_at)<nextEnd&&new Date(x.ends_at||new Date(new Date(x.starts_at).getTime()+3600000))>nextStart)
       if(conflict)return res.status(409).json({error:'Это время уже занято другой записью'})
     }
     if(hasStatus)booking.status=status
@@ -1399,7 +1399,7 @@ app.patch('/api/bookings/:id', async (req,res) => {
   const nextStart=startsAt!==undefined?startsAt:current.starts_at
   const nextEnd=endsAt!==undefined?endsAt:(current.ends_at||new Date(new Date(nextStart).getTime()+3600000).toISOString())
   if(startsAt!==undefined||endsAt!==undefined){
-    const conflict=(await pool.query("select id from bookings where project_id::text=$1::text and id::text<>$2 and status <> 'cancelled' and starts_at < $4 and ends_at > $3 limit 1",[current.project_id,current.id,nextStart,nextEnd])).rows[0]
+    const conflict=(await pool.query("select id from bookings where project_id::text=$1::text and id::text<>$2::text and status <> 'cancelled' and starts_at < $4 and ends_at > $3 limit 1",[current.project_id,current.id,nextStart,nextEnd])).rows[0]
     if(conflict)return res.status(409).json({error:'Это время уже занято другой записью'})
   }
   const fields=[],values=[]
@@ -1412,7 +1412,9 @@ app.patch('/api/bookings/:id', async (req,res) => {
   if(serviceName!==undefined)add('service_name',serviceName)
   if(!fields.length)return res.status(400).json({error:'Нет изменений'})
   values.push(req.params.id)
-  const q=await pool.query('update bookings b set '+fields.map(x=>x.replace(/^(\w+)=/, ''))+' where b.id::text=
+  values.push(req.user.studio_id)
+  const q=await pool.query('update bookings set '+fields.join(', ')+' where id::text=$'+(values.length-1)+'::text and project_id in (select id from projects where studio_id::text=$'+values.length+'::text) returning *',values)
+  if(!q.rows[0])return res.status(404).json({error:'Бронирование не найдено'})
   res.json({booking:q.rows[0]})
 })
 
@@ -1443,7 +1445,7 @@ app.patch('/api/leads/:id', async (req,res) => {
   const allowed=['new','in_progress','won','lost']
   if(!allowed.includes(status))return res.status(400).json({error:'Недопустимый статус'})
   if(!pool){
-    const lead=memoryLeads.find(x=>x.id===id)
+    const lead=memoryLeads.find(x=>x.id===id&&x.studio_id===req.user.studio_id)
     if(!lead)return res.status(404).json({error:'Заявка не найдена'})
     lead.status=status
     return res.json({lead})
