@@ -60,8 +60,7 @@ app.use(publicRateLimit({windowMs:60000,max:30}))
 const authRateBuckets = new Map()
 function authRateLimit(req,res,next){
   if(req.method!=='POST' || !req.path.startsWith('/api/auth/')) return next()
-  const forwarded=String(req.headers['x-forwarded-for']||'').split(',')[0].trim()
-  const ip=forwarded || req.ip || req.socket?.remoteAddress || 'unknown'
+  const ip=req.ip || req.socket?.remoteAddress || 'unknown'
   const key=ip+'|'+Math.floor(Date.now()/300000)
   const count=(authRateBuckets.get(key)||0)+1
   authRateBuckets.set(key,count)
@@ -1440,7 +1439,7 @@ app.get('/api/projects/:id/analytics', async (req,res) => {
     const bookings=memoryBookings.filter(b=>b.project_slug===slug)
     return res.json({metrics:{visits:events.filter(e=>e.event_type==='page_view').length,leads:leads.length,bookings:bookings.length,revenue:memoryPayments.filter(p=>p.project_id===project.id&&p.status==='paid').reduce((a,p)=>a+Number(p.amount||0),0)}})
   }
-  const project=await pool.query('select id from projects where id::text=$1::text or slug=$1::text limit 1',[id])
+  const project=await pool.query('select id from projects where (id::text=$1::text or slug=$1::text) and studio_id::text=$2::text limit 1',[id,req.user.studio_id])
   if(!project.rows[0])return res.status(404).json({error:'Проект не найден'})
   const q=await pool.query(`select
     count(*) filter (where event_type='page_view')::int as visits,
