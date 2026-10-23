@@ -536,7 +536,87 @@ function Payments({payments=[]}){
 }
 
 function Orders({orders=[],projects=[]}){
-  const fallback=[];const max=Math.max(1,...series.map(x=>Number(x.revenue||0)));const visitToLead=m.visits?((m.leads/m.visits)*100).toFixed(1):'0.0';const leadToBooking=m.leads?((m.bookings/m.leads)*100).toFixed(1):'0.0';const money=v=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:0}).format(Number(v||0));return <><Header eyebrow="Отчёты" title="Аналитика" description="Показатели студии и клиентских проектов в одном отчёте." action={<button className="filter">Последние 30 дней ▾</button>}/><div className="metrics"><Metric title="Посещения" value={Number(m.visits||0).toLocaleString('ru-RU')} change="за 30 дней" icon={Globe2}/><Metric title="Заявки" value={Number(m.leads||0).toLocaleString('ru-RU')} change="за 30 дней" icon={Inbox}/><Metric title="Бронирования" value={Number(m.bookings||0).toLocaleString('ru-RU')} change="за 30 дней" icon={CalendarDays}/><Metric title="Выручка" value={money(m.revenue)} change="оплаченные" icon={CircleDollarSign}/></div><div className="metrics compact"><Metric title="Заказы" value={Number(m.orders||0).toLocaleString('ru-RU')} change="создано за 30 дней" icon={ShoppingCart}/><Metric title="Оплачено заказов" value={Number(m.paidOrders||0).toLocaleString('ru-RU')} change="успешные оплаты" icon={CheckCircle2}/><Metric title="Средний чек" value={money(m.averageOrder)} change="по всем заказам" icon={Receipt}/><Metric title="Конверсия в оплату" value={Number(m.paymentConversion||0).toFixed(1)+'%'} change="заказ → оплата" icon={CreditCard}/></div><div className="analytics-grid"><section className="card chart-card"><div className="card-head"><div><h2>Динамика выручки</h2><span>Реальные платежи за последние 30 дней</span></div></div><div className="analytics-bars">{(series.length?series:[{day:'Нет данных',visits:0,leads:0,bookings:0,revenue:0}]).slice(-14).map((x,i)=><div className="analytics-bar" key={x.day+i}><div className="analytics-bar-stack"><i style={{height:(Number(x.revenue||0)/max*100)+'%'}}/></div><span>{x.day==='Нет данных'?'—':new Date(x.day).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}</span></div>)}</div></section><section className="card funnel-card"><div className="card-head"><div><h2>Конверсия</h2><span>Путь клиента по воронке</span></div></div><div className="funnel-row"><b>Посещение → заявка</b><strong>{visitToLead}%</strong></div><div className="funnel-row"><b>Заявка → бронирование</b><strong>{leadToBooking}%</strong></div><div className="funnel-row"><b>Заказ → оплата</b><strong>{Number(m.paymentConversion||0).toFixed(1)}%</strong></div><div className="analytics-note">Финансовая конверсия считается по реальным заказам и платежам.</div></section></div></>}
+  const [items,setItems]=useState(orders||[])
+  const [filter,setFilter]=useState('all')
+  const [selected,setSelected]=useState(null)
+  const [detail,setDetail]=useState(null)
+  const [busy,setBusy]=useState(false)
+  useEffect(()=>setItems(orders||[]),[orders])
+  const visible=filter==='all'?items:items.filter(x=>x.status===filter)
+  const money=v=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:0}).format(Number(v||0))
+  const labels={pending:'Ожидает оплаты',paid:'Оплачен',cancelled:'Отменён',refunded:'Возврат'}
+  const openOrder=async(id)=>{
+    setSelected(id)
+    try{setDetail((await api.order(id))||null)}catch(e){window.alert(e.message||'Не удалось открыть заказ')}
+  }
+  const createInvoice=async()=>{
+    if(!selected)return
+    setBusy(true)
+    try{const r=await api.createOrderInvoice(selected);setDetail(v=>v?{...v,invoice:r.invoice}:v);window.alert('Счёт создан')}
+    catch(e){window.alert(e.message||'Не удалось создать счёт')}
+    finally{setBusy(false)}
+  }
+  const payOrder=async()=>{
+    if(!detail?.order||detail.order.status==='paid')return
+    setBusy(true)
+    try{
+      const r=await api.createPayment({project_id:detail.order.project_id,client_id:detail.order.client_id||null,order_id:detail.order.id,amount:Number(detail.order.total),currency:detail.order.currency||'RUB',status:'paid',description:'Оплата заказа '+detail.order.number})
+      setItems(v=>v.map(x=>x.id===detail.order.id?{...x,status:'paid'}:x))
+      setDetail(v=>v?{...v,order:{...v.order,status:'paid'},payments:[r.payment,...(v.payments||[])]}:v)
+    }catch(e){window.alert(e.message||'Не удалось принять оплату')}
+    finally{setBusy(false)}
+  }
+  return <><Header eyebrow="Продажи" title="Заказы" description="Полный цикл: каталог → заказ → клиент → счёт → оплата."/>
+    <div className="metrics compact">
+      <Metric title="Заказы" value={String(items.length)} change="всего" icon={ShoppingCart}/>
+      <Metric title="Оплачено" value={money(items.filter(x=>x.status==='paid').reduce((s,x)=>s+Number(x.total||0),0))} change="выручка" icon={CircleDollarSign}/>
+      <Metric title="Новые" value={String(items.filter(x=>x.status==='pending').length)} change="ожидают оплаты" icon={Clock3}/>
+      <Metric title="Средний чек" value={money(items.length?items.reduce((s,x)=>s+Number(x.total||0),0)/items.length:0)} change="по заказам" icon={Receipt}/>
+    </div>
+    <section className="card calendar-card">
+      <div className="card-head"><div><h2>Реестр заказов</h2><span>{items.length} заказов · по всем проектам</span></div><div className="calendar-actions">{[['all','Все'],['pending','Ожидают'],['paid','Оплачены'],['cancelled','Отменены'],['refunded','Возвраты']].map(([id,label])=><button key={id} className={filter===id?'filter active':'filter'} onClick={()=>setFilter(id)}>{label}</button>)}</div></div>
+      {visible.length===0?<div className="empty-editor"><ShoppingCart size={24}/><b>Заказов пока нет</b><span>Создайте заказ из каталога проекта или примите заказ с сайта / Mini App.</span></div>:
+      <div className="inbox-list">{visible.map((o,i)=><div className="inbox-row" key={o.id||i}>
+        <div className="inbox-avatar"><ShoppingCart size={17}/></div>
+        <div className="inbox-main"><b>{o.number||'Заказ'}</b><span>{o.project_name||projects.find(p=>p.id===o.project_id)?.name||'Проект'}{o.client_name?' · '+o.client_name:''} · {new Date(o.created_at).toLocaleString('ru-RU')}</span></div>
+        <strong>{money(o.total)}</strong><span className={'status '+(o.status==='paid'?'success':o.status==='pending'?'working':'draft')}><i/>{labels[o.status]||o.status}</span>
+        <div className="catalog-actions"><button className="filter" onClick={()=>openOrder(o.id)}>Открыть</button>{o.status!=='paid'&&<button className="filter" onClick={()=>openOrder(o.id)}>Оплатить</button>}</div>
+      </div>)}</div>}
+    </section>
+    {detail&&<div className="public-modal-backdrop" onMouseDown={()=>{setDetail(null);setSelected(null)}}><section className="card order-detail-modal" onMouseDown={e=>e.stopPropagation()}>
+      <button className="public-close" onClick={()=>{setDetail(null);setSelected(null)}}><X size={18}/></button>
+      <div className="eyebrow">Заказ</div><h2>{detail.order?.number}</h2>
+      <div className="order-detail-grid">
+        <div><span>Проект</span><b>{detail.order?.project_name||'—'}</b></div>
+        <div><span>Клиент</span><b>{detail.client?.name||'Без клиента'}</b></div>
+        <div><span>Сумма</span><b>{money(detail.order?.total)}</b></div>
+        <div><span>Статус</span><b>{labels[detail.order?.status]||detail.order?.status}</b></div>
+      </div>
+      <h3>Позиции</h3><div className="order-detail-lines">{(detail.order?.items||[]).map((x,i)=><div key={i}><span>{x.name} × {x.quantity}</span><b>{money(Number(x.price||0)*Number(x.quantity||1))}</b></div>)}</div>
+      <h3>Оплата и счёт</h3><div className="order-detail-lines">
+        {(detail.payments||[]).length?(detail.payments||[]).map((p,i)=><div key={p.id||i}><span>{p.description||'Платёж'} · {new Date(p.created_at).toLocaleString('ru-RU')}</span><b>{money(p.amount)}</b></div>):<div><span>Платежей пока нет</span><b>—</b></div>}
+        <div><span>{detail.invoice?'Счёт '+detail.invoice.number:'Счёт не создан'}</span><b>{detail.invoice?money(detail.invoice.amount):'—'}</b></div>
+      </div>
+      <h3>История</h3><div className="order-timeline">{(detail.timeline||[]).map((x,i)=><div key={i}><span>{new Date(x.date).toLocaleString('ru-RU')}</span><b>{x.text}</b></div>)}</div>
+      <div className="setting-actions"><button className="filter" onClick={createInvoice} disabled={busy||!!detail.invoice}>{detail.invoice?'Счёт создан':'Выставить счёт'}</button><button className="primary" onClick={payOrder} disabled={busy||detail.order?.status==='paid'}>{detail.order?.status==='paid'?'Оплачен':'Принять оплату'}</button></div>
+    </section></div>}
+  </>
+}
+
+function Analytics({metrics}){
+  const m=metrics||{},series=m.series||[]
+  const max=Math.max(1,...series.map(x=>Number(x.revenue||0)))
+  const visitToLead=m.visits?((m.leads/m.visits)*100).toFixed(1):'0.0'
+  const leadToBooking=m.leads?((m.bookings/m.leads)*100).toFixed(1):'0.0'
+  const money=v=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:0}).format(Number(v||0))
+  return <><Header eyebrow="Отчёты" title="Аналитика" description="Показатели студии и клиентских проектов в одном отчёте." action={<button className="filter">Последние 30 дней</button>}/>
+    <div className="metrics"><Metric title="Посещения" value={Number(m.visits||0).toLocaleString('ru-RU')} change="за 30 дней" icon={Globe2}/><Metric title="Заявки" value={Number(m.leads||0).toLocaleString('ru-RU')} change="за 30 дней" icon={Inbox}/><Metric title="Бронирования" value={Number(m.bookings||0).toLocaleString('ru-RU')} change="за 30 дней" icon={CalendarDays}/><Metric title="Выручка" value={money(m.revenue)} change="оплаченные" icon={CircleDollarSign}/></div>
+    <div className="metrics compact"><Metric title="Заказы" value={Number(m.orders||0).toLocaleString('ru-RU')} change="создано за 30 дней" icon={ShoppingCart}/><Metric title="Оплачено заказов" value={Number(m.paidOrders||0).toLocaleString('ru-RU')} change="успешные оплаты" icon={CheckCircle2}/><Metric title="Средний чек" value={money(m.averageOrder)} change="по всем заказам" icon={Receipt}/><Metric title="Конверсия в оплату" value={Number(m.paymentConversion||0).toFixed(1)+'%'} change="заказ → оплата" icon={CreditCard}/></div>
+    <div className="analytics-grid"><section className="card chart-card"><div className="card-head"><div><h2>Динамика выручки</h2><span>Реальные платежи за последние 30 дней</span></div></div><div className="analytics-bars">{(series.length?series:[{day:'Нет данных',revenue:0}]).slice(-14).map((x,i)=><div className="analytics-bar" key={x.day+i}><div className="analytics-bar-stack"><i style={{height:(Number(x.revenue||0)/max*100)+'%'}}/></div><span>{x.day==='Нет данных'?'—':new Date(x.day).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}</span></div>)}</div></section>
+      <section className="card funnel-card"><div className="card-head"><div><h2>Конверсия</h2><span>Путь клиента по воронке</span></div></div><div className="funnel-row"><b>Посещение → заявка</b><strong>{visitToLead}%</strong></div><div className="funnel-row"><b>Заявка → бронирование</b><strong>{leadToBooking}%</strong></div><div className="funnel-row"><b>Заказ → оплата</b><strong>{Number(m.paymentConversion||0).toFixed(1)}%</strong></div><div className="analytics-note">Финансовая конверсия считается по реальным заказам.</div></section></div>
+  </>
+}
+
 function Integrations(){const items=[['Telegram','Заявки, уведомления и Mini Apps','Подключено',Send],['Payments','Оплата и статусы заказов','Подключить',CreditCard],['Analytics','События и конверсии','Подключено',BarChart3],['Domains','Домены и SSL','Подключено',Globe2],['CRM','Синхронизация клиентов','Подключить',Users],['Webhooks','Внешние автоматизации','Подключить',Zap]];return <><Header eyebrow="Экосистема" title="Интеграции" description="Подключайте сервисы, которые расширяют возможности Nexora."/><div className="integration-grid">{items.map(([name,desc,status,Icon])=><div className="card integration" key={name}><div className="integration-icon"><Icon size={20}/></div><div><h3>{name}</h3><span>{desc}</span></div><button className={status==='Подключено'?'connected':'filter'}>{status}</button></div>)}</div></>}
 
 function Templates({onCreate}){const templates=[['barber','Барбершоп','Барбершоп','dark'],['beauty','Салон красоты','Салон красоты','blue'],['fitness','Фитнес','Фитнес-студия','purple'],['cafe','Кафе','Кафе / ресторан','orange'],['shop','Магазин','Интернет-магазин','green'],['services','Услуги','Бизнес и услуги','pink']];return <><Header eyebrow="Библиотека" title="Шаблоны" description="Готовые стартовые проекты с готовыми страницами, блоками и каталогом."/><div className="template-grid">{templates.map(([id,name,desc,color])=><div className="card template" key={id}><div className={`template-preview ${color}`}><span>{name}</span><div className="template-lines"><i/><i/><i/></div></div><div className="template-info"><div><h3>{name}</h3><span>{desc} · страницы + каталог</span></div><button className="filter" onClick={()=>onCreate('site',id)}>Использовать</button></div></div>)}</div></>}
