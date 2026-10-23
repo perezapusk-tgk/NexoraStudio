@@ -335,6 +335,8 @@ function App() {
     }
   }
 
+  const duplicateProject = async (project) => { if(!project?.id)return; try { const r=await api.duplicateProject(project.id); setProjectData(v=>[{...r.project,type:project.type,status:'Черновик',color:'dark',leads:0,bookings:0,revenue:'₽0',updated:'только что'},...v]); } catch(err){ let m=err?.message||'Не удалось дублировать проект'; try{m=JSON.parse(m)?.error||m}catch{} window.alert(m) } }
+  const archiveProject = async (project) => { if(!project?.id || !window.confirm(`Архивировать проект «${project.name}»?`))return; try { const r=await api.archiveProject(project.id); setProjectData(v=>v.map(x=>x.id===project.id?{...x,status:'Архив'}:x)); } catch(err){ window.alert(err?.message||'Не удалось архивировать проект') } }
   const createProject = async (projectType, templateId = '') => {
     const name = window.prompt('Название проекта')
     if (!name?.trim()) return
@@ -430,7 +432,7 @@ function App() {
         </header>
 
         <div className="content">
-          {active === 'Обзор' && !selectedProject && <Dashboard projects={filteredProjects} onCreate={() => setShowCreate(true)} onNavigate={go} onOpenProject={openProject} metrics={crm.analytics} onDeleteProject={deleteProject}/>}
+          {active === 'Обзор' && !selectedProject && <Dashboard projects={filteredProjects} onCreate={() => setShowCreate(true)} onNavigate={go} onOpenProject={openProject} metrics={crm.analytics} onDeleteProject={deleteProject} onDuplicateProject={duplicateProject} onArchiveProject={archiveProject}/>}
           {active === 'Проекты' && !selectedProject && <Projects projects={filteredProjects} onCreate={() => setShowCreate(true)} onOpenProject={openProject} onDeleteProject={deleteProject}/>}
           {active === 'Заявки' && <InboxPage leads={crm.leads} />}
           {active === 'Клиенты' && !selectedClient && <Clients clients={crm.clients} onOpenClient={openClient} />}
@@ -484,8 +486,8 @@ function Metric({title,value,change,icon:Icon}) {
   return <div className="metric card"><div className="metric-top"><span>{title}</span><div className="metric-icon"><Icon size={17}/></div></div><div className="metric-value">{value}</div><div className="metric-foot"><b>{change}</b><span>к прошлому месяцу</span></div></div>
 }
 
-function ProjectTable({projects,onOpenProject,onDeleteProject}) {
-  return <div className="table">{projects.map((p,i)=><div className="project-row project-row-button" key={p.id||p.name} role="button" tabIndex={0} onClick={() => onOpenProject?.(p)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' ')onOpenProject?.(p)}}><div className={`project-logo ${p.color}`}>{p.name.slice(0,1)}</div><div className="project-name"><b>{p.name}</b><span>{p.type}</span></div><span className={`status ${p.status === 'Опубликован' ? 'success' : p.status === 'В работе' ? 'working' : 'draft'}`}><i/>{p.status}</span><div className="project-stat"><b>{p.leads}</b><span>заявок</span></div><div className="project-stat"><b>{p.revenue}</b><span>выручка</span></div><span className="updated">{p.updated}</span><button type="button" className="filter project-open-button" onClick={e=>{e.stopPropagation();onOpenProject?.(p)}}>Открыть рабочее пространство</button></div>)}</div>
+function ProjectTable({projects,onOpenProject,onDeleteProject,onDuplicateProject,onArchiveProject}) {
+  return <div className="table">{projects.map((p,i)=><div className="project-row project-row-button" key={p.id||p.name} role="button" tabIndex={0} onClick={() => onOpenProject?.(p)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' ')onOpenProject?.(p)}}><div className={`project-logo ${p.color}`}>{p.name.slice(0,1)}</div><div className="project-name"><b>{p.name}</b><span>{p.type}</span></div><span className={`status ${p.status === 'Опубликован' ? 'success' : p.status === 'В работе' ? 'working' : 'draft'}`}><i/>{p.status}</span><div className="project-stat"><b>{p.leads}</b><span>заявок</span></div><div className="project-stat"><b>{p.revenue}</b><span>выручка</span></div><span className="updated">{p.updated}</span><button type="button" className="filter project-open-button" onClick={e=>{e.stopPropagation();onOpenProject?.(p)}}>Открыть рабочее пространство</button><button type="button" className="filter" onClick={e=>{e.stopPropagation();onDuplicateProject?.(p)}}>Дублировать</button><button type="button" className="filter" onClick={e=>{e.stopPropagation();onArchiveProject?.(p)}}>Архив</button></div>)}</div>
 }
 
 function Activity() {
@@ -494,13 +496,13 @@ function Activity() {
 
 function Quick({icon:Icon,title,text,onClick}) { return <button className="quick-card card" onClick={onClick}><div className="quick-icon"><Icon size={19}/></div><div><b>{title}</b><span>{text}</span></div><ChevronRight size={17}/></button> }
 
-function Projects({projects,onCreate,onOpenProject,onDeleteProject}) {
+function Projects({projects,onCreate,onOpenProject,onDeleteProject,onDuplicateProject,onArchiveProject}) {
   const [filter,setFilter]=useState('all')
   const counts={all:projects.length,published:projects.filter(x=>x.status==='Опубликован').length,working:projects.filter(x=>x.status==='В работе').length,draft:projects.filter(x=>x.status==='Черновик').length}
   const visible=filter==='all'?projects:projects.filter(x=>filter==='published'?x.status==='Опубликован':filter==='working'?x.status==='В работе':x.status==='Черновик')
   return <><Header eyebrow="Рабочая область" title="Проекты" description="Все сайты, Mini Apps и клиентские пространства студии." action={<button className="primary" onClick={onCreate}><Plus size={17}/> Новый проект</button>}/>
     <div className="filterbar">{[['all','Все'],['published','Опубликованные'],['working','В работе'],['draft','Черновики']].map(([id,label])=><button key={id} className={filter===id?'filter active':'filter'} onClick={()=>setFilter(id)}>{label} <b>{counts[id]}</b></button>)}<button className="filter"><Filter size={15}/> Фильтры</button></div>
-    <section className="card projects-full">{visible.length?<ProjectTable projects={visible} onOpenProject={onOpenProject} onDeleteProject={onDeleteProject}/>:<div className="empty-editor"><FolderKanban size={24}/><b>Проектов в этом фильтре нет</b><span>Создайте проект или выберите другой фильтр.</span></div>}</section>
+    <section className="card projects-full">{visible.length?<ProjectTable projects={visible} onOpenProject={onOpenProject} onDeleteProject={onDeleteProject} onDuplicateProject={onDuplicateProject} onArchiveProject={onArchiveProject}/>:<div className="empty-editor"><FolderKanban size={24}/><b>Проектов в этом фильтре нет</b><span>Создайте проект или выберите другой фильтр.</span></div>}</section>
   </>
 }
 
