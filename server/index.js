@@ -390,7 +390,8 @@ async function adminOverview(){
   const g=Number(gmv.rows[0]?.total||0), sub=Number(subscriptions.rows[0]?.total||0)
   return {generated_at:new Date().toISOString(),currency:'RUB',metrics:{studios:studios.rows[0].count,users:users.rows[0].count,projects:projects.rows[0].count,leads:leads.rows[0].count,bookings:bookings.rows[0].count,orders:orders.rows[0].count,gmv:g,subscriptionRevenue:sub,platformCommissionPercent:fee,estimatedPlatformCommission:g*fee/100},plans:Object.fromEntries(plans.rows.map(x=>[x.plan,x.count])),recentStudios:recent.rows}
 }
-\nfunction requireRole(req,res,roles){ if(!roles.includes(req.user.role)) { res.status(403).json({error:'Недостаточно прав для этой операции'}); return false } return true }
+
+function requireRole(req,res,roles){ if(!roles.includes(req.user.role)) { res.status(403).json({error:'Недостаточно прав для этой операции'}); return false } return true }
 async function ownedProject(req,projectId){
   const id=String(projectId||'').trim()
   if(!id)return null
@@ -448,7 +449,8 @@ app.get('/api/admin/overview', async (req,res)=>{
   if(!(await requireSuperAdmin(req,res))) return
   try{res.json(await adminOverview())}catch(e){res.status(500).json({error:'Не удалось загрузить статистику владельца'})}
 })
-\napp.get('/api/templates', async (_req,res)=>{
+
+app.get('/api/templates', async (_req,res)=>{
   const templates=Object.values(TEMPLATE_DEFINITIONS).map(t=>({id:t.id,name:t.name,category:t.category,blocks:t.blocks.length,catalog:t.catalog.length,description:'Готовый сайт + Mini App'}))
   res.json({templates})
 })
@@ -1790,7 +1792,8 @@ async function runStartupMigrations(){
 }
 
 if (process.env.NODE_ENV !== 'test') {
-  await runStartupMigrations()\n  await bootstrapOwnerAccount()
+  await runStartupMigrations()
+  await bootstrapOwnerAccount()
   const server = app.listen(port, host, () => console.log('Nexora API listening on '+host+':'+port))
   server.on('error', (err) => {
     console.error('Nexora server error', err)
