@@ -729,11 +729,11 @@ app.post('/api/billing/yookassa/webhook', async (req,res)=>{
     const paymentId=String(obj.id||'').trim()
     if(!paymentId) return res.status(200).json({received:true})
     const payment=await yookassaRequest('/payments/'+encodeURIComponent(paymentId))
-    const tx=(await pool.query('select * from billing_transactions where provider='yookassa' and provider_payment_id=$1 order by created_at desc limit 1',[paymentId])).rows[0]
+    const tx=(await pool.query("select * from billing_transactions where provider='yookassa' and provider_payment_id=$1 order by created_at desc limit 1",[paymentId])).rows[0]
     if(!tx) return res.status(200).json({received:true})
     const paid=payment.status==='succeeded' && payment.paid===true && String(payment.amount?.currency||'').toUpperCase()==='RUB' && Math.abs(Number(payment.amount?.value||0)-Number(tx.amount||0))<0.01 && String(payment.metadata?.studio_id||'')===String(tx.studio_id) && String(payment.metadata?.plan||'').toLowerCase()===String(tx.plan||'').toLowerCase()
     if(event.type==='payment.succeeded' && paid){
-      const changed=await pool.query('update billing_transactions set status='paid',paid_at=coalesce(paid_at,now()) where id=$1 and status<>'paid' returning id',[tx.id])
+      const changed=await pool.query("update billing_transactions set status='paid',paid_at=coalesce(paid_at,now()) where id=$1 and status<>'paid' returning id",[tx.id])
       if(changed.rows[0]) await pool.query("update studios set plan=$1,project_limit=$2,subscription_status='active',billing_provider='yookassa',subscription_started_at=now(),subscription_renews_at=now()+interval '30 days',updated_at=now() where id::text=$3::text",[tx.plan,planConfig(tx.plan).projectLimit,tx.studio_id])
     }else if(event.type==='payment.canceled'){
       await pool.query("update billing_transactions set status='cancelled' where id=$1 and status='pending'",[tx.id])
@@ -768,7 +768,7 @@ app.post('/api/billing/confirm', async (req,res)=>{
     if(!shopId||!secret) return res.status(503).json({error:'YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY не настроены'})
     const r=await fetch('https://api.yookassa.ru/v3/payments/'+encodeURIComponent(paymentId),{headers:{Authorization:'Basic '+Buffer.from(shopId+':'+secret).toString('base64')}})
     data=await r.json()
-    paid=r.ok&&data.status==='succeeded'&&data.paid===true
+    paid=r.ok&&data.status==='succeeded'&&data.paid===true&&String(data.amount?.currency||'').toUpperCase()==='RUB'&&Math.abs(Number(data.amount?.value||0)-Number(tx.amount||0))<0.01&&String(data.metadata?.studio_id||'')===String(tx.studio_id)&&String(data.metadata?.plan||'').toLowerCase()===String(tx.plan||'').toLowerCase()
   }
   if(!paid) return res.status(409).json({error:'Оплата ещё не подтверждена'})
   const stripeSubscriptionId=provider==='stripe' ? (typeof data?.subscription==='string'?data.subscription:(data?.subscription?.id||null)) : null
