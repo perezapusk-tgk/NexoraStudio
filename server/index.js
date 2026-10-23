@@ -329,7 +329,7 @@ async function ownedClient(req,clientId){
   return (await pool.query('select id from clients where id::text=$1 and studio_id::text=$2::text limit 1',[id,req.user.studio_id])).rows[0]||null
 }
 app.use('/api',async(req,res,next)=>{
-  if(req.path==='/health'||req.path.startsWith('/auth/')||req.path.startsWith('/public/'))return next()
+  if(req.path==='/health'||req.path.startsWith('/auth/')||req.path.startsWith('/public/')||req.path==='/billing/yookassa/webhook')return next()
   try{
     await requireAuth(req,res,async()=>{
       if(req.user.role==='viewer' && req.method!=='GET') return res.status(403).json({error:'Режим просмотра: изменения недоступны'})
