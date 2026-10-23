@@ -235,8 +235,11 @@ function App() {
     if(params.get('billing')!=='success') return
     const provider=params.get('provider')
     const paymentId=params.get('session_id') || params.get('payment_id')
-    if(!provider || !paymentId) return
-    api.billingConfirm(provider,paymentId).then(()=>{
+    // Stripe возвращает session_id и подтверждается здесь. ЮKassa подтверждается
+    // отдельным polling-потоком в настройках, потому что return_url не содержит
+    // доверенный payment_id провайдера.
+    if(provider!=='stripe' || !paymentId) return
+    api.billingConfirm('stripe',paymentId).then(()=>{
       window.history.replaceState({},'',window.location.pathname)
       window.alert('Оплата подтверждена. Тариф активирован на 30 дней.')
     }).catch(err=>{
