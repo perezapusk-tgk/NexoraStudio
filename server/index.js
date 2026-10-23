@@ -1365,7 +1365,7 @@ app.post('/api/projects/:id/publish',async(req,res)=>{
 
 app.get('/api/leads', async (req, res) => {
   if (!pool) return res.json({ leads: memoryLeads.filter(x=>x.studio_id===req.user.studio_id) })
-  const { rows } = await pool.query('select l.id, l.project_id, l.name, l.message, l.status, l.created_at, p.name as project_name from leads l left join projects p on p.id::text=l.project_id::text where p.studio_id::text=$1::text order by created_at desc limit 100',[req.user.studio_id])
+  const { rows } = await pool.query('select l.id, l.project_id, l.name, l.email, l.phone, l.message, l.source, l.status, l.created_at, p.name as project_name from leads l left join projects p on p.id::text=l.project_id::text where p.studio_id::text=$1::text order by created_at desc limit 100',[req.user.studio_id])
   res.json({ leads: rows })
 })
 
