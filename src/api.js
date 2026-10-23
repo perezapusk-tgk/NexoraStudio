@@ -88,6 +88,7 @@ export const api = {
   updateLead: (id,status) => request('/leads/' + id,{method:'PATCH',body:JSON.stringify({status})}),
   convertLead: (id) => request('/leads/' + id + '/convert',{method:'POST'}),
   clients: () => request('/clients'),
+  createClient: (payload) => request('/clients',{method:'POST',body:JSON.stringify(payload)}),
   client: (id) => request('/clients/' + id),
   updateClient: (id,payload) => request('/clients/' + id,{method:'PATCH',body:JSON.stringify(payload)}),
   bookings: () => request('/bookings'),
