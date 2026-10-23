@@ -1050,7 +1050,8 @@ app.post('/api/projects/:id/publish',async(req,res)=>{
     if(!p)return res.status(404).json({error:'Проект не найден'})
     p.status='published'
     ;(memoryPages.get(p.id)||[]).forEach(x=>x.published=true)
-    return res.json({published:true,project:p,url:'https://'+p.slug+'.nexora.site'})
+    const publicBase=p.domain?'https://'+p.domain:billingAppUrl()
+    return res.json({published:true,project:p,url:publicBase+'/published/'+encodeURIComponent(p.slug),miniapp_url:publicBase+'/miniapp/'+encodeURIComponent(p.slug)})
   }
   const q=await pool.query("update projects set status='published',updated_at=now() where id::text=$1 and studio_id::text=$2::text returning *",[req.params.id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Проект не найден'})
