@@ -147,7 +147,7 @@ const TEMPLATE_DEFINITIONS={
 function templateDefinition(id=''){
   return TEMPLATE_DEFINITIONS[String(id||'').toLowerCase()] || TEMPLATE_DEFINITIONS.services
 }
-function slugify(value){return String(value||'project').toLowerCase().trim().replace(/[^a-z0-9а-яё]+/gi,'-').replace(/^-+|-+$/g,'')||'project'}
+function slugify(value){const translit={'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'c','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'}; const normalized=String(value||'project').toLowerCase().trim().split('').map(ch=>translit[ch]??ch).join(''); return normalized.replace(/[^a-z0-9]+/gi,'-').replace(/^-+|-+$/g,'')||'project'}
 function demoProjects(){return [
   {id:'demo-barber',studio_id:demoStudio.id,name:'Barber House',slug:'barber-house',project_type:'website',status:'published',domain:null},
   {id:'demo-beauty',studio_id:demoStudio.id,name:'Nordic Beauty',slug:'nordic-beauty',project_type:'website',status:'draft',domain:null},
