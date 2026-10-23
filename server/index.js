@@ -864,9 +864,27 @@ app.get('/api/public/:slug', async (req,res) => {
   const q = await pool.query('select * from projects where slug=$1 and status=\'published\' limit 1',[slug])
   if (!q.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
   const project = q.rows[0]
+  // Public API must never expose the full project row/settings because those fields
+  // may contain studio-only configuration (integrations, internal flags, etc.).
+  const publicProject = {
+    id: project.id,
+    name: project.name,
+    slug: project.slug,
+    project_type: project.project_type,
+    status: project.status,
+    domain: project.domain,
+    settings: {
+      ...(project.settings?.public || {}),
+      miniApp: project.settings?.miniApp ? {
+        enabled: Boolean(project.settings.miniApp.enabled),
+        url: project.settings.miniApp.url || null,
+        buttonText: project.settings.miniApp.buttonText || null
+      } : undefined
+    }
+  }
   const pages = await pool.query('select id,title,slug,content,published from pages where project_id::text=$1::text and published=true order by created_at',[project.id])
   const catalog = await pool.query('select id,name,description,price,currency,image_url,active from catalog_items where project_id::text=$1::text and active=true order by created_at desc',[project.id])
-  res.json({project,pages:pages.rows,catalog:catalog.rows})
+  res.json({project:publicProject,pages:pages.rows,catalog:catalog.rows})
 })
 
 app.post('/api/projects/:id/domain/check', async (req,res) => {
@@ -1052,7 +1070,17 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
       return res.status(503).json({error:'Не удалось создать оплату ЮKassa: '+(e.message||'неизвестная ошибка')})
     }
   }
-  res.status(201).json({order,checkout_url})
+  // Do not return internal studio/client/provider identifiers from a public checkout.
+  // The browser only needs the order id and payment redirect.
+  const publicOrder = {
+    id: order.id,
+    number: order.number,
+    status: order.status,
+    total: Number(order.total),
+    currency: order.currency,
+    items: order.items
+  }
+  res.status(201).json({order:publicOrder,checkout_url})
 })
 
 
