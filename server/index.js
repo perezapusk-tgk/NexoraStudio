@@ -13,7 +13,7 @@ const host = process.env.HOST || '0.0.0.0'
 const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000, max: 5 }) : null
 
 app.disable('x-powered-by')
-app.use(cors({origin:true,credentials:true}))
+app.use(cors({origin:(origin,callback)=>{if(!origin)return callback(null,true);try{const url=new URL(origin);const host=url.hostname.toLowerCase();const appHost=new URL(billingAppUrl()).hostname.toLowerCase();if(host===appHost||host==='localhost'||host==='127.0.0.1'||host.endsWith('.nexora.site'))return callback(null,true)}catch{}return callback(new Error('Origin not allowed'))},credentials:true}))
 app.use(express.json({limit:'1mb',verify:(req,_res,buf)=>{req.rawBody=Buffer.from(buf)}}))
 
 // Production API compatibility: keep API requests on /api even when a client is configured with the bare Render origin.
@@ -905,8 +905,10 @@ app.post('/api/public/:slug/leads', async (req,res) => {
   const name=String(req.body?.name||'').trim()
   const phone=String(req.body?.phone||'').trim()
   const message=String(req.body?.message||'').trim()
-  if(!name || (!phone && !String(req.body?.email||'').trim())) return res.status(400).json({error:'Укажите имя и телефон или email'})
-  if(!pool){const project=memoryProjects.find(p=>p.slug===slug && p.status==='published');if(!project) return res.status(404).json({error:'Публичный проект не найден'});const lead={id:crypto.randomUUID(),project_slug:slug,project_id:project.id,name,phone,email:String(req.body?.email||''),message,status:'new',source:'public',created_at:new Date().toISOString()};memoryLeads.unshift(lead);memoryEvents.push({slug,studio_id:project.studio_id,event_type:'lead',path:'/lead',created_at:new Date().toISOString()});return res.status(201).json({lead})}
+  const email=String(req.body?.email||'').trim().toLowerCase()
+  if(name.length>120||phone.length>40||email.length>160||message.length>2000) return res.status(400).json({error:'Некорректная длина данных'})
+  if(!name || (!phone && !email)) return res.status(400).json({error:'Укажите имя и телефон или email'})
+  if(!pool){const project=memoryProjects.find(p=>p.slug===slug && p.status==='published');if(!project) return res.status(404).json({error:'Публичный проект не найден'});const lead={id:crypto.randomUUID(),project_slug:slug,project_id:project.id,name,phone,email,message,status:'new',source:'public',created_at:new Date().toISOString()};memoryLeads.unshift(lead);memoryEvents.push({slug,studio_id:project.studio_id,event_type:'lead',path:'/lead',created_at:new Date().toISOString()});return res.status(201).json({lead})}
   const pr=await pool.query("select id from projects where slug=$1 and status='published' limit 1",[slug])
   if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
   const q=await pool.query('insert into leads(project_id,name,email,phone,message,status,source) values($1,$2,$3,$4,$5,$6,$7) returning id,name,email,phone,message,status,source,created_at',[pr.rows[0].id,name,String(req.body?.email||'').trim()||null,phone||null,message,'new','public'])
@@ -918,6 +920,7 @@ app.post('/api/public/:slug/bookings', async (req,res) => {
   const slug=String(req.params.slug||'').trim()
   const name=String(req.body?.name||'').trim()
   const phone=String(req.body?.phone||'').trim()
+  if(name.length>120||phone.length>40) return res.status(400).json({error:'Некорректная длина данных'})
   const startsAt=String(req.body?.starts_at||'').trim()
   const serviceName=String(req.body?.service_name||'').trim()
   const startsDate=new Date(startsAt)
@@ -928,7 +931,7 @@ app.post('/api/public/:slug/bookings', async (req,res) => {
   if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
   const conflict=await pool.query("select id from bookings where project_id::text=$1::text and status<>'cancelled' and starts_at between $2::timestamptz - interval '30 minutes' and $2::timestamptz + interval '30 minutes' limit 1",[pr.rows[0].id,startsAt]);
   if(conflict.rows[0]) return res.status(409).json({error:'На это время уже есть запись'})
-  const existingClient=await pool.query('select id from clients where studio_id::text=$1::text and phone=$2 limit 1',[pr.rows[0].studio_id,phone]);const clientId=existingClient.rows[0]?.id||null;const q=await pool.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7) returning *',[pr.rows[0].id,clientId,name,phone,startsAt,serviceName||null,'pending'])
+  const existingClient=await pool.query('select id from clients where studio_id::text=$1::text and phone=$2 limit 1',[pr.rows[0].studio_id,phone]);let clientId=existingClient.rows[0]?.id||null;if(!clientId){if(!await requireClientCapacity(pr.rows[0].studio_id,res))return;clientId=(await pool.query('insert into clients(studio_id,name,phone) values($1,$2,$3) returning id',[pr.rows[0].studio_id,name,phone])).rows[0].id}const q=await pool.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7) returning *',[pr.rows[0].id,clientId,name,phone,startsAt,serviceName||null,'pending'])
   await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[pr.rows[0].id,'booking','/booking',0,JSON.stringify({source:'public',service_name:serviceName})])
   res.status(201).json({booking:q.rows[0]})
 })
@@ -937,8 +940,9 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   const slug=String(req.params.slug||'').trim()
   const name=String(req.body?.name||'').trim()
   const phone=String(req.body?.phone||'').trim()
-  const email=String(req.body?.email||'').trim()
+  const email=String(req.body?.email||'').trim().toLowerCase()
   const items=Array.isArray(req.body?.items)?req.body.items:[]
+  if(name.length>120||phone.length>40||email.length>160) return res.status(400).json({error:'Некорректная длина данных'})
   if(!name || (!phone && !email) || !items.length) return res.status(400).json({error:'Укажите имя, телефон или email и хотя бы один товар'})
   let project
   if(!pool) project=memoryProjects.find(p=>p.slug===slug && p.status==='published')
