@@ -1185,31 +1185,8 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
     order=(await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[project.id,clientId,number,'pending',total,'RUB',JSON.stringify(normalized)])).rows[0]
     await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[project.id,'order_created','/checkout',total,JSON.stringify({order_id:order.id})])
   }
-  const paymentProvider='yookassa'
-  let checkout_url=null
-  if(paymentProvider==='yookassa'){
-    if(String(currency||'RUB').toUpperCase()!=='RUB') return res.status(400).json({error:'Для ЮKassa в Nexora сейчас используйте RUB.'})
-    if(!process.env.YOOKASSA_SHOP_ID||!process.env.YOOKASSA_SECRET_KEY) return res.status(503).json({error:'ЮKassa ещё не настроена в Nexora. Добавьте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY.'})
-    try{
-      const payment=await yookassaRequest('/payments','POST',{
-        amount:{value:Number(total).toFixed(2),currency:'RUB'},
-        capture:true,
-        confirmation:{type:'redirect',return_url:billingAppUrl()+'/?order='+encodeURIComponent(order.id)+'&payment=success&provider=yookassa'},
-        description:'Заказ '+number+' · '+project.name,
-        metadata:{order_id:String(order.id),studio_id:String(project.studio_id),project_id:String(project.id)}
-      },'order-'+String(order.id))
-      checkout_url=payment?.confirmation?.confirmation_url||null
-      if(!checkout_url) throw new Error('ЮKassa не вернула ссылку на оплату')
-      if(pool) await pool.query("update orders set status='pending',payment_provider='yookassa',payment_external_id=$1 where id::text=$2",[payment.id,order.id])
-      else order.payment_provider='yookassa',order.payment_external_id=payment.id
-    }catch(e){
-      console.error('YooKassa project checkout:',e.message)
-      if(pool) await pool.query("update orders set status='cancelled' where id::text=$1 and status='pending'",[order.id]).catch(()=>{})
-      return res.status(503).json({error:'Не удалось создать оплату ЮKassa: '+(e.message||'неизвестная ошибка')})
-    }
-  }
-  // Do not return internal studio/client/provider identifiers from a public checkout.
-  // The browser only needs the order id and payment redirect.
+  // External payments are intentionally deferred to the final billing phase.
+  // The public checkout still creates a real pending order and CRM client now.
   const publicOrder = {
     id: order.id,
     number: order.number,
@@ -1218,7 +1195,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
     currency: order.currency,
     items: order.items
   }
-  res.status(201).json({order:publicOrder,checkout_url})
+  res.status(201).json({order:publicOrder,checkout_url:null,payment_pending:false})
 })
 
 
