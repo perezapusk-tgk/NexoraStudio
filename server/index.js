@@ -672,8 +672,16 @@ app.post('/api/team', async (req,res) => {
   if(!requireRole(req,res,['owner','admin'])) return
   const email=String(req.body?.email||'').trim().toLowerCase(),role=String(req.body?.role||'member').trim()
   if(!email)return res.status(400).json({error:'Email обязателен'})
+  if(email.length>160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(400).json({error:'Укажите корректный email'})
   if(!['admin','member','viewer'].includes(role))return res.status(400).json({error:'Недопустимая роль'})
   try{
+    if(!pool){
+      const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
+      const cfg=planConfig(studio.plan)
+      const activeMembers=memoryUsers.filter(x=>x.studio_id===req.user.studio_id).length
+      const activeInvites=memoryInvitations.filter(x=>x.studio_id===req.user.studio_id&&!x.accepted_at&&x.expires_at>Date.now()).length
+      if(activeMembers+activeInvites>=cfg.teamLimit)return res.status(409).json({error:'Достигнут лимит участников тарифа',code:'PLAN_LIMIT',limit:cfg.teamLimit,plan:cfg.name})
+    }
     if(pool){
       const [users,invites]=await Promise.all([
         pool.query('select count(*)::int as count from users where studio_id::text=$1::text',[req.user.studio_id]),
@@ -768,6 +776,8 @@ app.post('/api/projects', async (req, res) => {
   const projectType = String(req.body?.projectType || 'website').trim()
   const templateId = String(req.body?.templateId || '').trim()
   if (!name) return res.status(400).json({ error: 'Название проекта обязательно' })
+  if (name.length>160) return res.status(400).json({ error: 'Название проекта слишком длинное' })
+  if (!['website','miniapp','site_miniapp'].includes(projectType)) return res.status(400).json({ error: 'Недопустимый тип проекта' })
   if (!pool) {
   const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
   const cfg=planConfig(studio.plan)
@@ -830,6 +840,7 @@ app.delete('/api/projects/:id',async(req,res)=>{
   await pool.query('delete from payments where project_id::text=$1',[req.params.id])
   await pool.query('delete from invoices where project_id::text=$1',[req.params.id])
   await pool.query('delete from orders where project_id::text=$1',[req.params.id])
+  await pool.query('delete from analytics_events where project_id::text=$1',[req.params.id])
   const deleted=await pool.query('delete from projects where id::text=$1 and studio_id::text=$2::text returning id',[req.params.id,req.user.studio_id])
   if(!deleted.rows[0])return res.status(404).json({error:'Проект не найден'})
   res.json({deleted:true})
