@@ -39,15 +39,15 @@ create table if not exists billing_transactions (
   currency text not null default 'RUB',
   status text not null default 'pending',
   provider text,
-  external_id text,
+  provider_payment_id text,
   created_at timestamptz not null default now(),
   paid_at timestamptz
 );
 create index if not exists idx_billing_transactions_studio_created
   on billing_transactions(studio_id, created_at desc);
-create unique index if not exists idx_billing_transactions_provider_external
-  on billing_transactions(provider, external_id)
-  where external_id is not null;
+create unique index if not exists idx_billing_transactions_provider_payment
+  on billing_transactions(provider, provider_payment_id)
+  where provider_payment_id is not null;
 
 -- Existing installations may have users created before password_hash was added.
 -- Do not invent passwords; such accounts must use registration/reset flow.
