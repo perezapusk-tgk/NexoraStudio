@@ -1250,13 +1250,13 @@ app.post('/api/public/:slug/events', async (req,res) => {
 app.get('/api/projects/:id/catalog', async (req,res) => {
   const id = String(req.params.id||'').trim()
   if (!id) return res.status(400).json({error:'Проект не указан'})
-  if (!pool) return res.json({ items: memoryCatalog.get(id) || [] })
+  if (!pool) { const project=memoryProjects.find(x=>(x.id===id||x.slug===id)&&x.studio_id===req.user.studio_id); if(!project)return res.status(404).json({error:'Проект не найден'}); return res.json({ items: memoryCatalog.get(project.id) || [] }) }
   // Resolve the project first and keep every comparison explicitly text-to-text.
   // This avoids PostgreSQL text/uuid operator mismatches on installations with
   // mixed legacy column types.
   const project = await pool.query(
-    'select id from projects where id::text=$1::text or slug=$1::text limit 1',
-    [id]
+    'select id from projects where (id::text=$1::text or slug=$1::text) and studio_id::text=$2::text limit 1',
+    [id,req.user.studio_id]
   )
   if (!project.rows[0]) return res.status(404).json({error:'Проект не найден'})
   const projectId = String(project.rows[0].id)
