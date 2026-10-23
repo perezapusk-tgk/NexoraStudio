@@ -1498,12 +1498,17 @@ app.post('/api/orders', async (req,res) => {
   const normalized=[]
   for(const item of items){
     const catalogId=String(item.catalog_id||item.id||'').trim()
-    const quantity=Math.max(1,Number(item.quantity||1))
+    const rawQuantity=item?.quantity ?? 1
+    const quantity=Number(rawQuantity)
+    if(!Number.isInteger(quantity) || quantity<1 || quantity>100) return res.status(400).json({error:'Количество товара должно быть целым числом от 1 до 100'})
     let source=null
     if(pool){const q=await pool.query('select id,name,price,currency from catalog_items where id::text=$1::text and project_id::text=$2::text limit 1',[catalogId,projectId]);source=q.rows[0]}
     else source=(memoryCatalog.get(projectId)||[]).find(x=>x.id===catalogId)
     if(!source) return res.status(400).json({error:'Товар не найден: '+catalogId})
     const price=Number(source.price||0)
+    const sourceCurrency=String(source.currency||'RUB').trim().toUpperCase()
+    if(sourceCurrency!=='RUB' || currency!=='RUB') return res.status(400).json({error:'Заказы доступны только в RUB'})
+    if(!Number.isFinite(price) || price<0 || price>100000000) return res.status(400).json({error:'У товара некорректная цена'})
     total+=price*quantity
     normalized.push({catalog_id:source.id,name:source.name,price,quantity})
   }
