@@ -31,6 +31,33 @@ const noStore = {
   'Expires':'0'
 }
 
+// Lightweight abuse protection for public endpoints. Render may sit behind a proxy,
+// so prefer the first forwarded address and fall back to Express' remote address.
+const publicRateBuckets = new Map()
+function publicRateLimit({windowMs=60000,max=30}={}){
+  return (req,res,next)=>{
+    if(req.method==='GET' || !req.path.startsWith('/api/public/')) return next()
+    const forwarded=String(req.headers['x-forwarded-for']||'').split(',')[0].trim()
+    const ip=forwarded || req.ip || req.socket?.remoteAddress || 'unknown'
+    const key=ip+'|'+Math.floor(Date.now()/windowMs)
+    const count=(publicRateBuckets.get(key)||0)+1
+    publicRateBuckets.set(key,count)
+    if(publicRateBuckets.size>5000){
+      const now=Date.now()
+      for(const [bucket] of publicRateBuckets){
+        const ts=Number(bucket.split('|').pop())
+        if(Number.isFinite(ts) && ts < Math.floor(now/windowMs)-2) publicRateBuckets.delete(bucket)
+      }
+    }
+    if(count>max){
+      res.set('Retry-After',String(Math.ceil(windowMs/1000)))
+      return res.status(429).json({error:'Слишком много запросов. Попробуйте немного позже.',code:'RATE_LIMITED'})
+    }
+    next()
+  }
+}
+app.use(publicRateLimit({windowMs:60000,max:30}))
+
 // Health must be available independently of the frontend bundle.
 const healthPayload = () => ({ok:true,service:'nexora-api',version:'0.8.0',storage:pool?'postgres':'memory',auth:'development-session'})
 app.get('/health', (_req,res) => {
