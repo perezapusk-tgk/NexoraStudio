@@ -1209,7 +1209,7 @@ app.get('/api/public/order/:id/payment-status', async (req,res)=>{
   const id=String(req.params.id||'').trim()
   if(!id) return res.status(400).json({error:'Заказ не указан'})
   if(!pool){
-    const order=memoryOrders.find(x=>x.id===id)
+    const order=memoryOrders.find(x=>x.id===id&&x.studio_id===req.user.studio_id)
     if(!order) return res.status(404).json({error:'Заказ не найден'})
     return res.json({status:order.status,payment_provider:order.payment_provider||null,payment_external_id:order.payment_external_id||null})
   }
@@ -1424,7 +1424,7 @@ app.post('/api/bookings/:id/payment', async (req,res) => {
   const currency=String(req.body?.currency||'RUB').trim().toUpperCase()
   if(!Number.isFinite(amount)||amount<=0)return res.status(400).json({error:'Укажите корректную сумму оплаты'})
   let booking
-  if(!pool) booking=memoryBookings.find(x=>x.id===id)
+  if(!pool) booking=memoryBookings.find(x=>x.id===id&&x.studio_id===req.user.studio_id)
   else booking=(await pool.query('select b.* from bookings b join projects p on p.id=b.project_id where b.id::text=$1 and p.studio_id::text=$2::text limit 1',[id,req.user.studio_id])).rows[0]
   if(!booking)return res.status(404).json({error:'Бронирование не найдено'})
   const projectId=booking.project_id||null
@@ -1636,7 +1636,7 @@ app.post('/api/orders', async (req,res) => {
 app.patch('/api/orders/:id', async (req,res) => {
   const status=String(req.body?.status||'').trim()
   if(!['pending','paid','cancelled','refunded'].includes(status)) return res.status(400).json({error:'Недопустимый статус заказа'})
-  if(!pool){const x=memoryOrders.find(v=>v.id===req.params.id);if(!x)return res.status(404).json({error:'Заказ не найден'});x.status=status;return res.json({order:x})}
+  if(!pool){const x=memoryOrders.find(v=>v.id===req.params.id&&v.studio_id===req.user.studio_id);if(!x)return res.status(404).json({error:'Заказ не найден'});x.status=status;return res.json({order:x})}
   const q=await pool.query('update orders o set status=$1 from projects p where o.id::text=$2::text and o.project_id::text=p.id::text and p.studio_id::text=$3::text returning o.*',[status,req.params.id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Заказ не найден'})
   res.json({order:q.rows[0]})
@@ -1644,7 +1644,7 @@ app.patch('/api/orders/:id', async (req,res) => {
 app.post('/api/orders/:id/invoice', async (req,res) => {
   const id=req.params.id
   let order
-  if(!pool) order=memoryOrders.find(x=>x.id===id)
+  if(!pool) order=memoryOrders.find(x=>x.id===id&&x.studio_id===req.user.studio_id)
   else { const q=await pool.query('select o.* from orders o join projects p on p.id=o.project_id where o.id::text=$1::text and p.studio_id::text=$2::text limit 1',[id,req.user.studio_id]); order=q.rows[0] }
   if(!order) return res.status(404).json({error:'Заказ не найден'})
   if(Number(order.total||0)<=0) return res.status(400).json({error:'У заказа некорректная сумма'})
@@ -2398,7 +2398,7 @@ app.post('/api/orders/:id/invoice', async (req,res) => {
   const id=req.params.id
   let order
   if(!pool) order=memoryOrders.find(x=>x.id===id)
-  else { const q=await pool.query('select * from orders where id::text=$1 limit 1',[id]); order=q.rows[0] }
+  else { const q=await pool.query('select o.* from orders o join projects p on p.id::text=o.project_id::text where o.id::text=$1 and p.studio_id::text=$2::text limit 1',[id,req.user.studio_id]); order=q.rows[0] }
   if(!order) return res.status(404).json({error:'Заказ не найден'})
   if(Number(order.total||0)<=0) return res.status(400).json({error:'У заказа некорректная сумма'})
   const number='INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
