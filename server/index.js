@@ -1003,7 +1003,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   }
   let clientId=null
   if(pool){
-    const existing=(await pool.query('select id from clients where studio_id::text=$1::text and ((phone=$2 and $2 <> '') or (email=$3 and $3 <> '')) limit 1',[project.studio_id||demoStudio.id,phone,email])).rows[0]
+    const existing=(await pool.query("select id from clients where studio_id::text=$1::text and ((phone=$2 and $2 <> '') or (email=$3 and $3 <> '')) limit 1",[project.studio_id||demoStudio.id,phone,email])).rows[0]
     if(existing) clientId=existing.id
     else {
       if(!await requireClientCapacity(project.studio_id,res))return
