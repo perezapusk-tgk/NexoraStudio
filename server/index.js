@@ -885,6 +885,41 @@ app.get('/api/projects/:id', async (req,res)=>{const id=req.params.id;if(!pool){
   if(!project) return res.status(404).json({error:'Проект не найден'})
   return res.json({project,pages:memoryPages.get(project.id)||[]})
 }const pr=await pool.query('select * from projects where studio_id::text=$2::text and (id::text=$1 or slug=$1) limit 1',[id,req.user.studio_id]);if(!pr.rows[0])return res.status(404).json({error:'Проект не найден'});const pg=await pool.query('select * from pages where project_id::text=$1::text order by created_at',[pr.rows[0].id]);res.json({project:pr.rows[0],pages:pg.rows})});
+app.post('/api/projects/:id/duplicate',async(req,res)=>{
+  const source=await ownedProject(req,req.params.id); if(!source)return res.status(404).json({error:'Проект не найден'})
+  const name=String(req.body?.name||source.name+' — копия').trim().slice(0,160)||'Копия проекта'
+  if(!pool){
+    const slugBase=slugify(name); let slug=slugBase,suffix=2
+    while(memoryProjects.some(x=>x.studio_id===req.user.studio_id&&x.slug===slug)) slug=slugBase+'-'+suffix++
+    const copy={...source,id:crypto.randomUUID(),name,slug,status:'draft',domain:null,settings:JSON.parse(JSON.stringify(source.settings||{})),created_at:new Date().toISOString(),updated_at:new Date().toISOString()}
+    memoryProjects.unshift(copy)
+    memoryPages.set(copy.id,(memoryPages.get(source.id)||[]).map(p=>({...p,id:crypto.randomUUID(),published:false})))
+    memoryCatalog.set(copy.id,(memoryCatalog.get(source.id)||[]).map(x=>({...x,id:crypto.randomUUID(),project_id:copy.id})))
+    return res.status(201).json({project:copy})
+  }
+  const usage=await pool.query('select count(*)::int as count from projects where studio_id::text=$1::text',[req.user.studio_id])
+  const limit=Number(req.studio.project_limit||planConfig(req.studio.plan).projectLimit)
+  if(Number(usage.rows[0].count)>=limit)return res.status(409).json({error:'Достигнут лимит проектов вашего тарифа',code:'PLAN_LIMIT'})
+  let slug=slugify(name),base=slug,suffix=2
+  while((await pool.query('select 1 from projects where studio_id::text=$1::text and slug=$2',[req.user.studio_id,slug])).rows[0]) slug=base+'-'+suffix++
+  const q=await pool.query('insert into projects(studio_id,name,slug,project_type,status,domain,settings) values($1,$2,$3,$4,$5,$6,$7) returning *',[req.user.studio_id,name,slug,source.project_type,'draft',null,JSON.stringify(source.settings||{})])
+  const project=q.rows[0]
+  const pages=await pool.query('select title,slug,content from pages where project_id::text=$1::text order by created_at',[source.id])
+  for(const p of pages.rows){await pool.query('insert into pages(project_id,title,slug,content,published) values($1,$2,$3,$4,false)',[project.id,p.title,p.slug,JSON.stringify(p.content||{blocks:[]})])}
+  const items=await pool.query('select name,description,price,currency,active from catalog_items where project_id::text=$1::text order by created_at',[source.id])
+  for(const item of items.rows){await pool.query('insert into catalog_items(project_id,name,description,price,currency,active) values($1,$2,$3,$4,$5,$6)',[project.id,item.name,item.description,item.price,item.currency,item.active])}
+  res.status(201).json({project})
+})
+app.post('/api/projects/:id/archive',async(req,res)=>{
+  const project=await ownedProject(req,req.params.id);if(!project)return res.status(404).json({error:'Проект не найден'})
+  if(!pool){project.status='archived';return res.json({project})}
+  const q=await pool.query("update projects set status='archived',updated_at=now() where id::text=$1::text and studio_id::text=$2::text returning *",[project.id,req.user.studio_id]);res.json({project:q.rows[0]})
+})
+app.post('/api/projects/:id/restore',async(req,res)=>{
+  const project=await ownedProject(req,req.params.id);if(!project)return res.status(404).json({error:'Проект не найден'})
+  if(!pool){project.status='draft';return res.json({project})}
+  const q=await pool.query("update projects set status='draft',updated_at=now() where id::text=$1::text and studio_id::text=$2::text returning *",[project.id,req.user.studio_id]);res.json({project:q.rows[0]})
+})
 app.delete('/api/projects/:id',async(req,res)=>{
   if(!pool){
     const index=memoryProjects.findIndex(x=>(x.id===req.params.id||x.slug===req.params.id)&&x.studio_id===req.user.studio_id)
