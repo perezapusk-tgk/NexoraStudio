@@ -95,6 +95,13 @@ app.get('/', (_req, res) => {
   res.sendFile(path.join(distDir, 'index.html'))
 })
 
+// SPA deep links: the React router is path-based, so published sites and Mini Apps
+// must receive the same HTML shell instead of Express returning a JSON/404 response.
+app.get(['/published/:slug','/miniapp/:slug'], (_req,res) => {
+  res.set(noStore)
+  res.sendFile(path.join(distDir, 'index.html'))
+})
+
 app.use(express.static(distDir, {
   index: false,
   fallthrough: true,
