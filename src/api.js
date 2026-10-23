@@ -94,5 +94,5 @@ export const api = {
   updatePayment: (id,status) => request('/payments/' + id,{method:'PATCH',body:JSON.stringify({status})}),
   analytics: () => request('/analytics/overview'),
   projectAnalytics: (id) => request('/projects/' + id + '/analytics'),
-  templates: () => request('/templates'),
+  templates: () => request('/templates'),\n  adminOverview: () => request('/admin/overview'),
 }
