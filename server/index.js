@@ -318,7 +318,7 @@ async function ownedProject(req,projectId){
   const id=String(projectId||'').trim()
   if(!id)return null
   if(!pool)return memoryProjects.find(x=>(x.id===id||x.slug===id)&&x.studio_id===req.user.studio_id)||null
-  return (await pool.query('select id,name,studio_id from projects where id::text=$1 and studio_id::text=$2::text limit 1',[id,req.user.studio_id])).rows[0]||null
+  return (await pool.query('select * from projects where id::text=$1 and studio_id::text=$2::text limit 1',[id,req.user.studio_id])).rows[0]||null
 }
 async function ownedClient(req,clientId){
   const id=String(clientId||'').trim()
