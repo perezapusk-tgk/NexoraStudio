@@ -204,6 +204,34 @@ function Root(){
   return <App/>
 }
 
+function OwnerDashboard(){
+  const [data,setData]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState('');
+  const load=async()=>{setLoading(true);try{setData(await api.adminOverview());setError('')}catch(e){setError(e.message||'Не удалось загрузить данные')}finally{setLoading(false)}}
+  useEffect(()=>{load();const t=setInterval(load,30000);return()=>clearInterval(t)},[]);
+  const metric=(value)=>new Intl.NumberFormat('ru-RU').format(Number(value||0));
+  const money=(value)=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:0}).format(Number(value||0));
+  return <div className="app" style={{background:'#f6f7fb'}}>
+    <main style={{width:'100%',padding:'32px',maxWidth:1400,margin:'0 auto'}}>
+      <div className="workspace-head" style={{marginBottom:24}}>
+        <div className="workspace-title"><div className="project-logo dark">N</div><div><b>Nexora Owner</b><span>Панель владельца платформы</span></div></div>
+        <div className="workspace-actions"><span className="status success"><i/>Система онлайн</span><button className="filter" onClick={load}>Обновить</button><button className="filter" onClick={()=>{api.authLogout();location.reload()}}><LogOut size={14}/> Выйти</button></div>
+      </div>
+      <div className="card workspace-card" style={{marginBottom:18}}><div className="eyebrow">Главное</div><h1 style={{marginBottom:8}}>Центр управления Nexora</h1><p>Здесь вы видите рост платформы, студии, пользователей, продажи и расчётную комиссию.</p></div>
+      {error&&<div className="form-error" style={{marginBottom:18}}>{error}</div>}
+      {loading&&!data?<div className="card workspace-card"><b>Загружаем статистику…</b></div>:data&&<><div className="dashboard-grid" style={{gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))'}}>
+        {[['Студии',metric(data.metrics.studios)],['Пользователи',metric(data.metrics.users)],['Проекты',metric(data.metrics.projects)],['Заявки',metric(data.metrics.leads)],['Бронирования',metric(data.metrics.bookings)],['Заказы',metric(data.metrics.orders)],['Оборот клиентов',money(data.metrics.gmv)],['Подписки Nexora',money(data.metrics.subscriptionRevenue)]].map(([label,value])=><div className="card stat-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}
+      </div>
+      <div className="workspace-grid" style={{marginTop:18}}>
+        <section className="card workspace-card"><div className="eyebrow">Доход платформы</div><h2>{money(data.metrics.estimatedPlatformCommission)}</h2><p>Расчётная комиссия: <b>{data.metrics.platformCommissionPercent}%</b> от оборота клиентских заказов. Фактические выплаты считаются отдельно по условиям YooKassa.</p><div className="workspace-stat-grid"><div><b>{data.metrics.platformCommissionPercent}%</b><span>ставка комиссии</span></div><div><b>{money(data.metrics.gmv)}</b><span>оборот</span></div><div><b>{money(data.metrics.subscriptionRevenue)}</b><span>подписки</span></div></div></section>
+        <section className="card workspace-card"><div className="eyebrow">Тарифы</div><h2>Распределение студий</h2>{Object.entries(data.plans||{}).map(([plan,count])=><div className="page-row" key={plan}><b style={{textTransform:'capitalize'}}>{plan}</b><span className="status success"><i/>{metric(count)}</span></div>)}</section>
+      </div>
+      <section className="card workspace-card" style={{marginTop:18}}><div className="card-head"><div><h2>Последние студии</h2><span>Новые рабочие пространства платформы</span></div><span className="status draft"><i/>Обновление каждые 30 сек</span></div>{data.recentStudios?.length?<div className="team-list">{data.recentStudios.map(s=><div className="team-row" key={s.id}><div className="team-person"><b>{s.name}</b><span>{s.owner_name} · {new Date(s.created_at).toLocaleString('ru-RU')}</span></div><span className="status success"><i/>{s.plan}</span></div>)}</div>:<div className="empty-editor"><b>Пока нет клиентских студий</b><span>Как только появится первая студия, она отобразится здесь.</span></div>}</section>
+      </>}
+      <div style={{marginTop:18,color:'#667085',fontSize:13}}>Последнее обновление: {data?.generated_at?new Date(data.generated_at).toLocaleString('ru-RU'):'—'}</div>
+    </main>
+  </div>
+}
+
 function App() {
   const [auth,setAuth]=useState(null)
   const [authLoading,setAuthLoading]=useState(true)
