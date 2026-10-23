@@ -776,6 +776,7 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh,onProjectU
   const [device,setDevice]=useState('desktop');
   const [tg,setTg]=useState({enabled:false,configured:false,botUsername:'',buttonText:'Открыть Mini App',url:''});
   const [telegramBusy,setTelegramBusy]=useState(false);
+  const [publishedUrl,setPublishedUrl]=useState('');
   const [domainBusy,setDomainBusy]=useState(false), [domainInfo,setDomainInfo]=useState(null);
   const [analytics,setAnalytics]=useState(null), [openFaq,setOpenFaq]=useState({});
   const [pageId,setPageId]=useState(null), [blocks,setBlocks]=useState([]);
@@ -820,7 +821,7 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh,onProjectU
   };
   const saveSettings=async()=>{setSaving(true);try{await api.updateProject(current.id,{name,domain,settings:{miniApp:{enabled:tg.enabled,buttonText:tg.buttonText}}});await onRefresh()}finally{setSaving(false)}};
   const configureTelegram=async()=>{setTelegramBusy(true);try{const result=await api.configureTelegram(current.id,{button_text:tg.buttonText});setTg(v=>({...v,enabled:true,configured:true,botUsername:result.bot?.username||v.botUsername,url:result.url||v.url}));await onRefresh();window.alert('Telegram Mini App подключён к боту @'+(result.bot?.username||'bot'))}catch(error){window.alert(error.message||'Не удалось подключить Telegram')}finally{setTelegramBusy(false)}};
-  const publish=async()=>{setSaving(true);try{const result=await api.publishProject(current.id);onProjectUpdated?.(result?.project||{...current,status:'published'});await onRefresh()}finally{setSaving(false)}};
+  const publish=async()=>{setSaving(true);try{const result=await api.publishProject(current.id);setPublishedUrl(result?.url||'');onProjectUpdated?.(result?.project||{...current,status:'published'});await onRefresh()}catch(e){window.alert(e.message||'Не удалось опубликовать проект')}finally{setSaving(false)}};
 
   return <div className="workspace-page">
     <div className="workspace-head">
@@ -828,6 +829,8 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh,onProjectU
       <div className="workspace-title"><div className="project-logo dark">{current.name?.slice(0,1)}</div><div><b>{current.name}</b><span>{current.project_type||'website'} · {current.status==='published'?'Опубликован':'Черновик'}</span></div></div>
       <div className="workspace-actions"><button className="filter" onClick={()=>setView('preview')}><ExternalLink size={14}/> Предпросмотр</button><button className="primary" onClick={publish} disabled={saving}><Globe2 size={15}/> Опубликовать</button></div>
     </div>
+    {publishedUrl&&<div className="publish-success card"><div><b>Проект опубликован</b><span>{publishedUrl}</span></div><a className="primary" href={publishedUrl} target="_blank" rel="noreferrer"><ExternalLink size={14}/> Открыть сайт</a></div>}
+
     <div className="workspace-tabs">{[['overview','Обзор'],['pages','Страницы'],['catalog','Каталог'],['editor','Редактор'],['preview','Предпросмотр'],['settings','Настройки']].map(([id,label])=><button key={id} className={view===id?'selected':''} onClick={()=>setView(id)}>{label}</button>)}</div>
 
     {view==='overview'&&<div className="workspace-grid">
