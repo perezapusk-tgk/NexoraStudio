@@ -1793,9 +1793,7 @@ if (process.env.NODE_ENV !== 'test') {
     console.error('Nexora server error', err)
     process.exitCode = 1
   })
-}+values.length+' and b.project_id in (select id from projects where studio_id::text=
-  res.json({booking:q.rows[0]})
-})
+}
 
 app.post('/api/bookings/:id/payment', async (req,res) => {
   const id=req.params.id
