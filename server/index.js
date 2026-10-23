@@ -1385,6 +1385,7 @@ app.post('/api/bookings', async (req,res) => {
   const endsAt=String(body.ends_at||'').trim()
   const status=String(body.status||'confirmed').trim()
   if(!projectId||!name||!startsAt||!endsAt)return res.status(400).json({error:'Укажите проект, клиента и время начала и окончания'})
+  if(name.length>120||phone.length>40||service.length>160)return res.status(400).json({error:'Слишком длинные данные бронирования'})
   if(!['pending','confirmed','completed','cancelled'].includes(status))return res.status(400).json({error:'Недопустимый статус'})
   if(Number.isNaN(Date.parse(startsAt))||Number.isNaN(Date.parse(endsAt))||new Date(endsAt)<=new Date(startsAt))return res.status(400).json({error:'Проверьте время начала и окончания'})
   if(!pool){
@@ -1422,6 +1423,9 @@ app.patch('/api/bookings/:id', async (req,res) => {
   const customerPhone=body.customer_phone!==undefined?String(body.customer_phone||'').trim():undefined
   const serviceName=body.service_name!==undefined?String(body.service_name||'').trim():undefined
   if(hasStatus&&!['pending','confirmed','completed','cancelled'].includes(status)) return res.status(400).json({error:'Недопустимый статус бронирования'})
+  if(customerName!==undefined&&customerName.length>120)return res.status(400).json({error:'Имя клиента слишком длинное'})
+  if(customerPhone!==undefined&&customerPhone.length>40)return res.status(400).json({error:'Телефон слишком длинный'})
+  if(serviceName!==undefined&&serviceName.length>160)return res.status(400).json({error:'Название услуги слишком длинное'})
   if(startsAt&&Number.isNaN(Date.parse(startsAt))) return res.status(400).json({error:'Некорректное время начала'})
   if(endsAt&&Number.isNaN(Date.parse(endsAt))) return res.status(400).json({error:'Некорректное время окончания'})
   if(startsAt&&endsAt&&new Date(endsAt)<=new Date(startsAt)) return res.status(400).json({error:'Время окончания должно быть позже начала'})
@@ -1559,6 +1563,10 @@ app.patch('/api/clients/:id', async (req,res) => {
   const email=String(req.body?.email||'').trim() || null
   const phone=String(req.body?.phone||'').trim() || null
   if(!name)return res.status(400).json({error:'Имя клиента обязательно'})
+  if(name.length>120)return res.status(400).json({error:'Имя клиента слишком длинное'})
+  if(email&&email.length>160)return res.status(400).json({error:'Email слишком длинный'})
+  if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(400).json({error:'Некорректный email'})
+  if(phone&&phone.length>40)return res.status(400).json({error:'Телефон слишком длинный'})
   if(!pool){
     const client=memoryClients.find(x=>x.id===id&&x.studio_id===req.user.studio_id)
     if(!client)return res.status(404).json({error:'Клиент не найден'})
