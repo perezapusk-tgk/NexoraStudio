@@ -43,11 +43,10 @@ const activities = [
 ]
 
 function PublicApp({mode,slug}){
-  const [data,setData]=useState(null)
-  const [error,setError]=useState('')
-  useEffect(()=>{let alive=true;api.publicProject(slug).then(v=>alive&&setData(v)).catch(()=>alive&&setError('Проект не найден')).finally(()=>{});return()=>{alive=false}},[slug])
-  if(error) return <div className="public-error"><b>{error}</b><span>Проверьте адрес публикации.</span></div>
-  if(!data) return <div className="public-loading">Загрузка…</div>
+  const [data,setData]=useState(null),[error,setError]=useState(''),[retry,setRetry]=useState(0)
+  useEffect(()=>{let alive=true;setError('');api.publicProject(slug).then(v=>alive&&setData(v)).catch(e=>alive&&setError(e?.message||'Проект не найден')).finally(()=>{});return()=>{alive=false}},[slug,retry])
+  if(error) return <div className="public-error"><div className="public-error-icon"><Globe2 size={28}/></div><b>Не удалось открыть проект</b><span>{error}</span><button className="primary" onClick={()=>setRetry(v=>v+1)}>Повторить</button><a href="/">На главную Nexora</a></div>
+  if(!data) return <div className="public-loading"><div className="public-loading-card"><div className="brand-mark">N</div><b>Загрузка проекта…</b><span>Подготавливаем {mode==='miniapp'?'Mini App':'сайт'}</span></div></div>
   return mode==='miniapp'?<PublicMiniApp data={data} slug={slug}/>:<PublicSite data={data} slug={slug}/>
 }
 
