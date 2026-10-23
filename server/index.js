@@ -367,14 +367,17 @@ async function requireSuperAdmin(req,res){
   return true
 }
 async function adminOverview(){
+  const fee=Number(process.env.ADMIN_PLATFORM_FEE_PERCENT||10)
+  const now=new Date()
   if(!pool){
     const studios=memoryStudios.filter(x=>x.id!==demoStudio.id)
     const users=memoryUsers.filter(x=>x.id!=='demo-owner')
     const projects=memoryProjects.filter(x=>x.studio_id!==demoStudio.id)
-    const revenue=memoryPayments.filter(x=>x.status==='paid').reduce((a,x)=>a+Number(x.amount||0),0)
-    return {generated_at:new Date().toISOString(),currency:'RUB',metrics:{studios:studios.length,users:users.length,projects:projects.length,leads:memoryLeads.length,bookings:memoryBookings.length,orders:memoryOrders.length,gmv:revenue,subscriptionRevenue:0,platformCommissionPercent:Number(process.env.ADMIN_PLATFORM_FEE_PERCENT||10),estimatedPlatformCommission:revenue*Number(process.env.ADMIN_PLATFORM_FEE_PERCENT||10)/100},plans:{},recentStudios:studios.slice(-20).reverse()}
+    const gmv=memoryPayments.filter(x=>x.status==='paid').reduce((a,x)=>a+Number(x.amount||0),0)
+    const activeStudios=studios.length
+    return {generated_at:now.toISOString(),currency:'RUB',metrics:{studios:studios.length,users:users.length,projects:projects.length,leads:memoryLeads.length,bookings:memoryBookings.length,orders:memoryOrders.length,gmv,subscriptionRevenue:0,mrr:0,arr:0,activeStudios,inactiveStudios:0,newStudios30d:studios.length,platformCommissionPercent:fee,estimatedPlatformCommission:gmv*fee/100},plans:{},series:[],recentStudios:studios.slice(-20).reverse()}
   }
-  const [studios,users,projects,leads,bookings,orders,gmv,subscriptions,plans,recent]=await Promise.all([
+  const [studios,users,projects,leads,bookings,orders,gmv,subscriptions,plans,recent,active,new30,series]=await Promise.all([
     pool.query("select count(*)::int as count from studios"),
     pool.query("select count(*)::int as count from users"),
     pool.query("select count(*)::int as count from projects"),
@@ -384,11 +387,22 @@ async function adminOverview(){
     pool.query("select coalesce(sum(amount),0)::numeric as total from payments where status='paid'"),
     pool.query("select coalesce(sum(amount),0)::numeric as total from billing_transactions where status='paid' and provider='yookassa'"),
     pool.query("select plan,count(*)::int as count from studios group by plan order by count desc"),
-    pool.query("select id,name,owner_name,plan,created_at from studios order by created_at desc limit 20")
+    pool.query("select id,name,owner_name,plan,subscription_status,created_at from studios order by created_at desc limit 20"),
+    pool.query("select count(*)::int as count from studios where coalesce(subscription_status,'active')='active'"),
+    pool.query("select count(*)::int as count from studios where created_at>=now()-interval '30 days'"),
+    pool.query("select to_char(date_trunc('day',d),'YYYY-MM-DD') as day, coalesce((select count(*) from studios s where s.created_at::date=d::date),0)::int as studios, coalesce((select sum(bt.amount) from billing_transactions bt where bt.status='paid' and bt.provider='yookassa' and bt.paid_at::date=d::date),0)::numeric as subscription_revenue from generate_series(current_date-29,current_date,interval '1 day') d group by d order by d")
   ])
-  const fee=Number(process.env.ADMIN_PLATFORM_FEE_PERCENT||10)
-  const g=Number(gmv.rows[0]?.total||0), sub=Number(subscriptions.rows[0]?.total||0)
-  return {generated_at:new Date().toISOString(),currency:'RUB',metrics:{studios:studios.rows[0].count,users:users.rows[0].count,projects:projects.rows[0].count,leads:leads.rows[0].count,bookings:bookings.rows[0].count,orders:orders.rows[0].count,gmv:g,subscriptionRevenue:sub,platformCommissionPercent:fee,estimatedPlatformCommission:g*fee/100},plans:Object.fromEntries(plans.rows.map(x=>[x.plan,x.count])),recentStudios:recent.rows}
+  const totalStudios=Number(studios.rows[0]?.count||0)
+  const activeStudios=Number(active.rows[0]?.count||0)
+  const sub=Number(subscriptions.rows[0]?.total||0)
+  const g=Number(gmv.rows[0]?.total||0)
+  const mrr=sub
+  return {generated_at:now.toISOString(),currency:'RUB',metrics:{
+    studios:totalStudios,users:Number(users.rows[0]?.count||0),projects:Number(projects.rows[0]?.count||0),
+    leads:Number(leads.rows[0]?.count||0),bookings:Number(bookings.rows[0]?.count||0),orders:Number(orders.rows[0]?.count||0),
+    gmv:g,subscriptionRevenue:sub,mrr,arr:mrr*12,activeStudios,inactiveStudios:Math.max(0,totalStudios-activeStudios),
+    newStudios30d:Number(new30.rows[0]?.count||0),platformCommissionPercent:fee,estimatedPlatformCommission:g*fee/100
+  },plans:Object.fromEntries(plans.rows.map(x=>[x.plan,x.count])),series:series.rows,recentStudios:recent.rows}
 }
 
 function requireRole(req,res,roles){ if(!roles.includes(req.user.role)) { res.status(403).json({error:'Недостаточно прав для этой операции'}); return false } return true }
