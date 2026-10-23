@@ -1042,6 +1042,20 @@ app.post('/api/projects/:id/domain/connect', async (req,res) => {
   res.json({project:q.rows[0],domain:settings.domain})
 })
 
+app.post('/api/projects/:id/domain/disconnect', async (req,res) => {
+  const project = await ownedProject(req,req.params.id)
+  if(!project)return res.status(404).json({error:'Проект не найден'})
+  const settings={...(project.settings||{})}
+  delete settings.domain
+  if(!pool){
+    project.domain=null
+    project.settings=settings
+    return res.json({project,domain:null})
+  }
+  const q=await pool.query('update projects set domain=null,settings=$1,updated_at=now() where id::text=$2::text returning *',[JSON.stringify(settings),project.id])
+  return res.json({project:q.rows[0],domain:null})
+})
+
 app.post('/api/projects/:id/telegram/configure', async (req,res) => {
   const token = String(process.env.TELEGRAM_BOT_TOKEN || '').trim()
   if (!token) return res.status(503).json({ error: 'TELEGRAM_BOT_TOKEN не настроен на сервере' })
