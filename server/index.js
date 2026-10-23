@@ -1613,7 +1613,7 @@ async function runStartupMigrations(){
     await client.query(schema)
     await client.query('create table if not exists schema_migrations (version text primary key, applied_at timestamptz not null default now())')
     const dir=path.join(process.cwd(),'server','migrations')
-    const files=(await fs.readdir(dir)).filter(name=>/^\\d+_.+\\.sql$/.test(name)).sort()
+    const files=(await fs.readdir(dir)).filter(name=>/^\d+_.+\.sql$/.test(name)).sort()
     for(const file of files){
       const exists=await client.query('select 1 from schema_migrations where version=$1',[file])
       if(exists.rowCount) continue
