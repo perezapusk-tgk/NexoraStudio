@@ -1055,7 +1055,8 @@ app.post('/api/projects/:id/publish',async(req,res)=>{
   const q=await pool.query("update projects set status='published',updated_at=now() where id::text=$1 and studio_id::text=$2::text returning *",[req.params.id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Проект не найден'})
   await pool.query('update pages set published=true,updated_at=now() where project_id::text=$1',[req.params.id])
-  res.json({published:true,project:q.rows[0],url:q.rows[0].domain?'https://'+q.rows[0].domain:'https://'+q.rows[0].slug+'.nexora.site'})
+  const publicBase=q.rows[0].domain?'https://'+q.rows[0].domain:billingAppUrl()
+  res.json({published:true,project:q.rows[0],url:publicBase+'/published/'+encodeURIComponent(q.rows[0].slug),miniapp_url:publicBase+'/miniapp/'+encodeURIComponent(q.rows[0].slug)})
 })
 
 app.get('/api/leads', async (req, res) => {
