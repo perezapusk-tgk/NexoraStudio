@@ -1453,7 +1453,7 @@ app.patch('/api/leads/:id', async (req,res) => {
     lead.status=status
     return res.json({lead})
   }
-  const q=await pool.query('update leads set status=$1 where id::text=$2::text returning *',[status,id])
+  const q=await pool.query('update leads l set status=$1 from projects p where l.id::text=$2::text and p.id::text=l.project_id::text and p.studio_id::text=$3::text returning l.*',[status,id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Заявка не найдена'})
   res.json({lead:q.rows[0]})
 })
@@ -1461,7 +1461,7 @@ app.patch('/api/leads/:id', async (req,res) => {
 app.post('/api/leads/:id/convert', async (req,res) => {
   const id=String(req.params.id)
   if(!pool){
-    const lead=memoryLeads.find(x=>x.id===id)
+    const lead=memoryLeads.find(x=>x.id===id&&x.studio_id===req.user.studio_id)
     if(!lead)return res.status(404).json({error:'Заявка не найдена'})
     const existing=memoryClients.find(x=>x.studio_id===req.user.studio_id&&((lead.phone&&x.phone===lead.phone)||(lead.email&&x.email===lead.email)))
     if(existing)return res.json({client:existing,existing:true})
@@ -1471,14 +1471,14 @@ app.post('/api/leads/:id/convert', async (req,res) => {
     memoryClients.unshift(client)
     return res.status(201).json({client,existing:false})
   }
-  const leadQ=await pool.query('select l.*,p.studio_id from leads l left join projects p on p.id::text=l.project_id::text where l.id::text=$1::text limit 1',[id])
+  const leadQ=await pool.query('select l.*,p.studio_id from leads l left join projects p on p.id::text=l.project_id::text where l.id::text=$1::text and p.studio_id::text=$2::text limit 1',[id,req.user.studio_id])
   if(!leadQ.rows[0])return res.status(404).json({error:'Заявка не найдена'})
   const lead=leadQ.rows[0]
   const existingQ=await pool.query('select id,name,email,phone,created_at from clients where studio_id::text=$3::text and ((phone=$1 and $1 is not null) or (email=$2 and $2 is not null)) limit 1',[lead.phone,lead.email,lead.studio_id])
   if(existingQ.rows[0])return res.json({client:existingQ.rows[0],existing:true})
   if(!await requireClientCapacity(lead.studio_id,res))return
   const q=await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id,name,email,phone,created_at',[lead.studio_id,lead.name,lead.email||null,lead.phone||null])
-  await pool.query("update leads set status='won' where id::text=$1::text",[id])
+  await pool.query("update leads set status='won' where id::text=$1::text and project_id in (select id from projects where studio_id::text=$2::text)",[id,req.user.studio_id])
   res.status(201).json({client:q.rows[0],existing:false})
 })
 
@@ -1648,7 +1648,7 @@ app.post('/api/orders/:id/invoice', async (req,res) => {
   const id=req.params.id
   let order
   if(!pool) order=memoryOrders.find(x=>x.id===id&&x.studio_id===req.user.studio_id)
-  else { const q=await pool.query('select * from orders where id::text=$1 limit 1',[id]); order=q.rows[0] }
+  else { const q=await pool.query('select o.* from orders o join projects p on p.id::text=o.project_id::text where o.id::text=$1::text and p.studio_id::text=$2::text limit 1',[id,req.user.studio_id]); order=q.rows[0] }
   if(!order) return res.status(404).json({error:'Заказ не найден'})
   if(Number(order.total||0)<=0) return res.status(400).json({error:'У заказа некорректная сумма'})
   const number='INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
