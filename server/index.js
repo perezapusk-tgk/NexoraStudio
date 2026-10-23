@@ -850,6 +850,7 @@ app.post('/api/projects/:id/telegram/configure', async (req,res) => {
   if (!token) return res.status(503).json({ error: 'TELEGRAM_BOT_TOKEN не настроен на сервере' })
   const project = await ownedProject(req,req.params.id)
   if (!project) return res.status(404).json({ error: 'Проект не найден' })
+  if (project.status !== 'published') return res.status(409).json({ error: 'Сначала опубликуйте проект. Telegram Mini App доступен только для опубликованных проектов.', code: 'PROJECT_NOT_PUBLISHED' })
   const domain = String(project.domain || '').trim()
   const base = domain ? 'https://' + domain.replace(/^https?:\/\//,'').replace(/\/$/,'') : billingAppUrl()
   const miniAppUrl = base + '/miniapp/' + project.slug
