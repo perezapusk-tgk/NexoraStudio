@@ -362,7 +362,35 @@ app.post('/api/auth/logout',requireAuth,async(req,res)=>{
 })
 
 
-function requireRole(req,res,roles){ if(!roles.includes(req.user.role)) { res.status(403).json({error:'Недостаточно прав для этой операции'}); return false } return true }
+async function requireSuperAdmin(req,res){
+  if(req.user?.role!=='superadmin') { res.status(403).json({error:'Доступ только владельцу Nexora'}); return false }
+  return true
+}
+async function adminOverview(){
+  if(!pool){
+    const studios=memoryStudios.filter(x=>x.id!==demoStudio.id)
+    const users=memoryUsers.filter(x=>x.id!=='demo-owner')
+    const projects=memoryProjects.filter(x=>x.studio_id!==demoStudio.id)
+    const revenue=memoryPayments.filter(x=>x.status==='paid').reduce((a,x)=>a+Number(x.amount||0),0)
+    return {generated_at:new Date().toISOString(),currency:'RUB',metrics:{studios:studios.length,users:users.length,projects:projects.length,leads:memoryLeads.length,bookings:memoryBookings.length,orders:memoryOrders.length,gmv:revenue,subscriptionRevenue:0,platformCommissionPercent:Number(process.env.ADMIN_PLATFORM_FEE_PERCENT||10),estimatedPlatformCommission:revenue*Number(process.env.ADMIN_PLATFORM_FEE_PERCENT||10)/100},plans:{},recentStudios:studios.slice(-20).reverse()}
+  }
+  const [studios,users,projects,leads,bookings,orders,gmv,subscriptions,plans,recent]=await Promise.all([
+    pool.query("select count(*)::int as count from studios"),
+    pool.query("select count(*)::int as count from users"),
+    pool.query("select count(*)::int as count from projects"),
+    pool.query("select count(*)::int as count from leads l join projects p on p.id=l.project_id"),
+    pool.query("select count(*)::int as count from bookings b join projects p on p.id=b.project_id"),
+    pool.query("select count(*)::int as count from orders o join projects p on p.id=o.project_id"),
+    pool.query("select coalesce(sum(amount),0)::numeric as total from payments where status='paid'"),
+    pool.query("select coalesce(sum(amount),0)::numeric as total from billing_transactions where status='paid' and provider='yookassa'"),
+    pool.query("select plan,count(*)::int as count from studios group by plan order by count desc"),
+    pool.query("select id,name,owner_name,plan,created_at from studios order by created_at desc limit 20")
+  ])
+  const fee=Number(process.env.ADMIN_PLATFORM_FEE_PERCENT||10)
+  const g=Number(gmv.rows[0]?.total||0), sub=Number(subscriptions.rows[0]?.total||0)
+  return {generated_at:new Date().toISOString(),currency:'RUB',metrics:{studios:studios.rows[0].count,users:users.rows[0].count,projects:projects.rows[0].count,leads:leads.rows[0].count,bookings:bookings.rows[0].count,orders:orders.rows[0].count,gmv:g,subscriptionRevenue:sub,platformCommissionPercent:fee,estimatedPlatformCommission:g*fee/100},plans:Object.fromEntries(plans.rows.map(x=>[x.plan,x.count])),recentStudios:recent.rows}
+}
+\nfunction requireRole(req,res,roles){ if(!roles.includes(req.user.role)) { res.status(403).json({error:'Недостаточно прав для этой операции'}); return false } return true }
 async function ownedProject(req,projectId){
   const id=String(projectId||'').trim()
   if(!id)return null
@@ -416,7 +444,11 @@ app.use('/api',async(req,res,next)=>{
   }catch(e){next(e)}
 })
 
-app.get('/api/templates', async (_req,res)=>{
+app.get('/api/admin/overview', async (req,res)=>{
+  if(!(await requireSuperAdmin(req,res))) return
+  try{res.json(await adminOverview())}catch(e){res.status(500).json({error:'Не удалось загрузить статистику владельца'})}
+})
+\napp.get('/api/templates', async (_req,res)=>{
   const templates=Object.values(TEMPLATE_DEFINITIONS).map(t=>({id:t.id,name:t.name,category:t.category,blocks:t.blocks.length,catalog:t.catalog.length,description:'Готовый сайт + Mini App'}))
   res.json({templates})
 })
@@ -1717,6 +1749,21 @@ app.use((err,req,res,next)=>{
   res.status(Number(err?.status)||500).json({error:'Внутренняя ошибка сервера',detail:process.env.NODE_ENV==='production'?undefined:(err?.message||String(err))})
 })
 
+async function bootstrapOwnerAccount(){
+  const email=String(process.env.ADMIN_EMAIL||'').trim().toLowerCase()
+  const password=String(process.env.ADMIN_PASSWORD||'')
+  const name=String(process.env.ADMIN_NAME||'Владелец Nexora').trim()
+  if(!pool||!email||password.length<12) return
+  const existing=(await pool.query('select id,role from users where lower(email)=lower($1) limit 1',[email])).rows[0]
+  if(existing){
+    if(existing.role!=='superadmin') await pool.query("update users set role='superadmin' where id=$1",[existing.id])
+    return
+  }
+  const studio=(await pool.query("insert into studios(name,owner_name,plan,project_limit) values($1,$2,'pro',200) returning id,name,owner_name,plan,project_limit",['Nexora Owner',name])).rows[0]
+  await pool.query("insert into users(studio_id,name,email,role,password_hash) values($1,$2,$3,'superadmin',$4)",[studio.id,name,email,hashPassword(password)])
+  console.log('Nexora owner account bootstrapped:',email)
+}
+
 async function runStartupMigrations(){
   if(!pool) return
   const client=await pool.connect()
@@ -1743,7 +1790,7 @@ async function runStartupMigrations(){
 }
 
 if (process.env.NODE_ENV !== 'test') {
-  await runStartupMigrations()
+  await runStartupMigrations()\n  await bootstrapOwnerAccount()
   const server = app.listen(port, host, () => console.log('Nexora API listening on '+host+':'+port))
   server.on('error', (err) => {
     console.error('Nexora server error', err)
