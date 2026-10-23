@@ -405,7 +405,7 @@ app.post('/api/billing/plan', async (req,res)=>{
   if(current?.plan===plan)return res.json({ok:true,plan:planConfig(plan),message:'Этот тариф уже активен'})
   if(process.env.BILLING_MODE!=='manual')return res.status(402).json({error:'Для реального переключения тарифа требуется подключить платёжного провайдера. Сейчас доступен безопасный режим без списания средств.'})
   const currency=current?.billing_currency||'RUB'
-  const amount=currency==='USD'?Number(PLAN_CONFIG[plan].price.toFixed(2)):Number((PLAN_CONFIG[plan].price*100).toFixed(2))
+  const amount=Number(PLAN_CONFIG[plan].rubPrice.toFixed(2))
   if(!pool){
     const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
     studio.plan=plan;studio.projectLimit=PLAN_CONFIG[plan].projectLimit;studio.project_limit=PLAN_CONFIG[plan].projectLimit;studio.subscription_status='active';studio.subscription_started_at=new Date().toISOString()
@@ -417,11 +417,7 @@ app.post('/api/billing/plan', async (req,res)=>{
 })
 app.get('/api/billing/plans',(req,res)=>res.json({plans:Object.entries(PLAN_CONFIG).map(([id,p])=>({id,...p}))}))
 
-function billingAmount(plan,currency){
-  const base=planConfig(plan).price
-  const rub=planConfig(plan).rubPrice
-  return currency==='USD'?Number(base.toFixed(2)):Number(rub.toFixed(2))
-}
+function billingAmount(plan,_currency='RUB'){ return Number(planConfig(plan).rubPrice.toFixed(2)) }
 async function yookassaRequest(pathname,method='GET',body=null,idempotenceKey=null){
   const shopId=String(process.env.YOOKASSA_SHOP_ID||'').trim()
   const secret=String(process.env.YOOKASSA_SECRET_KEY||'').trim()
@@ -1303,7 +1299,7 @@ app.get('/api/orders/:id', async (req,res) => {
     const client=order.client_id?memoryClients.find(x=>x.id===order.client_id):null
     const payments=memoryPayments.filter(x=>x.order_id===id)
     const invoice=memoryInvoices.find(x=>x.description===('Счёт по заказу '+order.number))
-    const timeline=[{type:'order',text:'Заказ создан',date:order.created_at},...payments.map(p=>({type:'payment',text:'Платёж · '+Number(p.amount||0)+' '+(p.currency||order.currency||'EUR'),date:p.created_at}))]
+    const timeline=[{type:'order',text:'Заказ создан',date:order.created_at},...payments.map(p=>({type:'payment',text:'Платёж · '+Number(p.amount||0)+' '+(p.currency||order.currency||'RUB'),date:p.created_at}))]
     return res.json({order,client,payments,invoice,timeline})
   }
   const oq=await pool.query('select o.id,o.project_id,o.client_id,o.number,o.status,o.total,o.currency,o.items,o.created_at,pr.name as project_name,c.name as client_name,c.phone,c.email from orders o left join projects pr on pr.id::text=o.project_id::text left join clients c on c.id=o.client_id where o.id::text=$1::text and pr.studio_id::text=$2::text limit 1',[id,req.user.studio_id])
@@ -1363,7 +1359,7 @@ app.post('/api/orders/:id/invoice', async (req,res) => {
   const number='INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
   const description='Счёт по заказу '+order.number
   if(!pool){ const invoice={id:crypto.randomUUID(),project_id:order.project_id,client_id:order.client_id||null,number,amount:Number(order.total),currency:order.currency||'RUB',status:'sent',due_date:null,description,created_at:new Date().toISOString()}; memoryInvoices.unshift(invoice); return res.status(201).json({invoice}) }
-  const q=await pool.query('insert into invoices(project_id,client_id,number,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7) returning *',[order.project_id,order.client_id||null,number,order.total,order.currency||'EUR','sent',description])
+  const q=await pool.query('insert into invoices(project_id,client_id,number,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7) returning *',[order.project_id,order.client_id||null,number,order.total,order.currency||'RUB','sent',description])
   res.status(201).json({invoice:q.rows[0]})
 })
 
