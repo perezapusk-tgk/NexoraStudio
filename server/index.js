@@ -388,8 +388,7 @@ app.get('/api/billing/account', async (req,res)=>{
 })
 app.patch('/api/billing/settings', async (req,res)=>{
   if(!requireRole(req,res,['owner','admin'])) return
-  const currency=['RUB','USD'].includes(String(req.body?.currency||''))?String(req.body.currency):null
-  if(!currency)return res.status(400).json({error:'Поддерживаются RUB и USD'})
+  const currency='RUB'
   if(!pool){
     const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
     studio.billing_currency=currency
@@ -489,7 +488,7 @@ app.post('/api/billing/checkout', async (req,res)=>{
   if(!PLAN_CONFIG[plan]) return res.status(400).json({error:'Неизвестный тариф'})
   const studio=pool?(await pool.query('select plan,billing_currency from studios where id=$1',[req.user.studio_id])).rows[0]:(memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio)
   if(studio?.plan===plan) return res.json({ok:true,already_active:true,plan:planConfig(plan)})
-  const currency=studio?.billing_currency||'RUB'
+  const currency='RUB'
   const amount=billingAmount(plan,currency)
   if(plan==='free'){
     if(!pool){const s=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio;s.plan='free';s.projectLimit=1;s.project_limit=1;return res.json({ok:true,mode:'free',plan:planConfig(plan),currency})}
@@ -503,14 +502,12 @@ app.post('/api/billing/checkout', async (req,res)=>{
     return res.json({ok:true,mode:'manual',plan:planConfig(plan),currency,amount})
   }
   try{
-    const checkout=currency==='USD'
-      ? await createStripeCheckout({studioId:req.user.studio_id,plan,amount,currency,email:req.user.email})
-      : await createYookassaCheckout({studioId:req.user.studio_id,plan,amount})
+    const checkout=await createYookassaCheckout({studioId:req.user.studio_id,plan,amount})
     if(!checkout.url) throw new Error('Платёжный провайдер не вернул ссылку оплаты')
     if(pool) {
-      await pool.query('insert into billing_transactions(studio_id,plan,amount,currency,status,provider,provider_payment_id,checkout_url) values($1,$2,$3,$4,$5,$6,$7,$8)',[req.user.studio_id,plan,amount,currency,'pending',currency==='USD'?'stripe':'yookassa',checkout.id,checkout.url])
+      await pool.query('insert into billing_transactions(studio_id,plan,amount,currency,status,provider,provider_payment_id,checkout_url) values($1,$2,$3,$4,$5,$6,$7,$8)',[req.user.studio_id,plan,amount,currency,'pending','yookassa',checkout.id,checkout.url])
     }
-    res.json({ok:true,mode:'checkout',provider:currency==='USD'?'stripe':'yookassa',checkout_url:checkout.url,provider_payment_id:checkout.id,plan:planConfig(plan),currency,amount})
+    res.json({ok:true,mode:'checkout',provider:'yookassa',checkout_url:checkout.url,provider_payment_id:checkout.id,plan:planConfig(plan),currency,amount})
   }catch(e){res.status(503).json({error:e.message||'Не удалось создать платёж'})}
 })
 async function stripeRequest(path,method='GET',params=null,extraHeaders={}){
