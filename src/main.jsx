@@ -18,7 +18,6 @@ const nav = [
   ['Заявки', Inbox],
   ['Клиенты', Users],
   ['Бронирования', CalendarDays],
-  ['Платежи', CreditCard],
   ['Заказы', ShoppingCart],
   ['Счета', Receipt],
   ['Сайты', Globe2],
@@ -30,9 +29,9 @@ const nav = [
 ]
 
 const projects = [
-  { name: 'Barber House', type: 'Сайт + Mini App', status: 'Опубликован', color: 'dark', leads: 18, bookings: 12, revenue: '€1 840', updated: 'сегодня' },
-  { name: 'Nordic Beauty', type: 'Сайт', status: 'В работе', color: 'blue', leads: 11, bookings: 4, revenue: '€920', updated: '2 ч назад' },
-  { name: 'Urban Fitness', type: 'Mini App', status: 'Опубликован', color: 'purple', leads: 8, bookings: 7, revenue: '€2 060', updated: 'вчера' },
+  { name: 'Barber House', type: 'Сайт + Mini App', status: 'Опубликован', color: 'dark', leads: 18, bookings: 12, revenue: '₽115 000', updated: 'сегодня' },
+  { name: 'Nordic Beauty', type: 'Сайт', status: 'В работе', color: 'blue', leads: 11, bookings: 4, revenue: '₽57 500', updated: '2 ч назад' },
+  { name: 'Urban Fitness', type: 'Mini App', status: 'Опубликован', color: 'purple', leads: 8, bookings: 7, revenue: '₽128 000', updated: 'вчера' },
   { name: 'Mokka Coffee', type: 'Сайт + каталог', status: 'Черновик', color: 'orange', leads: 0, bookings: 0, revenue: '₽0', updated: 'вчера' },
 ]
 
@@ -40,7 +39,7 @@ const activities = [
   ['Новая заявка', 'Barber House', '2 мин назад', 'lead'],
   ['Бронирование подтверждено', 'Urban Fitness', '18 мин назад', 'booking'],
   ['Сайт опубликован', 'Nordic Beauty', '2 ч назад', 'site'],
-  ['Получен платёж', 'Barber House · €85', '3 ч назад', 'payment'],
+  ['Получен платёж', 'Barber House · ₽5 900', '3 ч назад', 'payment'],
 ]
 
 function PublicApp({mode,slug}){
