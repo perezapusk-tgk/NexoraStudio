@@ -1582,6 +1582,28 @@ app.patch('/api/clients/:id', async (req,res) => {
   res.json({client:q.rows[0]})
 })
 
+app.post('/api/clients', async (req,res) => {
+  const name=String(req.body?.name||'').trim()
+  const email=String(req.body?.email||'').trim()
+  const phone=String(req.body?.phone||'').trim()
+  if(!name)return res.status(400).json({error:'Имя клиента обязательно'})
+  if(name.length>120)return res.status(400).json({error:'Имя клиента слишком длинное'})
+  if(email.length>160 || (email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)))return res.status(400).json({error:'Некорректный email клиента'})
+  if(phone.length>40)return res.status(400).json({error:'Телефон клиента слишком длинный'})
+  if(!(await requireClientCapacity(req.user.studio_id,res)))return
+  if(!pool){
+    const duplicate=memoryClients.find(x=>x.studio_id===req.user.studio_id && ((phone&&x.phone===phone)||(email&&x.email===email)))
+    if(duplicate)return res.status(409).json({error:'Клиент с таким телефоном или email уже существует'})
+    const client={id:crypto.randomUUID(),studio_id:req.user.studio_id,name,email:email||null,phone:phone||null,created_at:new Date().toISOString()}
+    memoryClients.unshift(client)
+    return res.status(201).json({client})
+  }
+  const duplicate=await pool.query('select id from clients where studio_id::text=$1::text and ((nullif($2,\'\') is not null and phone=$2) or (nullif($3,\'\') is not null and lower(email)=lower($3))) limit 1',[req.user.studio_id,phone,email])
+  if(duplicate.rows[0])return res.status(409).json({error:'Клиент с таким телефоном или email уже существует'})
+  const q=await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id,studio_id,name,email,phone,created_at',[req.user.studio_id,name,email||null,phone||null])
+  res.status(201).json({client:q.rows[0]})
+})
+
 app.get('/api/clients', async (req, res) => {
   if (!pool) {
     const rows=memoryClients.filter(x=>x.studio_id===req.user.studio_id).map(client=>{
