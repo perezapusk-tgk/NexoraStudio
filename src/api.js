@@ -72,6 +72,7 @@ export const api = {
   publishProject: (id) => request('/projects/' + id + '/publish',{method:'POST'}),
   checkDomain: (id,domain) => request('/projects/' + id + '/domain/check',{method:'POST',body:JSON.stringify({domain})}),
   connectDomain: (id,domain) => request('/projects/' + id + '/domain/connect',{method:'POST',body:JSON.stringify({domain})}),
+  disconnectDomain: (id) => request('/projects/' + id + '/domain/disconnect',{method:'POST'}),
   configureTelegram: (id,payload={}) => request('/projects/' + id + '/telegram/configure',{method:'POST',body:JSON.stringify(payload)}),
   publicProject: (slug) => request('/public/' + slug),
   publicLead: (slug,payload) => request('/public/' + slug + '/leads',{method:'POST',body:JSON.stringify(payload)}),
