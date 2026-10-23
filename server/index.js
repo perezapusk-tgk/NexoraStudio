@@ -3,6 +3,7 @@ import cors from 'cors'
 import pg from 'pg'
 import crypto from 'node:crypto'
 import path from 'node:path'
+import dns from 'node:dns/promises'
 
 const { Pool } = pg
 const app = express()
@@ -745,7 +746,13 @@ app.post('/api/projects/:id/domain/check', async (req,res) => {
   const others=!pool?memoryProjects.find(p=>p.id!==project.id&&String(p.domain||'').toLowerCase()===raw):(await pool.query('select id,name from projects where lower(domain)=lower($1) and id<>$2 limit 1',[raw,project.id])).rows[0]
   const dnsTarget=project.slug+'.nexora.site'
   if(others)return res.status(409).json({available:false,domain:raw,error:'Этот домен уже подключён к другому проекту'})
-  return res.json({available:true,domain:raw,verified:false,dns:{type:'CNAME',host:raw,value:dnsTarget},message:'Домен свободен. После добавления DNS записи можно завершить подключение.'})
+  let verified=false
+  let records=[]
+  try{
+    records=(await dns.resolveCname(raw)).map(x=>String(x).toLowerCase().replace(/\.$/,''))
+    verified=records.includes(dnsTarget.toLowerCase())
+  }catch{}
+  return res.json({available:true,domain:raw,verified,dns:{type:'CNAME',host:raw,value:dnsTarget,records},message:verified?'DNS настроен. Домен можно подключить.':'Добавьте CNAME и повторите проверку.'})
 })
 
 app.post('/api/projects/:id/domain/connect', async (req,res) => {
@@ -755,7 +762,11 @@ app.post('/api/projects/:id/domain/connect', async (req,res) => {
   if(!project)return res.status(404).json({error:'Проект не найден'})
   const taken=!pool?memoryProjects.find(p=>p.id!==project.id&&String(p.domain||'').toLowerCase()===raw):(await pool.query('select id from projects where lower(domain)=lower($1) and id<>$2 limit 1',[raw,project.id])).rows[0]
   if(taken)return res.status(409).json({error:'Этот домен уже подключён'})
-  const settings={...(project.settings||{}),domain:{...(project.settings||{}).domain||{},domain:raw,verified:false,status:'pending',dnsTarget:project.slug+'.nexora.site'}}
+  const dnsTarget=project.slug+'.nexora.site'
+  let verified=false
+  try{const records=(await dns.resolveCname(raw)).map(x=>String(x).toLowerCase().replace(/\.$/,''));verified=records.includes(dnsTarget.toLowerCase())}catch{}
+  if(!verified)return res.status(409).json({error:'DNS ещё не подтверждён. Добавьте CNAME '+raw+' → '+dnsTarget+' и повторите проверку.'})
+  const settings={...(project.settings||{}),domain:{...(project.settings||{}).domain||{},domain:raw,verified:true,status:'connected',dnsTarget}}
   if(!pool){project.domain=raw;project.settings=settings;return res.json({project,domain:settings.domain})}
   const q=await pool.query('update projects set domain=$1,settings=$2,updated_at=now() where id::text=$3::text returning *',[raw,JSON.stringify(settings),project.id])
   res.json({project:q.rows[0],domain:settings.domain})
