@@ -1712,12 +1712,12 @@ app.post('/api/payments', async (req,res) => {
     if(orderId && status==='paid'){
       const order=memoryOrders.find(x=>x.id===orderId)
       if(order) order.status='paid'
-      memoryEvents.push({slug:memoryProjects.find(x=>x.id===projectId)?.slug,event_type:'payment',path:'/payment',value:amount,created_at:new Date().toISOString()})
+      memoryEvents.push({studio_id:req.user.studio_id,slug:memoryProjects.find(x=>x.id===projectId)?.slug,event_type:'payment',path:'/payment',value:amount,created_at:new Date().toISOString()})
     }
     return res.status(201).json({payment})
   }
   if(orderId){
-    const oq=await pool.query('select id,project_id,total,status from orders where id::text=$1 limit 1',[orderId])
+    const oq=await pool.query('select o.id,o.project_id,o.total,o.status from orders o join projects p on p.id=o.project_id where o.id::text=$1 and p.studio_id::text=$2::text limit 1',[orderId,req.user.studio_id])
     if(!oq.rows[0])return res.status(404).json({error:'Заказ не найден'})
     if(oq.rows[0].project_id!==projectId)return res.status(400).json({error:'Заказ относится к другому проекту'})
     if(Math.abs(Number(oq.rows[0].total||0)-amount)>0.01)return res.status(400).json({error:'Сумма платежа не совпадает с заказом'})
@@ -1727,7 +1727,7 @@ app.post('/api/payments', async (req,res) => {
   }
   const q=await pool.query('insert into payments(project_id,client_id,booking_id,order_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,req.body?.booking_id||null,orderId,amount,currency,status,description||null])
   if(orderId && status==='paid'){
-    await pool.query("update orders set status='paid' where id::text=$1",[orderId])
+    await pool.query("update orders set status='paid' where id::text=$1 and project_id in (select id from projects where studio_id::text=$2::text)",[orderId,req.user.studio_id])
     await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[projectId,'payment','/payment',amount,JSON.stringify({order_id:orderId,payment_id:q.rows[0].id})])
   }
   res.status(201).json({payment:q.rows[0]})
