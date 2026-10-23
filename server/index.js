@@ -375,9 +375,9 @@ async function adminOverview(){
     const projects=memoryProjects.filter(x=>x.studio_id!==demoStudio.id)
     const gmv=memoryPayments.filter(x=>x.status==='paid').reduce((a,x)=>a+Number(x.amount||0),0)
     const activeStudios=studios.length
-    return {generated_at:now.toISOString(),currency:'RUB',metrics:{studios:studios.length,users:users.length,projects:projects.length,leads:memoryLeads.length,bookings:memoryBookings.length,orders:memoryOrders.length,gmv,subscriptionRevenue:0,mrr:0,arr:0,activeStudios,inactiveStudios:0,newStudios30d:studios.length,platformCommissionPercent:fee,estimatedPlatformCommission:gmv*fee/100},plans:{},series:[],recentStudios:studios.slice(-20).reverse()}
+    return {generated_at:now.toISOString(),currency:'RUB',metrics:{studios:studios.length,users:users.length,projects:projects.length,leads:memoryLeads.length,bookings:memoryBookings.length,orders:memoryOrders.length,gmv,subscriptionRevenue:0,mrr:0,arr:0,monthlySubscriptionRevenue:0,yearlySubscriptionRevenue:0,activeStudios,inactiveStudios:0,activePaidSubscriptions:0,newStudios30d:studios.length,cancelledStudios30d:0,churnRate30d:0,conversionRate:0,platformCommissionPercent:fee,estimatedPlatformCommission:gmv*fee/100,yookassaPayments:0,yookassaPaidPayments:0,yookassaSuccessRate:0},plans:{},series:[],monthlySeries:[],yearlySeries:[],recentStudios:studios.slice(-20).reverse()}
   }
-  const [studios,users,projects,leads,bookings,orders,gmv,subscriptions,activeRevenue,plans,recent,active,new30,cancelled30,paymentStats,series]=await Promise.all([
+  const [studios,users,projects,leads,bookings,orders,gmv,subscriptions,activeRevenue,plans,recent,active,new30,cancelled30,paymentStats,series,monthlySeries,yearlySeries]=await Promise.all([
     pool.query("select count(*)::int as count from studios"),
     pool.query("select count(*)::int as count from users"),
     pool.query("select count(*)::int as count from projects"),
@@ -393,7 +393,9 @@ async function adminOverview(){
     pool.query("select count(*)::int as count from studios where created_at>=now()-interval '30 days'"),
     pool.query("select count(*)::int as count from studios where coalesce(subscription_status,'active') in ('cancelled','inactive','past_due') and updated_at>=now()-interval '30 days'"),
     pool.query("select count(*)::int as payments, count(*) filter (where status='paid')::int as paid_payments, coalesce(sum(amount) filter (where status='paid'),0)::numeric as paid_amount from billing_transactions where provider='yookassa'"),
-    pool.query("select to_char(date_trunc('day',d),'YYYY-MM-DD') as day, coalesce((select count(*) from studios s where s.created_at::date=d::date),0)::int as studios, coalesce((select sum(bt.amount) from billing_transactions bt where bt.status='paid' and bt.provider='yookassa' and bt.paid_at::date=d::date),0)::numeric as subscription_revenue, coalesce((select sum(p.amount) from payments p where p.status='paid' and p.created_at::date=d::date),0)::numeric as gmv from generate_series(current_date-29,current_date,interval '1 day') d group by d order by d")
+    pool.query("select to_char(date_trunc('day',d),'YYYY-MM-DD') as day, coalesce((select count(*) from studios s where s.created_at::date=d::date),0)::int as studios, coalesce((select sum(bt.amount) from billing_transactions bt where bt.status='paid' and bt.provider='yookassa' and bt.paid_at::date=d::date),0)::numeric as subscription_revenue, coalesce((select sum(p.amount) from payments p where p.status='paid' and p.created_at::date=d::date),0)::numeric as gmv from generate_series(current_date-29,current_date,interval '1 day') d group by d order by d"),
+    pool.query("select to_char(date_trunc('month',d),'YYYY-MM') as month, coalesce((select sum(bt.amount) from billing_transactions bt where bt.status='paid' and bt.provider='yookassa' and bt.paid_at>=date_trunc('month',d) and bt.paid_at<date_trunc('month',d)+interval '1 month'),0)::numeric as subscription_revenue, coalesce((select count(*) from studios s where s.created_at>=date_trunc('month',d) and s.created_at<date_trunc('month',d)+interval '1 month'),0)::int as new_studios from generate_series(date_trunc('month',current_date)-interval '11 months',date_trunc('month',current_date),interval '1 month') d order by d"),
+    pool.query("select to_char(date_trunc('year',d),'YYYY') as year, coalesce((select sum(bt.amount) from billing_transactions bt where bt.status='paid' and bt.provider='yookassa' and bt.paid_at>=date_trunc('year',d) and bt.paid_at<date_trunc('year',d)+interval '1 year'),0)::numeric as subscription_revenue, coalesce((select count(*) from studios s where s.created_at>=date_trunc('year',d) and s.created_at<date_trunc('year',d)+interval '1 year'),0)::int as new_studios from generate_series(date_trunc('year',current_date)-interval '2 years',date_trunc('year',current_date),interval '1 year') d order by d")
   ])
   const totalStudios=Number(studios.rows[0]?.count||0)
   const activeStudios=Number(active.rows[0]?.count||0)
@@ -402,14 +404,21 @@ async function adminOverview(){
   const mrr=Number(activeRevenue.rows[0]?.total||0)
   const paymentCount=Number(paymentStats.rows[0]?.payments||0)
   const paidPaymentCount=Number(paymentStats.rows[0]?.paid_payments||0)
+  const cancelledCount=Number(cancelled30.rows[0]?.count||0)
+  const conversionRate=totalStudios?activeStudios/totalStudios*100:0
+  const churnBase=activeStudios+cancelledCount
+  const churnRate30d=churnBase?cancelledCount/churnBase*100:0
+  const currentMonth=Number(monthlySeries.rows[monthlySeries.rows.length-1]?.subscription_revenue||0)
+  const currentYear=Number(yearlySeries.rows[yearlySeries.rows.length-1]?.subscription_revenue||0)
   return {generated_at:now.toISOString(),currency:'RUB',metrics:{
     studios:totalStudios,users:Number(users.rows[0]?.count||0),projects:Number(projects.rows[0]?.count||0),
     leads:Number(leads.rows[0]?.count||0),bookings:Number(bookings.rows[0]?.count||0),orders:Number(orders.rows[0]?.count||0),
-    gmv:g,subscriptionRevenue:sub,mrr,arr:mrr*12,activeStudios,inactiveStudios:Math.max(0,totalStudios-activeStudios),
-    newStudios30d:Number(new30.rows[0]?.count||0),cancelledStudios30d:Number(cancelled30.rows[0]?.count||0),
+    gmv:g,subscriptionRevenue:sub,mrr,arr:mrr*12,monthlySubscriptionRevenue:currentMonth,yearlySubscriptionRevenue:currentYear,
+    activeStudios,inactiveStudios:Math.max(0,totalStudios-activeStudios),activePaidSubscriptions:activeStudios,
+    newStudios30d:Number(new30.rows[0]?.count||0),cancelledStudios30d:cancelledCount,churnRate30d,conversionRate,
     platformCommissionPercent:fee,estimatedPlatformCommission:g*fee/100,
     yookassaPayments:paymentCount,yookassaPaidPayments:paidPaymentCount,yookassaSuccessRate:paymentCount?paidPaymentCount/paymentCount*100:0
-  },plans:Object.fromEntries(plans.rows.map(x=>[x.plan,x.count])),series:series.rows,recentStudios:recent.rows}
+  },plans:Object.fromEntries(plans.rows.map(x=>[x.plan,x.count])),series:series.rows,monthlySeries:monthlySeries.rows,yearlySeries:yearlySeries.rows,recentStudios:recent.rows}
 }
 
 function requireRole(req,res,roles){ if(!roles.includes(req.user.role)) { res.status(403).json({error:'Недостаточно прав для этой операции'}); return false } return true }
