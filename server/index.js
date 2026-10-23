@@ -57,6 +57,22 @@ function publicRateLimit({windowMs=60000,max=30}={}){
   }
 }
 app.use(publicRateLimit({windowMs:60000,max:30}))
+const authRateBuckets = new Map()
+function authRateLimit(req,res,next){
+  if(req.method!=='POST' || !req.path.startsWith('/api/auth/')) return next()
+  const forwarded=String(req.headers['x-forwarded-for']||'').split(',')[0].trim()
+  const ip=forwarded || req.ip || req.socket?.remoteAddress || 'unknown'
+  const key=ip+'|'+Math.floor(Date.now()/300000)
+  const count=(authRateBuckets.get(key)||0)+1
+  authRateBuckets.set(key,count)
+  if(authRateBuckets.size>5000){
+    const cutoff=Math.floor(Date.now()/300000)-2
+    for(const [bucket] of authRateBuckets){ const ts=Number(bucket.split('|').pop()); if(Number.isFinite(ts)&&ts<cutoff) authRateBuckets.delete(bucket) }
+  }
+  if(count>12){ res.set('Retry-After','300'); return res.status(429).json({error:'Слишком много попыток входа. Попробуйте через несколько минут.',code:'RATE_LIMITED'}) }
+  next()
+}
+app.use(authRateLimit)
 
 // Health must be available independently of the frontend bundle.
 const healthPayload = () => ({ok:true,service:'nexora-api',version:'0.8.0',storage:pool?'postgres':'memory',auth:'development-session'})
@@ -256,6 +272,8 @@ async function requireAuth(req,res,next){
 app.post('/api/auth/register',async(req,res)=>{
   const name=String(req.body?.name||'').trim(),studioName=String(req.body?.studioName||'').trim(),email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||'')
   if(!name||!studioName||!email||password.length<8)return res.status(400).json({error:'Имя, название студии, email и пароль от 8 символов обязательны'})
+  if(name.length>120||studioName.length>160||email.length>160||password.length>128)return res.status(400).json({error:'Проверьте длину введённых данных'})
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(400).json({error:'Введите корректный email'})
   try{
     if(pool){
       if((await pool.query('select id from users where lower(email)=lower($1)',[email])).rows[0])return res.status(409).json({error:'Пользователь с таким email уже существует'})
@@ -282,6 +300,8 @@ app.post('/api/auth/register',async(req,res)=>{
 app.post('/api/auth/login',async(req,res)=>{
   const email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||'')
   if(!email||!password)return res.status(400).json({error:'Введите email и пароль'})
+  if(email.length>160||password.length>128)return res.status(400).json({error:'Проверьте длину введённых данных'})
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(400).json({error:'Введите корректный email'})
   try{
     if(pool){
       const q=await pool.query(`select u.id,u.name,u.email,u.role,u.password_hash,u.studio_id,s.name as studio_name,s.owner_name,s.plan,s.project_limit,s.billing_currency
@@ -303,6 +323,7 @@ app.post('/api/auth/accept-invite',async(req,res)=>{
   const name=String(req.body?.name||'').trim()
   const password=String(req.body?.password||'')
   if(!token||!name||password.length<8)return res.status(400).json({error:'Ссылка, имя и пароль от 8 символов обязательны'})
+  if(token.length>256||name.length>120||password.length>128)return res.status(400).json({error:'Проверьте длину введённых данных'})
   try{
     const hash=tokenHash(token)
     if(pool){
