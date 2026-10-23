@@ -153,8 +153,8 @@ function demoProjects(){return [
   {id:'demo-cafe',studio_id:demoStudio.id,name:'Mokka Coffee',slug:'mokka-coffee',project_type:'website',status:'draft',domain:null}
 ]}
 function demoCatalog(projectId){return TEMPLATE_DEFINITIONS.services.catalog.map((x,i)=>({id:'demo-cat-'+projectId+'-'+i,project_id:projectId,...x,active:true}))}
-function demoLeads(){return [{id:'lead-1',project_id:'demo-barber',project_slug:'barber-house',name:'Иван',phone:'+358 40 000 0001',email:'ivan@example.com',message:'Хочу записаться',status:'new',created_at:new Date().toISOString()}]}
-function demoClients(){return [{id:'client-1',studio_id:demoStudio.id,name:'Иван',phone:'+358 40 000 0001',email:'ivan@example.com',created_at:new Date().toISOString()}]}
+function demoLeads(){return [{id:'lead-1',project_id:'demo-barber',project_slug:'barber-house',name:'Иван',phone:'+7 900 000-00-01',email:'ivan@example.com',message:'Хочу записаться',status:'new',created_at:new Date().toISOString()}]}
+function demoClients(){return [{id:'client-1',studio_id:demoStudio.id,name:'Иван',phone:'+7 900 000-00-01',email:'ivan@example.com',created_at:new Date().toISOString()}]}
 function demoBookings(){return [{id:'booking-1',project_id:'demo-barber',project_slug:'barber-house',client_id:'client-1',client_name:'Иван',service_name:'Мужская стрижка',starts_at:new Date(Date.now()+86400000).toISOString(),status:'confirmed',created_at:new Date().toISOString()}]}
 function demoPayments(){return [{id:'pay-1',project_id:'demo-barber',client_id:'client-1',amount:85,currency:'RUB',status:'paid',description:'Заказ',created_at:new Date().toISOString()}]}
 function demoInvoices(){return [{id:'inv-1',project_id:'demo-barber',client_id:'client-1',number:'INV-DEMO-001',amount:85,currency:'RUB',status:'paid',description:'Счёт',created_at:new Date().toISOString()}]}
@@ -871,8 +871,9 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
     const price=Number(source.price||0)
     if(!Number.isFinite(price)||price<0) return res.status(400).json({error:'У товара некорректная цена'})
     const sourceCurrency=String(source.currency||'RUB').toUpperCase()
+    if(sourceCurrency!=='RUB') return res.status(400).json({error:'В Nexora доступны только товары и оплаты в RUB.'})
     if(currency && currency!==sourceCurrency) return res.status(400).json({error:'Нельзя оформить заказ с товарами в разных валютах'})
-    currency=sourceCurrency
+    currency='RUB'
     total+=price*quantity
     normalized.push({catalog_id:source.id,name:source.name,price,quantity})
   }
@@ -883,7 +884,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
     memoryOrders.unshift(order)
     memoryEvents.push({slug,studio_id:project.studio_id,event_type:'order_created',path:'/checkout',value:total,created_at:new Date().toISOString()})
   } else {
-    order=(await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[project.id,clientId,number,'pending',total,currency||'EUR',JSON.stringify(normalized)])).rows[0]
+    order=(await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[project.id,clientId,number,'pending',total,'RUB',JSON.stringify(normalized)])).rows[0]
     await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[project.id,'order_created','/checkout',total,JSON.stringify({order_id:order.id})])
   }
   const paymentProvider='yookassa'
@@ -984,7 +985,7 @@ app.post('/api/projects/:id/catalog', async (req,res) => {
     name,
     description: String(req.body?.description || '').trim(),
     price,
-    currency: String(req.body?.currency || 'EUR').toUpperCase(),
+    currency: 'RUB',
     image_url: String(req.body?.image_url || '').trim(),
     active: req.body?.active !== false
   }
@@ -992,14 +993,14 @@ app.post('/api/projects/:id/catalog', async (req,res) => {
   const owned=await ownedProject(req,projectId)
   if(!owned)return res.status(404).json({error:'Проект не найден'})
   if (!pool) { const item={id:crypto.randomUUID(),project_id:projectId,...payload};const list=memoryCatalog.get(projectId)||[];list.unshift(item);memoryCatalog.set(projectId,list);return res.status(201).json({item}) }
-  const q = await pool.query('insert into catalog_items(project_id,name,description,price,currency,image_url,active) values($1::uuid,$2,$3,$4,$5,$6,$7) returning *',[projectId,payload.name,payload.description,payload.price,payload.currency,payload.image_url,payload.active])
+  const q = await pool.query('insert into catalog_items(project_id,name,description,price,currency,image_url,active) values($1::uuid,$2,$3,$4,\'RUB\',$5,$6) returning *',[projectId,payload.name,payload.description,payload.price,payload.image_url,payload.active])
   res.status(201).json({ item:q.rows[0] })
 })
 app.patch('/api/projects/:id/catalog/:itemId', async (req,res) => {
   const owned=await ownedProject(req,req.params.id)
   if(!owned)return res.status(404).json({error:'Проект не найден'})
   if (!pool){const list=memoryCatalog.get(req.params.id)||[];const item=list.find(x=>x.id===req.params.itemId);if(!item)return res.status(404).json({error:'Позиция каталога не найдена'});Object.assign(item,req.body);return res.json({item})}
-  const q = await pool.query('update catalog_items set name=coalesce($1,name),description=coalesce($2,description),price=coalesce($3,price),currency=coalesce($4,currency),image_url=coalesce($5,image_url),active=coalesce($6,active) where id::text=$7 and project_id::text=$8 returning *',[req.body?.name,req.body?.description,req.body?.price === '' ? null : req.body?.price,req.body?.currency,req.body?.image_url,req.body?.active,req.params.itemId,req.params.id])
+  const q = await pool.query('update catalog_items set name=coalesce($1,name),description=coalesce($2,description),price=coalesce($3,price),currency=\'RUB\',image_url=coalesce($4,image_url),active=coalesce($5,active) where id::text=$6 and project_id::text=$7 returning *',[req.body?.name,req.body?.description,req.body?.price === '' ? null : req.body?.price,req.body?.image_url,req.body?.active,req.params.itemId,req.params.id])
   if (!q.rows[0]) return res.status(404).json({error:'Позиция каталога не найдена'})
   res.json({item:q.rows[0]})
 })
@@ -1361,7 +1362,7 @@ app.post('/api/orders/:id/invoice', async (req,res) => {
   if(Number(order.total||0)<=0) return res.status(400).json({error:'У заказа некорректная сумма'})
   const number='INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
   const description='Счёт по заказу '+order.number
-  if(!pool){ const invoice={id:crypto.randomUUID(),project_id:order.project_id,client_id:order.client_id||null,number,amount:Number(order.total),currency:order.currency||'EUR',status:'sent',due_date:null,description,created_at:new Date().toISOString()}; memoryInvoices.unshift(invoice); return res.status(201).json({invoice}) }
+  if(!pool){ const invoice={id:crypto.randomUUID(),project_id:order.project_id,client_id:order.client_id||null,number,amount:Number(order.total),currency:order.currency||'RUB',status:'sent',due_date:null,description,created_at:new Date().toISOString()}; memoryInvoices.unshift(invoice); return res.status(201).json({invoice}) }
   const q=await pool.query('insert into invoices(project_id,client_id,number,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7) returning *',[order.project_id,order.client_id||null,number,order.total,order.currency||'EUR','sent',description])
   res.status(201).json({invoice:q.rows[0]})
 })
@@ -1379,7 +1380,7 @@ app.post('/api/invoices', async (req,res) => {
   if(!owned)return res.status(404).json({error:'Проект не найден'})
   if(req.body?.client_id && !(await ownedClient(req,req.body.client_id)))return res.status(404).json({error:'Клиент не найден'})
   const number=String(req.body?.number||('INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()))
-  const amount=Number(req.body?.amount||0),currency=String(req.body?.currency||'RUB'),status=String(req.body?.status||'sent')
+  const amount=Number(req.body?.amount||0),currency='RUB',status=String(req.body?.status||'sent')
   if(!pool){const x={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,client_id:req.body?.client_id||null,number,amount,currency,status,due_date:req.body?.due_date||null,description:String(req.body?.description||''),created_at:new Date().toISOString()};memoryInvoices.unshift(x);return res.status(201).json({invoice:x})}
   const q=await pool.query('insert into invoices(project_id,client_id,number,amount,currency,status,due_date,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,number,amount,currency,status,req.body?.due_date||null,String(req.body?.description||'')])
   res.status(201).json({invoice:q.rows[0]})
