@@ -377,7 +377,7 @@ async function adminOverview(){
     const activeStudios=studios.length
     return {generated_at:now.toISOString(),currency:'RUB',metrics:{studios:studios.length,users:users.length,projects:projects.length,leads:memoryLeads.length,bookings:memoryBookings.length,orders:memoryOrders.length,gmv,subscriptionRevenue:0,mrr:0,arr:0,activeStudios,inactiveStudios:0,newStudios30d:studios.length,platformCommissionPercent:fee,estimatedPlatformCommission:gmv*fee/100},plans:{},series:[],recentStudios:studios.slice(-20).reverse()}
   }
-  const [studios,users,projects,leads,bookings,orders,gmv,subscriptions,plans,recent,active,new30,series]=await Promise.all([
+  const [studios,users,projects,leads,bookings,orders,gmv,subscriptions,activeRevenue,plans,recent,active,new30,cancelled30,paymentStats,series]=await Promise.all([
     pool.query("select count(*)::int as count from studios"),
     pool.query("select count(*)::int as count from users"),
     pool.query("select count(*)::int as count from projects"),
@@ -386,22 +386,29 @@ async function adminOverview(){
     pool.query("select count(*)::int as count from orders o join projects p on p.id=o.project_id"),
     pool.query("select coalesce(sum(amount),0)::numeric as total from payments where status='paid'"),
     pool.query("select coalesce(sum(amount),0)::numeric as total from billing_transactions where status='paid' and provider='yookassa'"),
+    pool.query("select coalesce(sum(case plan when 'starter' then 900 when 'pro' then 1900 when 'agency' then 3900 else 0 end),0)::numeric as total from studios where coalesce(subscription_status,'active')='active'"),
     pool.query("select plan,count(*)::int as count from studios group by plan order by count desc"),
     pool.query("select id,name,owner_name,plan,subscription_status,created_at from studios order by created_at desc limit 20"),
     pool.query("select count(*)::int as count from studios where coalesce(subscription_status,'active')='active'"),
     pool.query("select count(*)::int as count from studios where created_at>=now()-interval '30 days'"),
-    pool.query("select to_char(date_trunc('day',d),'YYYY-MM-DD') as day, coalesce((select count(*) from studios s where s.created_at::date=d::date),0)::int as studios, coalesce((select sum(bt.amount) from billing_transactions bt where bt.status='paid' and bt.provider='yookassa' and bt.paid_at::date=d::date),0)::numeric as subscription_revenue from generate_series(current_date-29,current_date,interval '1 day') d group by d order by d")
+    pool.query("select count(*)::int as count from studios where coalesce(subscription_status,'active') in ('cancelled','inactive','past_due') and updated_at>=now()-interval '30 days'"),
+    pool.query("select count(*)::int as payments, count(*) filter (where status='paid')::int as paid_payments, coalesce(sum(amount) filter (where status='paid'),0)::numeric as paid_amount from billing_transactions where provider='yookassa'"),
+    pool.query("select to_char(date_trunc('day',d),'YYYY-MM-DD') as day, coalesce((select count(*) from studios s where s.created_at::date=d::date),0)::int as studios, coalesce((select sum(bt.amount) from billing_transactions bt where bt.status='paid' and bt.provider='yookassa' and bt.paid_at::date=d::date),0)::numeric as subscription_revenue, coalesce((select sum(p.amount) from payments p where p.status='paid' and p.created_at::date=d::date),0)::numeric as gmv from generate_series(current_date-29,current_date,interval '1 day') d group by d order by d")
   ])
   const totalStudios=Number(studios.rows[0]?.count||0)
   const activeStudios=Number(active.rows[0]?.count||0)
   const sub=Number(subscriptions.rows[0]?.total||0)
   const g=Number(gmv.rows[0]?.total||0)
-  const mrr=sub
+  const mrr=Number(activeRevenue.rows[0]?.total||0)
+  const paymentCount=Number(paymentStats.rows[0]?.payments||0)
+  const paidPaymentCount=Number(paymentStats.rows[0]?.paid_payments||0)
   return {generated_at:now.toISOString(),currency:'RUB',metrics:{
     studios:totalStudios,users:Number(users.rows[0]?.count||0),projects:Number(projects.rows[0]?.count||0),
     leads:Number(leads.rows[0]?.count||0),bookings:Number(bookings.rows[0]?.count||0),orders:Number(orders.rows[0]?.count||0),
     gmv:g,subscriptionRevenue:sub,mrr,arr:mrr*12,activeStudios,inactiveStudios:Math.max(0,totalStudios-activeStudios),
-    newStudios30d:Number(new30.rows[0]?.count||0),platformCommissionPercent:fee,estimatedPlatformCommission:g*fee/100
+    newStudios30d:Number(new30.rows[0]?.count||0),cancelledStudios30d:Number(cancelled30.rows[0]?.count||0),
+    platformCommissionPercent:fee,estimatedPlatformCommission:g*fee/100,
+    yookassaPayments:paymentCount,yookassaPaidPayments:paidPaymentCount,yookassaSuccessRate:paymentCount?paidPaymentCount/paymentCount*100:0
   },plans:Object.fromEntries(plans.rows.map(x=>[x.plan,x.count])),series:series.rows,recentStudios:recent.rows}
 }
 
