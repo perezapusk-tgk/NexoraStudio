@@ -3,6 +3,7 @@ import cors from 'cors'
 import pg from 'pg'
 import crypto from 'node:crypto'
 import path from 'node:path'
+import fs from 'node:fs/promises'
 import dns from 'node:dns/promises'
 
 const { Pool } = pg
@@ -1529,8 +1530,34 @@ app.use((err,req,res,next)=>{
   res.status(Number(err?.status)||500).json({error:'Внутренняя ошибка сервера',detail:process.env.NODE_ENV==='production'?undefined:(err?.message||String(err))})
 })
 
+async function runStartupMigrations(){
+  if(!pool) return
+  const client=await pool.connect()
+  try{
+    await client.query('begin')
+    const schema=await fs.readFile(path.join(process.cwd(),'server','schema.sql'),'utf8')
+    await client.query(schema)
+    await client.query('create table if not exists schema_migrations (version text primary key, applied_at timestamptz not null default now())')
+    const dir=path.join(process.cwd(),'server','migrations')
+    const files=(await fs.readdir(dir)).filter(name=>/^\\d+_.+\\.sql$/.test(name)).sort()
+    for(const file of files){
+      const exists=await client.query('select 1 from schema_migrations where version=$1',[file])
+      if(exists.rowCount) continue
+      await client.query(await fs.readFile(path.join(dir,file),'utf8'))
+      await client.query('insert into schema_migrations(version) values($1)',[file])
+      console.log('Applied migration:',file)
+    }
+    await client.query('commit')
+  }catch(error){
+    await client.query('rollback')
+    console.error('Startup database migration failed:',error.message)
+    throw error
+  }finally{client.release()}
+}
+
 if (process.env.NODE_ENV !== 'test') {
-  const server = app.listen(port, host, () => console.log(`Nexora API listening on ${host}:${port}`))
+  await runStartupMigrations()
+  const server = app.listen(port, host, () => console.log('Nexora API listening on '+host+':'+port))
   server.on('error', (err) => {
     console.error('Nexora server error', err)
     process.exitCode = 1
