@@ -779,7 +779,7 @@ app.post('/api/projects/:id/telegram/configure', async (req,res) => {
   const project = await ownedProject(req,req.params.id)
   if (!project) return res.status(404).json({ error: 'Проект не найден' })
   const domain = String(project.domain || '').trim()
-  const base = domain ? 'https://' + domain.replace(/^https?:\/\//,'').replace(/\/$/,'') : 'https://' + project.slug + '.nexora.site'
+  const base = domain ? 'https://' + domain.replace(/^https?:\/\//,'').replace(/\/$/,'') : billingAppUrl()
   const miniAppUrl = base + '/miniapp/' + project.slug
   const callTelegram = async (method, body) => {
     const response = await fetch('https://api.telegram.org/bot' + token + '/' + method, { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(body) })
