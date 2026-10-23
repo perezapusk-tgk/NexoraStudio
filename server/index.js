@@ -738,12 +738,12 @@ app.post('/api/projects', async (req, res) => {
   return res.status(201).json({project})
 }
   const usage=await pool.query('select count(*)::int as count from projects where studio_id::text=$1::text',[req.user.studio_id])
-  const limit=Number(req.studio.project_limit||5)
+  const limit=Number(req.studio.project_limit||planConfig(req.studio.plan).projectLimit)
   if(usage.rows[0].count>=limit)return res.status(409).json({error:'Достигнут лимит проектов вашего тарифа'})
   let slug = slugify(name)
   const slugBase = slug
   let suffix = 2
-  while ((await pool.query('select 1 from projects where slug=$1 limit 1',[slug])).rows[0]) slug = slugBase + '-' + suffix++
+  while ((await pool.query('select 1 from projects where studio_id::text=$1::text and slug=$2',[req.user.studio_id,slug])).rows[0]) slug = slugBase + '-' + suffix++
   const template=templateDefinition(templateId)
   const { rows } = await pool.query(
     'insert into projects (studio_id, name, slug, project_type, status, settings) values ($1,$2,$3,$4,$5,$6) returning *',
