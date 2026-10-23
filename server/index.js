@@ -896,15 +896,15 @@ app.delete('/api/projects/:id',async(req,res)=>{
   }
   const check=await pool.query('select id from projects where (id::text=$1::text or slug=$1::text) and studio_id::text=$2::text limit 1',[req.params.id,req.user.studio_id])
   if(!check.rows[0])return res.status(404).json({error:'Проект не найден'})
-  await pool.query('delete from pages where project_id::text=$1',[req.params.id])
-  await pool.query('delete from catalog_items where project_id::text=$1',[req.params.id])
-  await pool.query('delete from leads where project_id::text=$1',[req.params.id])
-  await pool.query('delete from bookings where project_id::text=$1',[req.params.id])
-  await pool.query('delete from payments where project_id::text=$1',[req.params.id])
-  await pool.query('delete from invoices where project_id::text=$1',[req.params.id])
-  await pool.query('delete from orders where project_id::text=$1',[req.params.id])
-  await pool.query('delete from analytics_events where project_id::text=$1',[req.params.id])
-  const deleted=await pool.query('delete from projects where id::text=$1 and studio_id::text=$2::text returning id',[req.params.id,req.user.studio_id])
+  await pool.query('delete from pages where project_id::text=$1::text',[check.rows[0].id])
+  await pool.query('delete from catalog_items where project_id::text=$1::text',[check.rows[0].id])
+  await pool.query('delete from leads where project_id::text=$1::text',[check.rows[0].id])
+  await pool.query('delete from bookings where project_id::text=$1::text',[check.rows[0].id])
+  await pool.query('delete from payments where project_id::text=$1::text',[check.rows[0].id])
+  await pool.query('delete from invoices where project_id::text=$1::text',[check.rows[0].id])
+  await pool.query('delete from orders where project_id::text=$1::text',[check.rows[0].id])
+  await pool.query('delete from analytics_events where project_id::text=$1::text',[check.rows[0].id])
+  const deleted=await pool.query('delete from projects where id::text=$1::text and studio_id::text=$2::text returning id',[check.rows[0].id,req.user.studio_id])
   if(!deleted.rows[0])return res.status(404).json({error:'Проект не найден'})
   res.json({deleted:true})
 })
@@ -918,6 +918,14 @@ app.patch('/api/projects/:id',async(req,res)=>{if(!pool){
 }const current=await pool.query('select * from projects where (id::text=$1::text or slug=$1::text) and studio_id::text=$2::text limit 1',[req.params.id,req.user.studio_id]);if(!current.rows[0])return res.status(404).json({error:'Проект не найден'});const settings=req.body?.settings?{...(current.rows[0].settings||{}),...req.body.settings}:current.rows[0].settings;const q=await pool.query('update projects set name=coalesce($1,name),domain=case when $2 is null then domain else $2 end,settings=$3,updated_at=now() where id::text=$4 returning *',[req.body?.name,req.body?.domain===undefined?null:String(req.body.domain||'').trim()||null,JSON.stringify(settings),current.rows[0].id]);res.json({project:q.rows[0]})});
 app.post('/api/projects/:id/pages',async(req,res)=>{const title=String(req.body?.title||'Новая страница').trim().slice(0,160);const slug=slugify(req.body?.slug||title);if(!title)return res.status(400).json({error:'Название страницы обязательно'});if(!pool){const project=memoryProjects.find(x=>(x.id===req.params.id||x.slug===req.params.id)&&x.studio_id===req.user.studio_id);if(!project)return res.status(404).json({error:'Проект не найден'});const pages=memoryPages.get(project.id)||[];if(pages.some(x=>x.slug===slug))return res.status(409).json({error:'Страница с таким адресом уже существует'});const page={id:crypto.randomUUID(),title,slug,content:{blocks:[]},published:false};pages.push(page);memoryPages.set(project.id,pages);return res.status(201).json({page})};const owned=await pool.query('select id from projects where (id::text=$1::text or slug=$1::text) and studio_id::text=$2::text limit 1',[req.params.id,req.user.studio_id]);if(!owned.rows[0])return res.status(404).json({error:'Проект не найден'});const projectId=owned.rows[0].id;const duplicate=await pool.query('select 1 from pages where project_id::text=$1::text and slug=$2 limit 1',[projectId,slug]);if(duplicate.rows[0])return res.status(409).json({error:'Страница с таким адресом уже существует'});const q=await pool.query('insert into pages(project_id,title,slug,content) values($1::uuid,$2,$3,$4) returning *',[projectId,title,slug,JSON.stringify({blocks:[]})]);res.status(201).json({page:q.rows[0]})});
 app.patch('/api/projects/:id/pages/:pageId',async(req,res)=>{if(!pool){const project=memoryProjects.find(x=>x.id===req.params.id&&x.studio_id===req.user.studio_id);if(!project)return res.status(404).json({error:'Проект не найден'});const pages=memoryPages.get(req.params.id)||[];const p=pages.find(x=>x.id===req.params.pageId);if(!p)return res.status(404).json({error:'Страница не найдена'});if(req.body?.content)p.content=req.body.content;return res.json({page:p})}const ownership=await pool.query('select id from projects where (id::text=$1::text or slug=$1::text) and studio_id::text=$2::text limit 1',[req.params.id,req.user.studio_id]);if(!ownership.rows[0])return res.status(404).json({error:'Проект не найден'});const q=await pool.query('update pages set title=coalesce($1,title),content=coalesce($2,content),updated_at=now() where id::text=$3::text and project_id::text=$4::text returning *',[req.body?.title?String(req.body.title).trim().slice(0,160):null,req.body?.content?JSON.stringify(req.body.content):null,req.params.pageId,ownership.rows[0].id]);if(!q.rows[0])return res.status(404).json({error:'Страница не найдена'});res.json({page:q.rows[0]})});
+
+app.delete('/api/projects/:id/pages/:pageId',async(req,res)=>{
+  const project=await ownedProject(req,req.params.id); if(!project)return res.status(404).json({error:'Проект не найден'})
+  if(!pool){const pages=memoryPages.get(project.id)||[];if(pages.length<=1)return res.status(409).json({error:'Нельзя удалить последнюю страницу'});const next=pages.filter(x=>x.id!==req.params.pageId);if(next.length===pages.length)return res.status(404).json({error:'Страница не найдена'});memoryPages.set(project.id,next);return res.json({deleted:true})}
+  const count=await pool.query('select count(*)::int as count from pages where project_id::text=$1::text',[project.id]);if(Number(count.rows[0]?.count||0)<=1)return res.status(409).json({error:'Нельзя удалить последнюю страницу'})
+  const deleted=await pool.query('delete from pages where id::text=$1::text and project_id::text=$2::text returning id',[req.params.pageId,project.id]);if(!deleted.rows[0])return res.status(404).json({error:'Страница не найдена'});res.json({deleted:true})
+})
+
 app.get('/api/public/:slug', async (req,res) => {
   const slug = String(req.params.slug || '').trim()
   if (!pool) {
@@ -1282,9 +1290,9 @@ app.post('/api/projects/:id/publish',async(req,res)=>{
     const publicBase=p.domain?'https://'+p.domain:billingAppUrl()
     return res.json({published:true,project:p,url:publicBase+'/published/'+encodeURIComponent(p.slug),miniapp_url:publicBase+'/miniapp/'+encodeURIComponent(p.slug)})
   }
-  const q=await pool.query("update projects set status='published',updated_at=now() where id::text=$1 and studio_id::text=$2::text returning *",[req.params.id,req.user.studio_id])
+  const q=await pool.query("update projects set status='published',updated_at=now() where id::text=$1::text and studio_id::text=$2::text returning *",[owned.id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Проект не найден'})
-  await pool.query('update pages set published=true,updated_at=now() where project_id::text=$1',[req.params.id])
+  await pool.query('update pages set published=true,updated_at=now() where project_id::text=$1::text',[owned.id])
   const publicBase=q.rows[0].domain?'https://'+q.rows[0].domain:billingAppUrl()
   res.json({published:true,project:q.rows[0],url:publicBase+'/published/'+encodeURIComponent(q.rows[0].slug),miniapp_url:publicBase+'/miniapp/'+encodeURIComponent(q.rows[0].slug)})
 })
