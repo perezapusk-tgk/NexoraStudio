@@ -740,7 +740,7 @@ app.get('/api/public/:slug', async (req,res) => {
 app.post('/api/projects/:id/domain/check', async (req,res) => {
   const raw=String(req.body?.domain||'').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,'').replace(/\.$/,'')
   if(!raw || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(raw)) return res.status(400).json({error:'Введите корректный домен, например client.ru'})
-  const project=!pool?memoryProjects.find(p=>p.id===req.params.id||p.slug===req.params.id):(await pool.query('select * from projects where id::text=$1::text or slug=$1::text limit 1',[req.params.id])).rows[0]
+  const project=await ownedProject(req,req.params.id)
   if(!project)return res.status(404).json({error:'Проект не найден'})
   const others=!pool?memoryProjects.find(p=>p.id!==project.id&&String(p.domain||'').toLowerCase()===raw):(await pool.query('select id,name from projects where lower(domain)=lower($1) and id<>$2 limit 1',[raw,project.id])).rows[0]
   const dnsTarget=project.slug+'.nexora.site'
@@ -751,7 +751,7 @@ app.post('/api/projects/:id/domain/check', async (req,res) => {
 app.post('/api/projects/:id/domain/connect', async (req,res) => {
   const raw=String(req.body?.domain||'').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,'').replace(/\.$/,'')
   if(!raw)return res.status(400).json({error:'Домен обязателен'})
-  const project=!pool?memoryProjects.find(p=>p.id===req.params.id||p.slug===req.params.id):(await pool.query('select * from projects where id::text=$1::text or slug=$1::text limit 1',[req.params.id])).rows[0]
+  const project=await ownedProject(req,req.params.id)
   if(!project)return res.status(404).json({error:'Проект не найден'})
   const taken=!pool?memoryProjects.find(p=>p.id!==project.id&&String(p.domain||'').toLowerCase()===raw):(await pool.query('select id from projects where lower(domain)=lower($1) and id<>$2 limit 1',[raw,project.id])).rows[0]
   if(taken)return res.status(409).json({error:'Этот домен уже подключён'})
@@ -764,9 +764,7 @@ app.post('/api/projects/:id/domain/connect', async (req,res) => {
 app.post('/api/projects/:id/telegram/configure', async (req,res) => {
   const token = String(process.env.TELEGRAM_BOT_TOKEN || '').trim()
   if (!token) return res.status(503).json({ error: 'TELEGRAM_BOT_TOKEN не настроен на сервере' })
-  const project = !pool
-    ? memoryProjects.find(p => p.id === req.params.id || p.slug === req.params.id)
-    : (await pool.query('select * from projects where id::text=$1::text or slug=$1::text limit 1',[req.params.id])).rows[0]
+  const project = await ownedProject(req,req.params.id)
   if (!project) return res.status(404).json({ error: 'Проект не найден' })
   const domain = String(project.domain || '').trim()
   const base = domain ? 'https://' + domain.replace(/^https?:\/\//,'').replace(/\/$/,'') : 'https://' + project.slug + '.nexora.site'
@@ -914,11 +912,11 @@ app.get('/api/public/order/:id/payment-status', async (req,res)=>{
   const id=String(req.params.id||'').trim()
   if(!id) return res.status(400).json({error:'Заказ не указан'})
   if(!pool){
-    const order=memoryOrders.find(x=>x.id===id&&x.studio_id===req.user.studio_id)
+    const order=memoryOrders.find(x=>x.id===id)
     if(!order) return res.status(404).json({error:'Заказ не найден'})
     return res.json({status:order.status,payment_provider:order.payment_provider||null,payment_external_id:order.payment_external_id||null})
   }
-  const order=(await pool.query('select id,status,payment_provider,payment_external_id from orders where id::text=$1 limit 1',[id])).rows[0]
+  const order=(await pool.query("select o.id,o.status,o.payment_provider,o.payment_external_id from orders o join projects p on p.id=o.project_id where o.id::text=$1 and p.status='published' limit 1",[id])).rows[0]
   if(!order) return res.status(404).json({error:'Заказ не найден'})
   if(order.payment_provider==='yookassa' && order.payment_external_id && order.status!=='paid'){
     try{
