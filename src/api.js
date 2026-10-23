@@ -28,10 +28,6 @@ async function request(path, options = {}) {
 }
 
 export const api = {
-  stripeConnectStatus: () => request('/connect/status'),
-  stripeConnectAccount: (email,country) => request('/connect/account',{method:'POST',body:JSON.stringify({email,country})}),
-  stripeConnectOnboard: () => request('/connect/onboard',{method:'POST'}),
-
   authRegister: async (payload) => { const r=await request('/auth/register',{method:'POST',body:JSON.stringify(payload)}); setAuthToken(r.token); return r },
   authLogin: async (payload) => { const r=await request('/auth/login',{method:'POST',body:JSON.stringify(payload)}); setAuthToken(r.token); return r },
   authMe: () => request('/auth/me'),
@@ -44,7 +40,7 @@ export const api = {
   updateBillingSettings: (currency) => request('/billing/settings',{method:'PATCH',body:JSON.stringify({currency})}),
   switchBillingPlan: (plan) => request('/billing/checkout',{method:'POST',body:JSON.stringify({plan})}),
   billingCheckout: (plan) => request('/billing/checkout',{method:'POST',body:JSON.stringify({plan})}),
-  billingConfirm: (provider,payment_id) => request('/billing/confirm',{method:'POST',body:JSON.stringify({provider,payment_id})}),  billingPortal: () => request('/billing/portal',{method:'POST'}),
+  billingConfirm: (payment_id) => request('/billing/confirm',{method:'POST',body:JSON.stringify({provider:'yookassa',payment_id})}),
 
   team: () => request('/team'),
   addTeamMember: (payload) => request('/team',{method:'POST',body:JSON.stringify(payload)}),
