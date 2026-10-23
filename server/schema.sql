@@ -5,7 +5,7 @@ create table if not exists studios (
   name text not null,
   owner_name text not null,
   plan text not null default 'starter',
-  project_limit integer not null default 5,
+  project_limit integer not null default 10,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -90,7 +90,7 @@ create table if not exists catalog_items (
   name text not null,
   description text,
   price numeric(12,2),
-  currency text not null default 'EUR',
+  currency text not null default 'RUB',
   image_url text,
   active boolean not null default true,
   created_at timestamptz not null default now()
