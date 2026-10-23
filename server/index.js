@@ -1510,6 +1510,7 @@ app.post('/api/orders', async (req,res) => {
   const number='ORD-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
   const status=String(req.body?.status||'pending').trim()
   if(!['pending','paid','cancelled','refunded'].includes(status)) return res.status(400).json({error:'Недопустимый статус заказа'})
+  if(!Number.isFinite(total)||total<=0||total>100000000) return res.status(400).json({error:'Некорректная сумма заказа'})
   if(!pool){const order={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,client_id:clientId,number,status,total,currency,items:normalized,created_at:new Date().toISOString()};memoryOrders.unshift(order);return res.status(201).json({order})}
   const q=await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[projectId,clientId,number,status,total,currency,JSON.stringify(normalized)])
   res.status(201).json({order:q.rows[0]})
@@ -1548,8 +1549,11 @@ app.post('/api/invoices', async (req,res) => {
   const owned=await ownedProject(req,projectId)
   if(!owned)return res.status(404).json({error:'Проект не найден'})
   if(req.body?.client_id && !(await ownedClient(req,req.body.client_id)))return res.status(404).json({error:'Клиент не найден'})
-  const number=String(req.body?.number||('INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()))
+  const number=String(req.body?.number||('INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase())).trim()
   const amount=Number(req.body?.amount||0),currency='RUB',status=String(req.body?.status||'sent')
+  if(number.length>80)return res.status(400).json({error:'Номер счёта слишком длинный'})
+  if(!Number.isFinite(amount)||amount<=0||amount>100000000)return res.status(400).json({error:'Некорректная сумма счёта'})
+  if(!['draft','sent','paid','overdue','cancelled'].includes(status))return res.status(400).json({error:'Недопустимый статус счёта'})
   if(!pool){const x={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,client_id:req.body?.client_id||null,number,amount,currency,status,due_date:req.body?.due_date||null,description:String(req.body?.description||''),created_at:new Date().toISOString()};memoryInvoices.unshift(x);return res.status(201).json({invoice:x})}
   const q=await pool.query('insert into invoices(project_id,client_id,number,amount,currency,status,due_date,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,number,amount,currency,status,req.body?.due_date||null,String(req.body?.description||'')])
   res.status(201).json({invoice:q.rows[0]})
