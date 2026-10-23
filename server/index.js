@@ -1592,8 +1592,20 @@ app.get('/api/analytics/overview', async (req, res) => {
 // Unknown API methods must return JSON, never the frontend HTML shell.
 app.use('/api',(req,res)=>res.status(404).json({error:'API route not found',path:req.originalUrl,method:req.method}))
 
-app.use((req,res,next)=>{
+app.use(async (req,res,next)=>{
   if(req.method==='GET' && !req.path.startsWith('/api') && req.path!=='/health') {
+    try {
+      const host=String(req.headers.host||'').split(':')[0].toLowerCase()
+      const appHost=new URL(billingAppUrl()).hostname.toLowerCase()
+      if(host && host!==appHost && !['localhost','127.0.0.1'].includes(host) && !req.path.startsWith('/published/') && !req.path.startsWith('/miniapp/')) {
+        let project=null
+        if(pool) project=(await pool.query("select slug from projects where lower(domain)=lower($1) and status='published' limit 1",[host])).rows[0]
+        else project=memoryProjects.find(p=>p.status==='published'&&String(p.domain||'').toLowerCase()===host)
+        if(project) return res.redirect(302,'/published/'+encodeURIComponent(project.slug))
+      }
+    } catch(error) {
+      console.error('Custom domain routing error:',error.message)
+    }
     return res.sendFile(path.join(distDir,'index.html'), { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } })
   }
   next()
