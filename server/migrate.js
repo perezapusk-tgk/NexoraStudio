@@ -29,7 +29,7 @@ try {
     await client.query('create table if not exists schema_migrations (version text primary key, applied_at timestamptz not null default now())')
 
     const files = (await fs.readdir(migrationsDir))
-      .filter(name => /^\\d+_.+\\.sql$/.test(name))
+      .filter(name => /^\d+_.+\.sql$/.test(name))
       .sort()
 
     for (const file of files) {
