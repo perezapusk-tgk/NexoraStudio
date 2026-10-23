@@ -74,14 +74,21 @@ function authRateLimit(req,res,next){
 app.use(authRateLimit)
 
 // Health must be available independently of the frontend bundle.
-const healthPayload = () => ({ok:true,service:'nexora-api',version:'0.8.0',storage:pool?'postgres':'memory',auth:'development-session'})
-app.get('/health', (_req,res) => {
+const healthPayload = ({db='unknown',ready=true}={}) => ({ok:ready,ready,service:'nexora-api',version:'0.8.0',storage:pool?'postgres':'memory',db,auth:'development-session'})
+async function healthCheck(){
+  if(!pool) return {db:'memory',ready:true}
+  try{ await pool.query('select 1'); return {db:'postgres',ready:true} }
+  catch(error){ console.error('Health DB check:',error.message); return {db:'postgres',ready:false} }
+}
+app.get('/health', async (_req,res) => {
   res.set(noStore)
-  res.status(200).json(healthPayload())
+  const state=await healthCheck()
+  res.status(state.ready?200:503).json(healthPayload(state))
 })
-app.get('/api/health', (_req,res) => {
+app.get('/api/health', async (_req,res) => {
   res.set(noStore)
-  res.status(200).json(healthPayload())
+  const state=await healthCheck()
+  res.status(state.ready?200:503).json(healthPayload(state))
 })
 
 // Production frontend: always return a fresh HTML shell so a browser/CDN cannot
