@@ -22,7 +22,15 @@ async function request(path, options = {}) {
   }
   if (!response.ok) {
     if(response.status===401) setAuthToken('')
-    throw new Error(await response.text())
+    let message=''
+    try{
+      const data=await response.json()
+      message=data?.error || data?.message || (data?.code ? String(data.code) : '')
+      if(!message) message=JSON.stringify(data)
+    }catch{
+      message=await response.text()
+    }
+    throw new Error(message || ('Ошибка запроса ('+response.status+')'))
   }
   return response.json()
 }
