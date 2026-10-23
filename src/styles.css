@@ -349,3 +349,10 @@ button,input,select,textarea{transition:border-color .16s ease,background-color 
   .order-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .order-timeline>div{grid-template-columns:1fr}
 }
+
+
+.publish-success{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;margin:0 0 14px;border:1px solid #dbe7df;background:#f6fbf7}
+.publish-success>div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.publish-success span{font-size:13px;color:#64748b;overflow:hidden;text-overflow:ellipsis}
+.publish-success a{display:inline-flex;align-items:center;gap:7px;text-decoration:none;white-space:nowrap}
+@media (max-width:720px){.publish-success{align-items:flex-start;flex-direction:column}.publish-success a{width:100%;justify-content:center}}
