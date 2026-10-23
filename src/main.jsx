@@ -565,44 +565,6 @@ function PaymentsPage(){
   </>
 }
 
-function StripeConnectPanel(){
-  const [status,setStatus]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('')
-  const [country,setCountry]=useState(localStorage.getItem('nexora_stripe_country')||'RU')
-  const load=()=>api.stripeConnectStatus().then(setStatus).catch(e=>setError(e.message||'Не удалось получить статус Stripe'))
-  useEffect(load,[])
-  useEffect(()=>localStorage.setItem('nexora_stripe_country',country),[country])
-  const connect=async()=>{
-    setBusy(true);setError('')
-    try{
-      if(country==='RU') throw new Error('Stripe сейчас не поддерживает пользователей и компании, находящиеся в России. Не выбирайте Финляндию или другую страну без реальных подтверждающих данных.')
-      if(!status?.account_id){
-        const a=await api.stripeConnectAccount('',country);setStatus(a)
-      }
-      const r=await api.stripeConnectOnboard();if(r.url)window.location.href=r.url
-    }catch(e){setError(e.message||'Не удалось открыть Stripe')}finally{setBusy(false)}
-  }
-  const unsupported=country==='RU'
-  return <div className="card" style={{marginTop:18,padding:18}}>
-    <div className="section-head"><div><div className="eyebrow">Платежи клиентов</div><h3 style={{margin:'4px 0'}}>Stripe Connect</h3><p className="muted">Подключение Stripe для приёма платежей из сайтов и Telegram Mini Apps ваших клиентов.</p></div><span className={status?.status==='active'?'status success':'status'}>{status?.status==='active'?'Подключено':status?.account_id?'Требуется настройка':'Не подключено'}</span></div>
-    <div style={{marginTop:14}}>
-      <label style={{display:'block',fontWeight:600,marginBottom:6}}>Страна Stripe Connect</label>
-      <select value={country} onChange={e=>setCountry(e.target.value)} disabled={Boolean(status?.account_id)||busy} style={{width:'100%',maxWidth:420}}>
-        <option value="RU">Россия — Stripe недоступен</option>
-        <option value="FI">Финляндия — только при наличии реальных данных и права на деятельность</option>
-        <option value="DE">Германия — только при наличии реальных данных и права на деятельность</option>
-        <option value="US">США — только при наличии реальных данных и права на деятельность</option>
-        <option value="GB">Великобритания — только при наличии реальных данных и права на деятельность</option>
-      </select>
-    </div>
-    {unsupported&&<div className="form-error" style={{marginTop:12}}>Для аккаунта с российскими данными Stripe Connect сейчас не подходит. Не вводите финский адрес, HETU или финское гражданство только ради прохождения KYC.</div>}
-    {error&&<div className="form-error" style={{marginTop:12}}>{error}</div>}
-    <div style={{display:'flex',gap:12,alignItems:'center',marginTop:16,flexWrap:'wrap'}}>
-      <span className="muted">{status?.status==='active'?'Stripe готов принимать платежи.':status?.account_id?'Аккаунт Stripe создан, но проверка и платёжные требования ещё не завершены.':unsupported?'Выберите только ту страну, по которой у вас действительно есть юридические, налоговые и банковские данные.':'Аккаунт Stripe ещё не создан.'}</span>
-      <button className="primary" disabled={busy||unsupported} onClick={connect}>{busy?'Открываем…':status?.account_id?'Продолжить подключение':'Подключить Stripe'}</button>
-    </div>
-    {status?.account_id&&status?.status!=='active'&&<div className="form-error" style={{marginTop:12}}>Для активации оплаты завершите данные и требования Stripe. Осталось требований: {(status.currently_due||[]).length + (status.past_due||[]).length}. После этого вернитесь в Nexora и обновите страницу.</div>}
-  </div>
-}
 function SettingsPage(){
   const [tab,setTab]=useState('profile')
   const [language,setUiLanguage]=useState(getLanguage())
@@ -639,9 +601,9 @@ function SettingsPage(){
       <section className="card settings-form">
         {tab==='profile'&&<div className="setting-block"><h2>Профиль студии</h2><span>Основная информация рабочего пространства.</span><label>Название студии<input value="Nexora Studio" readOnly/></label><label>Рабочий email<input value="studio@nexora.local" readOnly/></label><div className="catalog-form-grid"><label>Язык интерфейса<select value={language} onChange={e=>changeLanguage(e.target.value)}><option value="ru">Русский</option><option value="en">Английский</option></select></label><label>Валюта оплаты<select value={billingCurrency} onChange={changeCurrency}><option value="RUB">Российский рубль (₽)</option></select></label></div></div>}
         {tab==='team'&&<><div className="setting-block"><h2>Команда студии</h2><span>Управляйте ролями и доступами сотрудников.</span><div className="team-list">{team.map(m=><div className="team-row" key={m.id}><div className="user-avatar">{String(m.name||'?').slice(0,1)}</div><div className="team-person"><b>{m.name}</b><span>{m.email}</span></div>{m.role==='owner'?<span className="status success"><i/>Владелец</span>:<><select value={m.role} onChange={e=>role(m.id,e.target.value)}><option value="admin">Администратор</option><option value="member">Участник</option><option value="viewer">Наблюдатель</option></select><button className="filter" onClick={()=>remove(m.id)}>Удалить</button></>}</div>)}</div></div><div className="setting-block"><h2>Пригласить сотрудника</h2><div className="team-add-grid"><input type="email" placeholder="Email сотрудника" value={form.email} onChange={e=>setForm(v=>({...v,email:e.target.value}))}/><select value={form.role} onChange={e=>setForm(v=>({...v,role:e.target.value}))}><option value="admin">Администратор</option><option value="member">Участник</option><option value="viewer">Наблюдатель</option></select><button className="primary" disabled={busy} onClick={add}>{busy?'Создаём…':'Создать приглашение'}</button></div></div><div className="setting-block"><h2>Ожидают приглашения</h2>{invites.length===0?<div className="empty-editor"><b>Нет активных приглашений</b></div>:<div className="team-list">{invites.map(inv=><div className="team-row" key={inv.id}><div className="team-person"><b>{inv.email}</b><span>Истекает {new Date(inv.expires_at).toLocaleDateString('ru-RU')}</span></div><span className="status draft"><i/>Ожидает</span><button className="filter" onClick={()=>revoke(inv.id)}>Отозвать</button></div>)}</div>}</div></>}
-        {tab==='payments'&&<div className="setting-block"><h2>Оплата</h2><span>Управление оплатой клиентов и подключение платёжных провайдеров.</span><StripeConnectPanel/></div>}
+        {tab==='payments'&&<div className="setting-block"><h2>Оплата</h2><span>Все платежи в Nexora проходят в российских рублях через ЮKassa.</span><div className="security-cards"><div><CreditCard size={18}/><b>ЮKassa</b><span>Единственный платёжный провайдер. Подключите ключи магазина на сервере.</span></div><div><CircleDollarSign size={18}/><b>RUB</b><span>Оплата и тарифы только в российских рублях.</span></div></div></div>}
         {tab==='security'&&<div className="setting-block"><h2>Безопасность</h2><span>Защищённые сессии и роли доступа.</span><div className="security-cards"><div><ShieldCheck size={18}/><b>Сессии</b><span>Авторизация по токену на 30 дней.</span></div><div><ShieldCheck size={18}/><b>Пароли</b><span>Пароли защищены scrypt.</span></div></div></div>}
-        {tab==='billing'&&<div className="setting-block"><h2>Тариф и оплата</h2><span>Простые цены без завышения.</span><div className="pricing-grid">{plans.map(p=><div className={p.id===(usage?.studio?.plan||'pro')?'pricing-card featured':'pricing-card'} key={p.id}><div className="pricing-head"><div><b>{p.name}</b><span>{p.projectLimit} проектов</span></div></div><div className="pricing-price">{p.price===0?'Бесплатно':billingCurrency==='USD'?'$ '+planPrice(p):'₽'+planPrice(p)}<small>{p.price===0?'':' / мес'}</small></div><ul><li>До {p.clientLimit.toLocaleString('ru-RU')} клиентов</li><li>{p.teamLimit} участников</li><li>Сайт + Telegram Mini App</li></ul><button className={p.id===(usage?.studio?.plan||'pro')?'primary':'filter'} disabled={p.id===(usage?.studio?.plan||'pro')} onClick={()=>switchPlan(p.id)}>{p.id===(usage?.studio?.plan||'pro')?'Текущий тариф':'Выбрать тариф'}</button></div>)}</div><div className="pricing-note"><ShieldCheck size={17}/> USD → Stripe. RUB → ЮKassa (после добавления ключей магазина).</div><div className="setting-block compact-billing"><h3>Статус подписки</h3><span>{billingAccount?.status==='active'?'Активна':'Не активна'}</span>{billingAccount?.provider==='stripe'&&billingAccount?.status==='active'&&<button className="filter" onClick={openBillingPortal} style={{marginTop:12}}>Управление подпиской в Stripe</button>}</div></div>}
+        {tab==='billing'&&<div className="setting-block"><h2>Тариф и оплата</h2><span>Простые цены без завышения.</span><div className="pricing-grid">{plans.map(p=><div className={p.id===(usage?.studio?.plan||'pro')?'pricing-card featured':'pricing-card'} key={p.id}><div className="pricing-head"><div><b>{p.name}</b><span>{p.projectLimit} проектов</span></div></div><div className="pricing-price">{p.price===0?'Бесплатно':billingCurrency==='USD'?'$ '+planPrice(p):'₽'+planPrice(p)}<small>{p.price===0?'':' / мес'}</small></div><ul><li>До {p.clientLimit.toLocaleString('ru-RU')} клиентов</li><li>{p.teamLimit} участников</li><li>Сайт + Telegram Mini App</li></ul><button className={p.id===(usage?.studio?.plan||'pro')?'primary':'filter'} disabled={p.id===(usage?.studio?.plan||'pro')} onClick={()=>switchPlan(p.id)}>{p.id===(usage?.studio?.plan||'pro')?'Текущий тариф':'Выбрать тариф'}</button></div>)}</div><div className="pricing-note"><ShieldCheck size={17}/> ЮKassa · RUB. Для платных тарифов нужны YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY.</div><div className="setting-block compact-billing"><h3>Статус подписки</h3><span>{billingAccount?.status==='active'?'Активна':'Не активна'}</span></div></div>}
         {tab==='branding'&&<div className="setting-block"><h2>Брендинг</h2><span>Настройте внешний вид рабочей панели.</span><div className="catalog-form-grid"><label>Шрифт<select value={font} onChange={e=>setFont(e.target.value)}><option>Inter</option><option>system-ui</option><option>Arial</option><option>Georgia</option></select></label><label>Основной цвет<input type="color" value={accent} onChange={e=>setAccent(e.target.value)}/></label></div></div>}{tab==='notifications'&&<div className="setting-block"><h2>Уведомления</h2><span>Настройки уведомлений студии.</span><div className="security-cards"><div><b>Email</b><span>Уведомления о новых заявках и бронированиях.</span></div><div><b>Системные</b><span>Уведомления о платежах и состоянии подписки.</span></div></div></div>}
       </section>
     </div>
@@ -667,7 +629,7 @@ function CatalogManager({projectId}) {
     }finally{setLoading(false)}
   }
   useEffect(()=>{load()},[projectId])
-  const reset=()=>{setEditing(null);setForm({name:'',description:'',price:'',currency:'EUR',image_url:'',active:true})}
+  const reset=()=>{setEditing(null);setForm({name:'',description:'',price:'',currency:'RUB',image_url:'',active:true})}
   const save=async()=>{
     if(!form.name.trim()) return
     setSaving(true)
