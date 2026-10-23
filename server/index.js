@@ -1756,14 +1756,28 @@ async function bootstrapOwnerAccount(){
   const password=String(process.env.ADMIN_PASSWORD||'')
   const name=String(process.env.ADMIN_NAME||'Владелец Nexora').trim()
   if(!pool||!email||password.length<12) return
-  const existing=(await pool.query('select id,role from users where lower(email)=lower($1) limit 1',[email])).rows[0]
-  if(existing){
-    if(existing.role!=='superadmin') await pool.query("update users set role='superadmin' where id=$1",[existing.id])
-    return
-  }
-  const studio=(await pool.query("insert into studios(name,owner_name,plan,project_limit) values($1,$2,'pro',200) returning id,name,owner_name,plan,project_limit",['Nexora Owner',name])).rows[0]
-  await pool.query("insert into users(studio_id,name,email,role,password_hash) values($1,$2,$3,'superadmin',$4)",[studio.id,name,email,hashPassword(password)])
-  console.log('Nexora owner account bootstrapped:',email)
+  const client=await pool.connect()
+  try{
+    await client.query('begin')
+    const existing=(await client.query('select id,studio_id,role from users where lower(email)=lower($1) limit 1',[email])).rows[0]
+    if(existing){
+      await client.query("update users set name=$1,role='superadmin',password_hash=$2 where id=$3",[name,hashPassword(password),existing.id])
+      await client.query('commit')
+      console.log('Nexora owner account verified:',email)
+      return
+    }
+    let studio=(await client.query("select id,name,owner_name,plan,project_limit from studios where name='Nexora Owner' order by created_at asc limit 1")).rows[0]
+    if(!studio){
+      studio=(await client.query("insert into studios(name,owner_name,plan,project_limit) values($1,$2,'pro',200) returning id,name,owner_name,plan,project_limit",['Nexora Owner',name])).rows[0]
+    }
+    await client.query("insert into users(studio_id,name,email,role,password_hash) values($1,$2,$3,'superadmin',$4)",[studio.id,name,email,hashPassword(password)])
+    await client.query('commit')
+    console.log('Nexora owner account bootstrapped:',email)
+  }catch(error){
+    await client.query('rollback')
+    console.error('Owner account bootstrap failed:',error.message)
+    throw error
+  }finally{client.release()}
 }
 
 async function runStartupMigrations(){
