@@ -979,24 +979,6 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   if(!pool) project=memoryProjects.find(p=>p.slug===slug && p.status==='published')
   else project=(await pool.query("select id,name,slug,studio_id from projects where slug=$1 and status='published' limit 1",[slug])).rows[0]
   if(!project) return res.status(404).json({error:'Публичный проект не найден'})
-  let clientId=null
-  if(pool){
-    const existing=(await pool.query('select id from clients where studio_id::text=$1::text and ((phone=$2 and $2 <> \'\') or (email=$3 and $3 <> \'\')) limit 1',[project.studio_id||demoStudio.id,phone,email])).rows[0]
-    if(existing) clientId=existing.id
-    else {
-      if(!await requireClientCapacity(project.studio_id,res))return
-      clientId=(await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id',[project.studio_id,name,email||null,phone||null])).rows[0].id
-    }
-  } else {
-    const existing=memoryClients.find(c=>(phone && c.phone===phone)||(email && c.email===email))
-    if(existing) clientId=existing.id
-    else {
-      const studioId=project.studio_id||demoStudio.id
-      if(!await requireClientCapacity(studioId,res))return
-      const client={id:crypto.randomUUID(),studio_id:studioId,name,email,phone,created_at:new Date().toISOString()}
-      memoryClients.unshift(client); clientId=client.id
-    }
-  }
   let total=0
   let currency=null
   const normalized=[]
@@ -1016,7 +998,26 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
     if(currency && currency!==sourceCurrency) return res.status(400).json({error:'Нельзя оформить заказ с товарами в разных валютах'})
     currency='RUB'
     total+=price*quantity
+    if(!Number.isFinite(total)||total>100000000) return res.status(400).json({error:'Сумма заказа превышает допустимый лимит'})
     normalized.push({catalog_id:source.id,name:source.name,price,quantity})
+  }
+  let clientId=null
+  if(pool){
+    const existing=(await pool.query('select id from clients where studio_id::text=$1::text and ((phone=$2 and $2 <> '') or (email=$3 and $3 <> '')) limit 1',[project.studio_id||demoStudio.id,phone,email])).rows[0]
+    if(existing) clientId=existing.id
+    else {
+      if(!await requireClientCapacity(project.studio_id,res))return
+      clientId=(await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id',[project.studio_id,name,email||null,phone||null])).rows[0].id
+    }
+  } else {
+    const existing=memoryClients.find(c=>(phone && c.phone===phone)||(email && c.email===email))
+    if(existing) clientId=existing.id
+    else {
+      const studioId=project.studio_id||demoStudio.id
+      if(!await requireClientCapacity(studioId,res))return
+      const client={id:crypto.randomUUID(),studio_id:studioId,name,email,phone,created_at:new Date().toISOString()}
+      memoryClients.unshift(client); clientId=client.id
+    }
   }
   const number='ORD-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
   let order
