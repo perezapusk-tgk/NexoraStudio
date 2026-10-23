@@ -623,9 +623,14 @@ function Templates({onCreate}){const templates=[['barber','Барбершоп','
 
 function PaymentsPage(){
   const [status,setStatus]=useState(null)
+  const [plans,setPlans]=useState([])
   const [loading,setLoading]=useState(true)
-  useEffect(()=>{api.billingAccount().then(setStatus).catch(()=>setStatus(null)).finally(()=>setLoading(false))},[])
-  const plans=status?.plans||[]
+  useEffect(()=>{
+    Promise.allSettled([api.billingAccount(),api.billingPlans()]).then(([account,plansResult])=>{
+      if(account.status==='fulfilled') setStatus(account.value)
+      if(plansResult.status==='fulfilled') setPlans(plansResult.value.plans||[])
+    }).finally(()=>setLoading(false))
+  },[])
   return <><Header eyebrow="Финансы" title="Оплата" description="Управляйте подпиской Nexora и оплатой заказов клиентов."/>
     <div className="settings-layout">
       <div className="card setting-block">
