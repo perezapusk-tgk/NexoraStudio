@@ -671,34 +671,22 @@ function Integrations(){const items=[['Telegram','Заявки, уведомле
 function Templates({onCreate}){const templates=[['barber','Барбершоп','Барбершоп','dark'],['beauty','Салон красоты','Салон красоты','blue'],['fitness','Фитнес','Фитнес-студия','purple'],['cafe','Кафе','Кафе / ресторан','orange'],['shop','Магазин','Интернет-магазин','green'],['services','Услуги','Бизнес и услуги','pink']];return <><Header eyebrow="Библиотека" title="Шаблоны" description="Готовые стартовые проекты с готовыми страницами, блоками и каталогом."/><div className="template-grid">{templates.map(([id,name,desc,color])=><div className="card template" key={id}><div className={`template-preview ${color}`}><span>{name}</span><div className="template-lines"><i/><i/><i/></div></div><div className="template-info"><div><h3>{name}</h3><span>{desc} · страницы + каталог</span></div><button className="filter" onClick={()=>onCreate('site',id)}>Использовать</button></div></div>)}</div></>}
 
 function PaymentsPage(){
-  const [status,setStatus]=useState(null)
-  const [plans,setPlans]=useState([])
-  const [loading,setLoading]=useState(true)
-  useEffect(()=>{
-    Promise.allSettled([api.billingAccount(),api.billingPlans()]).then(([account,plansResult])=>{
-      if(account.status==='fulfilled') setStatus(account.value)
-      if(plansResult.status==='fulfilled') setPlans(plansResult.value.plans||[])
-    }).finally(()=>setLoading(false))
-  },[])
-  return <><Header eyebrow="Финансы" title="Оплата" description="Управляйте подпиской Nexora и оплатой заказов клиентов."/>
-    <div className="settings-layout">
-      <div className="card setting-block">
-        <h2>ЮKassa</h2>
-        <span>Основной платёжный провайдер Nexora для оплаты в рублях.</span>
-        <div className="security-cards">
-          <div><b>Статус</b><span>{loading?'Проверяем…':'Готова к работе после добавления ключей магазина.'}</span></div>
-          <div><b>Валюта</b><span>RUB (₽)</span></div>
-        </div>
-        <p className="pricing-note"><ShieldCheck size={17}/> Для запуска оплаты добавьте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в переменные окружения сервера.</p>
-        <div className="security-cards">
-          <div><b>Подписки</b><span>{plans.length?'Starter, Pro и Agency доступны через ЮKassa.':'Тарифы будут доступны после загрузки статуса оплаты.'}</span></div>
-          <div><b>Заказы клиентов</b><span>Оплата заказов в RUB через ЮKassa.</span></div>
-        </div>
+  return <><Header eyebrow="Финансы" title="Оплата" description="Платёжная инфраструктура подготовлена, подключение провайдера выполняется на финальном этапе."/><div className="settings-layout">
+    <div className="card setting-block">
+      <h2>Оплата — финальный этап</h2>
+      <span>Сейчас Nexora работает без активного внешнего платёжного провайдера. Заказы, счета и CRM уже создаются и сохраняются в системе.</span>
+      <div className="security-cards">
+        <div><b>Статус</b><span>Подключение оплаты отложено</span></div>
+        <div><b>Валюта</b><span>RUB (₽)</span></div>
+      </div>
+      <p className="pricing-note"><ShieldCheck size={17}/> На финальном этапе подключим выбранный российский платёжный провайдер, вебхуки, подтверждение оплаты и автоматическую сверку.</p>
+      <div className="security-cards">
+        <div><b>Заказы клиентов</b><span>Создаются без внешней оплаты и доступны в разделе «Заказы».</span></div>
+        <div><b>Счета</b><span>Можно создавать и привязывать к заказам уже сейчас.</span></div>
       </div>
     </div>
-  </>
+  </div></>
 }
-
 function SettingsPage(){
   const [tab,setTab]=useState('profile')
   const [language,setUiLanguage]=useState(getLanguage())
