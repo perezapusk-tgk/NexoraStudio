@@ -1203,55 +1203,14 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
 })
 
 
-app.post('/api/public/order/:id/yookassa-webhook', async (req,res)=>{
-  const id=String(req.params.id||'').trim()
-  if(!id)return res.status(400).json({error:'Заказ не указан'})
-  try{
-    let order
-    if(!pool) order=memoryOrders.find(x=>x.id===id)
-    else order=(await pool.query('select o.*,p.status as project_status from orders o join projects p on p.id=o.project_id where o.id::text=$1 limit 1',[id])).rows[0]
-    if(!order)return res.status(404).json({error:'Заказ не найден'})
-    const paymentId=String(order.payment_external_id||'').trim()
-    if(!paymentId)return res.status(400).json({error:'У заказа нет платежа ЮKassa'})
-    const payment=await yookassaRequest('/payments/'+encodeURIComponent(paymentId))
-    if(payment?.status==='succeeded' && payment?.paid===true){
-      if(!pool){order.status='paid';order.paid_at=new Date().toISOString()}
-      else await pool.query("update orders set status='paid',paid_at=coalesce(paid_at,now()) where id::text=$1",[id])
-    }else if(payment?.status==='canceled'){
-      if(!pool)order.status='cancelled'
-      else await pool.query("update orders set status='cancelled' where id::text=$1 and status='pending'",[id])
-    }
-    return res.json({ok:true,status:payment?.status||'unknown',order_status:payment?.status==='succeeded'?'paid':payment?.status==='canceled'?'cancelled':order.status})
-  }catch(e){
-    console.error('YooKassa order webhook:',e.message)
-    return res.status(200).json({ok:false,received:true})
-  }
+app.post('/api/public/order/:id/yookassa-webhook', async (_req,res)=>{
+  return res.status(410).json({error:'Внешняя оплата пока отключена'})
 })
 
-app.get('/api/public/order/:id/payment-status', async (req,res)=>{
-  const id=String(req.params.id||'').trim()
-  if(!id) return res.status(400).json({error:'Заказ не указан'})
-  if(!pool){
-    const order=memoryOrders.find(x=>x.id===id)
-    if(!order) return res.status(404).json({error:'Заказ не найден'})
-    return res.json({status:order.status,payment_provider:order.payment_provider||null})
-  }
-  const order=(await pool.query("select o.id,o.status,o.payment_provider,o.payment_external_id from orders o join projects p on p.id=o.project_id where o.id::text=$1 and p.status='published' limit 1",[id])).rows[0]
-  if(!order) return res.status(404).json({error:'Заказ не найден'})
-  if(order.payment_provider==='yookassa' && order.payment_external_id && order.status!=='paid'){
-    try{
-      const payment=await yookassaRequest('/payments/'+encodeURIComponent(order.payment_external_id))
-      if(payment?.status==='succeeded' && payment?.paid===true){
-        await pool.query("update orders set status='paid',paid_at=coalesce(paid_at,now()) where id::text=$1",[id])
-        order.status='paid'
-      }else if(payment?.status==='canceled'){
-        await pool.query("update orders set status='cancelled' where id::text=$1 and status='pending'",[id])
-        order.status='cancelled'
-      }
-    }catch(e){ console.error('YooKassa payment status:',e.message) }
-  }
-  res.json({status:order.status,payment_provider:order.payment_provider||null,payment_external_id:order.payment_external_id||null})
+app.get('/api/public/order/:id/payment-status', async (_req,res)=>{
+  return res.status(410).json({error:'Внешняя оплата пока отключена'})
 })
+
 app.post('/api/public/:slug/events', async (req,res) => {
   const slug=String(req.params.slug||'').trim()
   const type=String(req.body?.event_type||'page_view').slice(0,64)
