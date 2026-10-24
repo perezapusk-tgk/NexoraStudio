@@ -1135,6 +1135,9 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   const items=Array.isArray(req.body?.items)?req.body.items:[]
   if(name.length>120||phone.length>40||email.length>160) return res.status(400).json({error:'Некорректная длина данных'})
   if(!name || (!phone && !email) || !items.length) return res.status(400).json({error:'Укажите имя, телефон или email и хотя бы один товар'})
+  if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({error:'Некорректный email'})
+  if(phone && !/^[0-9+()\-\s]{5,40}$/.test(phone)) return res.status(400).json({error:'Некорректный телефон'})
+  if(items.length>50) return res.status(400).json({error:'Слишком много позиций в заказе'})
   let project
   if(!pool) project=memoryProjects.find(p=>p.slug===slug && p.status==='published')
   else project=(await pool.query("select id,name,slug,studio_id from projects where slug=$1 and status='published' limit 1",[slug])).rows[0]
@@ -1170,7 +1173,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
       clientId=(await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id',[project.studio_id,name,email||null,phone||null])).rows[0].id
     }
   } else {
-    const existing=memoryClients.find(c=>(phone && c.phone===phone)||(email && c.email===email))
+    const existing=memoryClients.find(c=>c.studio_id===project.studio_id&&((phone && c.phone===phone)||(email && c.email===email)))
     if(existing) clientId=existing.id
     else {
       const studioId=project.studio_id||demoStudio.id
@@ -1262,17 +1265,14 @@ app.post('/api/projects/:id/catalog', async (req,res) => {
   const rawPrice=req.body?.price
   const price = rawPrice === '' || rawPrice == null ? null : Number(rawPrice)
   if(price!=null && (!Number.isFinite(price) || price<0)) return res.status(400).json({error:'Некорректная цена'})
-  const payload = {
-    name,
-    description: String(req.body?.description || '').trim(),
-    price,
-    currency: 'RUB',
-    image_url: String(req.body?.image_url || '').trim(),
-    active: req.body?.active !== false
-  }
+  const description=String(req.body?.description || '').trim()
+  const imageUrl=String(req.body?.image_url || '').trim()
+  if(name.length>160||description.length>2000||imageUrl.length>2000)return res.status(400).json({error:'Слишком длинные данные товара'})
+  const payload = { name, description, price, currency:'RUB', image_url:imageUrl, active:req.body?.active !== false }
   const projectKey=String(req.params.id)
   const owned=await ownedProject(req,projectKey)
   if(!owned)return res.status(404).json({error:'Проект не найден'})
+  const projectId=owned.id
   if (!pool) { const item={id:crypto.randomUUID(),project_id:projectId,...payload};const list=memoryCatalog.get(projectId)||[];list.unshift(item);memoryCatalog.set(projectId,list);return res.status(201).json({item}) }
   const q = await pool.query('insert into catalog_items(project_id,name,description,price,currency,image_url,active) values($1::uuid,$2,$3,$4,\'RUB\',$5,$6) returning *',[owned.id,payload.name,payload.description,payload.price,payload.image_url,payload.active])
   res.status(201).json({ item:q.rows[0] })
