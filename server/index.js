@@ -1087,7 +1087,7 @@ app.get('/api/public/order/:id/payment-status', async (_req,res)=>{
 
 app.post('/api/public/:slug/events', async (req,res) => {
   const slug=String(req.params.slug||'').trim().slice(0,120)
-  const allowedEventTypes=new Set(['page_view','lead','booking','payment','order_created'])
+  const allowedEventTypes=new Set(['page_view','lead','booking','order_created'])
   const type=String(req.body?.event_type||'page_view').trim().slice(0,64)
   const pathValue=String(req.body?.path||'').trim().slice(0,500)
   const value=Number(req.body?.value||0)
@@ -1482,8 +1482,8 @@ app.get('/api/projects/:id/analytics', async (req,res) => {
     if(!project)return res.status(404).json({error:'Проект не найден'})
     const slug=project.slug
     const events=memoryEvents.filter(e=>e.slug===slug&&e.studio_id===req.user.studio_id)
-    const leads=memoryLeads.filter(l=>l.project_slug===slug)
-    const bookings=memoryBookings.filter(b=>b.project_slug===slug)
+    const leads=memoryLeads.filter(l=>l.project_slug===slug&&l.studio_id===req.user.studio_id)
+    const bookings=memoryBookings.filter(b=>b.project_slug===slug&&b.studio_id===req.user.studio_id)
     return res.json({metrics:{visits:events.filter(e=>e.event_type==='page_view').length,leads:leads.length,bookings:bookings.length,revenue:memoryPayments.filter(p=>p.project_id===project.id&&p.status==='paid').reduce((a,p)=>a+Number(p.amount||0),0)}})
   }
   const project=await pool.query('select id from projects where (id::text=$1::text or slug=$1::text) and studio_id::text=$2::text limit 1',[id,req.user.studio_id])
