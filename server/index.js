@@ -853,7 +853,33 @@ app.get('/api/public/:slug', async (req,res) => {
   if (!pool) {
     const project = memoryProjects.find(p => p.slug === slug && p.status === 'published')
     if (!project) return res.status(404).json({error:'Публичный проект не найден'})
-    return res.json({project,pages:(memoryPages.get(project.id)||[]).filter(x=>x.published),catalog:memoryCatalog.get(project.id)||[]})
+    const publicProject = {
+      id: project.id,
+      name: project.name,
+      slug: project.slug,
+      project_type: project.project_type,
+      status: project.status,
+      domain: project.domain,
+      settings: {
+        ...(project.settings?.public || {}),
+        miniApp: project.settings?.miniApp ? {
+          enabled: Boolean(project.settings.miniApp.enabled),
+          url: project.settings.miniApp.url || null,
+          buttonText: project.settings.miniApp.buttonText || null
+        } : undefined
+      }
+    }
+    const publicCatalog = (memoryCatalog.get(project.id)||[]).filter(item => item.active !== false).map(item => ({
+      id: item.id,
+      project_id: item.project_id,
+      name: item.name,
+      description: item.description || '',
+      price: Number(item.price || 0),
+      currency: String(item.currency || 'RUB').toUpperCase(),
+      image_url: item.image_url || null,
+      active: true
+    }))
+    return res.json({project:publicProject,pages:(memoryPages.get(project.id)||[]).filter(x=>x.published),catalog:publicCatalog})
   }
   const q = await pool.query('select * from projects where slug=$1 and status=\'published\' limit 1',[slug])
   if (!q.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
