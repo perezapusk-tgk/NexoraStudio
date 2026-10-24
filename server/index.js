@@ -230,6 +230,15 @@ const memoryCatalog = new Map(memoryProjects.map(p => [p.id, demoCatalog(p.id)])
 const memoryLeads = [...demoLeads()]
 const memoryClients = [...demoClients()]
 const memoryBookings = [...demoBookings()]
+const memoryBookingLocks = new Map()
+async function withMemoryBookingLock(key, fn){
+  const previous=memoryBookingLocks.get(key)||Promise.resolve()
+  let release
+  const current=new Promise(resolve=>{release=resolve})
+  memoryBookingLocks.set(key,current)
+  await previous
+  try{return await fn()}finally{release();if(memoryBookingLocks.get(key)===current)memoryBookingLocks.delete(key)}
+}
 const memoryPayments = [...demoPayments()]
 const memoryInvoices = [...demoInvoices()]
 const memoryOrders = []
@@ -1031,14 +1040,30 @@ app.post('/api/public/:slug/bookings', async (req,res) => {
   if(Number.isNaN(startsDate.getTime()) || startsDate.getTime() < Date.now()+60000) return res.status(400).json({error:'Укажите корректное будущее время записи'})
   const endsDate=new Date(startsDate.getTime()+60*60000)
   const endsAt=endsDate.toISOString()
-  if(!pool){const project=memoryProjects.find(p=>p.slug===slug && p.status==='published');if(!project) return res.status(404).json({error:'Публичный проект не найден'});let client=memoryClients.find(x=>x.studio_id===project.studio_id&&x.phone===phone);if(!client){if(!await requireClientCapacity(project.studio_id,res))return;client={id:crypto.randomUUID(),studio_id:project.studio_id,name,email:'',phone,created_at:new Date().toISOString()};memoryClients.unshift(client)}const conflict=memoryBookings.find(x=>x.project_id===project.id&&x.status!=='cancelled'&&new Date(x.starts_at)<endsDate&&new Date(x.ends_at||new Date(new Date(x.starts_at).getTime()+60*60000))>startsDate);if(conflict)return res.status(409).json({error:'На это время уже есть запись'});const booking={id:crypto.randomUUID(),studio_id:project.studio_id,project_slug:slug,project_id:project.id,client_id:client.id,customer_name:name,customer_phone:phone,starts_at:startsAt,ends_at:endsAt,service_name:serviceName,status:'pending'};memoryBookings.push(booking);memoryEvents.push({slug,studio_id:project.studio_id,event_type:'booking',path:'/booking',created_at:new Date().toISOString()});return res.status(201).json({booking})}
-  const pr=await pool.query("select id,studio_id from projects where slug=$1 and status='published' limit 1",[slug])
-  if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
-  const conflict=await pool.query("select id from bookings where project_id::text=$1::text and status<>'cancelled' and starts_at < $3::timestamptz and coalesce(ends_at,starts_at + interval '1 hour') > $2::timestamptz limit 1",[pr.rows[0].id,startsAt,endsAt]);
-  if(conflict.rows[0]) return res.status(409).json({error:'На это время уже есть запись'})
-  const existingClient=await pool.query('select id from clients where studio_id::text=$1::text and phone=$2 limit 1',[pr.rows[0].studio_id,phone]);let clientId=existingClient.rows[0]?.id||null;if(!clientId){if(!await requireClientCapacity(pr.rows[0].studio_id,res))return;clientId=(await pool.query('insert into clients(studio_id,name,phone) values($1,$2,$3) returning id',[pr.rows[0].studio_id,name,phone])).rows[0].id}const q=await pool.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,ends_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[pr.rows[0].id,clientId,name,phone,startsAt,endsAt,serviceName||null,'pending'])
-  await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[pr.rows[0].id,'booking','/booking',0,JSON.stringify({source:'public',service_name:serviceName})])
-  res.status(201).json({booking:q.rows[0]})
+  if(!pool){const project=memoryProjects.find(p=>p.slug===slug && p.status==='published');if(!project) return res.status(404).json({error:'Публичный проект не найден'});return withMemoryBookingLock(project.id+':'+startsDate.toISOString(),async()=>{let client=memoryClients.find(x=>x.studio_id===project.studio_id&&x.phone===phone);if(!client){if(!await requireClientCapacity(project.studio_id,res))return;client={id:crypto.randomUUID(),studio_id:project.studio_id,name,email:'',phone,created_at:new Date().toISOString()};memoryClients.unshift(client)}const conflict=memoryBookings.find(x=>x.project_id===project.id&&x.status!=='cancelled'&&new Date(x.starts_at)<endsDate&&new Date(x.ends_at||new Date(new Date(x.starts_at).getTime()+60*60000))>startsDate);if(conflict)return res.status(409).json({error:'На это время уже есть запись'});const booking={id:crypto.randomUUID(),studio_id:project.studio_id,project_slug:slug,project_id:project.id,client_id:client.id,customer_name:name,customer_phone:phone,starts_at:startsAt,ends_at:endsAt,service_name:serviceName,status:'pending'};memoryBookings.push(booking);memoryEvents.push({slug,studio_id:project.studio_id,event_type:'booking',path:'/booking',created_at:new Date().toISOString()});return res.status(201).json({booking})})}
+  const client=await pool.connect()
+  try{
+    await client.query('begin')
+    const pr=await client.query("select id,studio_id from projects where slug=$1 and status='published' limit 1",[slug])
+    if(!pr.rows[0]){await client.query('rollback');return res.status(404).json({error:'Публичный проект не найден'})}
+    await client.query('select pg_advisory_xact_lock(hashtext($1))',[String(pr.rows[0].id)+':'+startsDate.toISOString()])
+    const conflict=await client.query("select id from bookings where project_id::text=$1::text and status<>'cancelled' and starts_at < $3::timestamptz and coalesce(ends_at,starts_at + interval '1 hour') > $2::timestamptz limit 1",[pr.rows[0].id,startsAt,endsAt])
+    if(conflict.rows[0]){await client.query('rollback');return res.status(409).json({error:'На это время уже есть запись'})}
+    const existingClient=await client.query('select id from clients where studio_id::text=$1::text and phone=$2 limit 1',[pr.rows[0].studio_id,phone])
+    let clientId=existingClient.rows[0]?.id||null
+    if(!clientId){
+      if(!await requireClientCapacity(pr.rows[0].studio_id,res)){await client.query('rollback');return}
+      clientId=(await client.query('insert into clients(studio_id,name,phone) values($1,$2,$3) returning id',[pr.rows[0].studio_id,name,phone])).rows[0].id
+    }
+    const q=await client.query('insert into bookings(project_id,client_id,customer_name,customer_phone,starts_at,ends_at,service_name,status) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[pr.rows[0].id,clientId,name,phone,startsAt,endsAt,serviceName||null,'pending'])
+    await client.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[pr.rows[0].id,'booking','/booking',0,JSON.stringify({source:'public',service_name:serviceName})])
+    await client.query('commit')
+    return res.status(201).json({booking:q.rows[0]})
+  }catch(error){
+    try{await client.query('rollback')}catch{}
+    throw error
+  }finally{client.release()}
+}
 })
 
 app.post('/api/public/:slug/checkout', async (req,res) => {
