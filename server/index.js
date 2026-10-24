@@ -1594,8 +1594,8 @@ app.post('/api/orders', async (req,res) => {
     normalized.push({catalog_id:source.id,name:source.name,price,quantity})
   }
   const number='ORD-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
-  const status=String(req.body?.status||'pending').trim()
-  if(!['pending','paid','cancelled','refunded'].includes(status)) return res.status(400).json({error:'Недопустимый статус заказа'})
+  // New orders always start pending. Paid is derived from a confirmed payment.
+  const status='pending'
   if(!Number.isFinite(total)||total<=0||total>100000000) return res.status(400).json({error:'Некорректная сумма заказа'})
   if(!pool){const order={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,client_id:clientId,number,status,total,currency,items:normalized,created_at:new Date().toISOString()};memoryOrders.unshift(order);return res.status(201).json({order})}
   const q=await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[projectId,clientId,number,status,total,currency,JSON.stringify(normalized)])
