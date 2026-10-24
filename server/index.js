@@ -1094,6 +1094,8 @@ app.post('/api/public/:slug/leads', async (req,res) => {
   const email=String(req.body?.email||'').trim().toLowerCase()
   if(name.length>120||phone.length>40||email.length>160||message.length>2000) return res.status(400).json({error:'Некорректная длина данных'})
   if(!name || (!phone && !email)) return res.status(400).json({error:'Укажите имя и телефон или email'})
+  if(email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) return res.status(400).json({error:'Некорректный email'})
+  if(phone && !/^[0-9+()\\-\\s]{5,40}$/.test(phone)) return res.status(400).json({error:'Некорректный телефон'})
   if(!pool){const project=memoryProjects.find(p=>p.slug===slug && p.status==='published');if(!project) return res.status(404).json({error:'Публичный проект не найден'});const lead={id:crypto.randomUUID(),project_slug:slug,project_id:project.id,name,phone,email,message,status:'new',source:'public',created_at:new Date().toISOString()};memoryLeads.unshift(lead);memoryEvents.push({slug,studio_id:project.studio_id,event_type:'lead',path:'/lead',created_at:new Date().toISOString()});return res.status(201).json({lead})}
   const pr=await pool.query("select id from projects where slug=$1 and status='published' limit 1",[slug])
   if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
@@ -1106,7 +1108,7 @@ app.post('/api/public/:slug/bookings', async (req,res) => {
   const slug=String(req.params.slug||'').trim()
   const name=String(req.body?.name||'').trim()
   const phone=String(req.body?.phone||'').trim()
-  if(name.length>120||phone.length>40) return res.status(400).json({error:'Некорректная длина данных'})
+  if(!/^[0-9+()\\-\\s]{5,40}$/.test(phone)) return res.status(400).json({error:'Некорректный телефон'})
   const startsAt=String(req.body?.starts_at||'').trim()
   const serviceName=String(req.body?.service_name||'').trim().slice(0,160)
   const startsDate=new Date(startsAt)
