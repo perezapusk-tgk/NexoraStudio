@@ -37,6 +37,7 @@ assert.ok(server.includes('withMemoryBookingLock'),'memory booking lock missing'
 assert.ok(server.includes("String('project-create:'+req.user.studio_id)"),'project creation concurrency lock missing')
 assert.ok(server.includes("String('client-create:'+req.user.studio_id)"),'client creation concurrency lock missing')
 assert.ok(server.includes('price>100000000'),'catalog price upper bound missing')
+assert.ok(server.includes("await client.query('begin')") && server.includes("delete from projects where id::text=$1::text"),'project deletion transaction guard missing')
 assert.ok(server.includes('code:\'PLAN_LIMIT\''),'plan limit error contract missing')
 assert.ok(server.includes("const allowedEventTypes=new Set(['page_view'])"),'public analytics event allowlist missing')
 assert.ok(server.includes("status:'pending'"),'public checkout must create pending orders')
