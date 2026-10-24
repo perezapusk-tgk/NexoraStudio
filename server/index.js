@@ -1556,7 +1556,7 @@ app.post('/api/clients', async (req,res) => {
     const capacity=await client.query('select count(*)::int as count from clients where studio_id::text=$1::text',[req.user.studio_id])
     const limit=Number(req.studio.client_limit||planConfig(req.studio.plan).clientLimit)
     if(capacity.rows[0].count>=limit){await client.query('rollback');return res.status(409).json({error:'Достигнут лимит клиентов вашего тарифа',code:'PLAN_LIMIT',limit,plan:planConfig(req.studio.plan).name})}
-    const duplicate=await client.query('select id from clients where studio_id::text=$1::text and ((nullif($2,'') is not null and phone=$2) or (nullif($3,'') is not null and lower(email)=lower($3))) limit 1',[req.user.studio_id,phone,email])
+    const duplicate=await client.query("select id from clients where studio_id::text=$1::text and (($2 <> '' and phone=$2) or ($3 <> '' and lower(email)=lower($3))) limit 1",[req.user.studio_id,phone,email])
     if(duplicate.rows[0]){await client.query('rollback');return res.status(409).json({error:'Клиент с таким телефоном или email уже существует'})}
     const q=await client.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id,studio_id,name,email,phone,created_at',[req.user.studio_id,name,email||null,phone||null])
     await client.query('commit')
