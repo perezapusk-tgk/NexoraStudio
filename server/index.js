@@ -1296,7 +1296,7 @@ app.patch('/api/projects/:id/catalog/:itemId', async (req,res) => {
 app.delete('/api/projects/:id/catalog/:itemId', async (req,res) => {
   const owned=await ownedProject(req,req.params.id)
   if(!owned)return res.status(404).json({error:'Проект не найден'})
-  if (!pool){const list=memoryCatalog.get(owned.id)||[];const next=list.filter(x=>x.id!==req.params.itemId);if(next.length===list.length)return res.status(404).json({error:'Позиция каталога не найдена'});memoryCatalog.set(req.params.id,next);return res.json({deleted:true})}
+  if (!pool){const list=memoryCatalog.get(owned.id)||[];const next=list.filter(x=>x.id!==req.params.itemId);if(next.length===list.length)return res.status(404).json({error:'Позиция каталога не найдена'});memoryCatalog.set(owned.id,next);return res.json({deleted:true})}
   const q = await pool.query('delete from catalog_items where id::text=$1 and project_id::text=$2 returning id',[req.params.itemId,owned.id])
   if (!q.rows[0]) return res.status(404).json({error:'Позиция каталога не найдена'})
   res.json({deleted:true})
