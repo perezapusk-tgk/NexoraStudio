@@ -772,7 +772,7 @@ app.post('/api/projects/:id/duplicate',async(req,res)=>{
   const name=String(req.body?.name||source.name+' — копия').trim().slice(0,160)||'Копия проекта'
   if(!pool){
     const slugBase=slugify(name); let slug=slugBase,suffix=2
-    while(memoryProjects.some(x=>x.studio_id===req.user.studio_id&&x.slug===slug)) slug=slugBase+'-'+suffix++
+    while(memoryProjects.some(x=>x.slug.toLowerCase()===slug.toLowerCase())) slug=slugBase+'-'+suffix++
     const copy={...source,id:crypto.randomUUID(),name,slug,status:'draft',domain:null,settings:JSON.parse(JSON.stringify(source.settings||{})),created_at:new Date().toISOString(),updated_at:new Date().toISOString()}
     memoryProjects.unshift(copy)
     memoryPages.set(copy.id,(memoryPages.get(source.id)||[]).map(p=>({...p,id:crypto.randomUUID(),published:false})))
@@ -783,7 +783,7 @@ app.post('/api/projects/:id/duplicate',async(req,res)=>{
   const limit=Number(req.studio.project_limit||planConfig(req.studio.plan).projectLimit)
   if(Number(usage.rows[0].count)>=limit)return res.status(409).json({error:'Достигнут лимит проектов вашего тарифа',code:'PLAN_LIMIT'})
   let slug=slugify(name),base=slug,suffix=2
-  while((await pool.query('select 1 from projects where studio_id::text=$1::text and slug=$2',[req.user.studio_id,slug])).rows[0]) slug=base+'-'+suffix++
+  while((await pool.query('select 1 from projects where lower(slug)=lower($1)',[slug])).rows[0]) slug=base+'-'+suffix++
   const q=await pool.query('insert into projects(studio_id,name,slug,project_type,status,domain,settings) values($1,$2,$3,$4,$5,$6,$7) returning *',[req.user.studio_id,name,slug,source.project_type,'draft',null,JSON.stringify(source.settings||{})])
   const project=q.rows[0]
   const pages=await pool.query('select title,slug,content from pages where project_id::text=$1::text order by created_at',[source.id])
