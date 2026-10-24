@@ -367,13 +367,24 @@ app.post('/api/auth/accept-invite',async(req,res)=>{
         where i.token_hash=$1 and i.expires_at>now() and i.accepted_at is null`,[hash])
       if(!q.rows[0])return res.status(400).json({error:'Приглашение недействительно или уже истекло'})
       const inv=q.rows[0]
-      if((await pool.query('select id from users where lower(email)=lower($1)',[inv.email])).rows[0])return res.status(409).json({error:'Пользователь с таким email уже существует'})
       const c=await pool.connect()
       try{
         await c.query('begin')
+        // Serialize invitation acceptance with team management so concurrent accepts/invites
+        // cannot exceed the workspace member limit.
+        await c.query('select pg_advisory_xact_lock(hashtext($1))',[String(inv.studio_id)])
         const locked=(await c.query('select id,studio_id,email,role from team_invitations where id=$1 and accepted_at is null and expires_at>now() for update',[inv.id])).rows[0]
         if(!locked){await c.query('rollback');return res.status(400).json({error:'Приглашение недействительно или уже истекло'})}
         if((await c.query('select id from users where lower(email)=lower($1) limit 1',[locked.email])).rows[0]){await c.query('rollback');return res.status(409).json({error:'Пользователь с таким email уже существует'})}
+        const limits=planConfig(inv.plan)
+        const [users,invites]=await Promise.all([
+          c.query('select count(*)::int as count from users where studio_id::text=$1::text',[locked.studio_id]),
+          c.query("select count(*)::int as count from team_invitations where studio_id::text=$1::text and accepted_at is null and expires_at>now()",[locked.studio_id])
+        ])
+        if(Number(users.rows[0].count)+Number(invites.rows[0].count)>=Number(limits.teamLimit)){
+          await c.query('rollback')
+          return res.status(409).json({error:'Достигнут лимит участников тарифа',code:'PLAN_LIMIT',limit:limits.teamLimit,plan:limits.name})
+        }
         const user=(await c.query('insert into users(studio_id,name,email,role,password_hash) values($1,$2,$3,$4,$5) returning id,name,email,role',[locked.studio_id,name,locked.email,locked.role,hashPassword(password)])).rows[0]
         await c.query('update team_invitations set accepted_at=now() where id=$1',[locked.id])
         const session=createSessionToken()
@@ -382,14 +393,21 @@ app.post('/api/auth/accept-invite',async(req,res)=>{
         return res.status(201).json(authPayload(user,{id:inv.studio_id,name:inv.studio_name,owner_name:inv.owner_name,plan:inv.plan,project_limit:inv.project_limit},session))
       }catch(e){await c.query('rollback');throw e}finally{c.release()}
     }
-    const inv=memoryInvitations.find(x=>x.token_hash===hash&&x.expires_at>Date.now()&&!x.accepted_at)
-    if(!inv)return res.status(400).json({error:'Приглашение недействительно или уже истекло'})
-    if(memoryUsers.some(x=>x.email===inv.email))return res.status(409).json({error:'Пользователь с таким email уже существует'})
-    const user={id:crypto.randomUUID(),studio_id:inv.studio_id,name,email:inv.email,role:inv.role,password_hash:hashPassword(password)}
-    memoryUsers.push(user);inv.accepted_at=Date.now()
-    const studio=memoryStudios.find(x=>x.id===inv.studio_id)||demoStudio
-    const session=createSessionToken();memorySessions.set(tokenHash(session),{user_id:user.id,expiresAt:Date.now()+30*86400000})
-    return res.status(201).json(authPayload(user,studio,session))
+    return withMemoryWorkspaceLock(req.body?.token ? tokenHash(token) : 'invite-unknown',async()=>{
+      const inv=memoryInvitations.find(x=>x.token_hash===hash&&x.expires_at>Date.now()&&!x.accepted_at)
+      if(!inv)return res.status(400).json({error:'Приглашение недействительно или уже истекло'})
+      if(memoryUsers.some(x=>String(x.email).toLowerCase()===String(inv.email).toLowerCase()))return res.status(409).json({error:'Пользователь с таким email уже существует'})
+      const studio=memoryStudios.find(x=>x.id===inv.studio_id)||demoStudio
+      const cfg=planConfig(studio.plan)
+      const activeMembers=memoryUsers.filter(x=>x.studio_id===inv.studio_id).length
+      const activeInvites=memoryInvitations.filter(x=>x.studio_id===inv.studio_id&&!x.accepted_at&&x.expires_at>Date.now()).length
+      if(activeMembers+activeInvites>=Number(cfg.teamLimit))return res.status(409).json({error:'Достигнут лимит участников тарифа',code:'PLAN_LIMIT',limit:cfg.teamLimit,plan:cfg.name})
+      const user={id:crypto.randomUUID(),studio_id:inv.studio_id,name,email:inv.email,role:inv.role,password_hash:hashPassword(password)}
+      memoryUsers.push(user);inv.accepted_at=Date.now()
+      const session=createSessionToken();memorySessions.set(tokenHash(session),{user_id:user.id,expiresAt:Date.now()+30*86400000})
+      return res.status(201).json(authPayload(user,studio,session))
+    })
+  }
   }catch(e){res.status(500).json({error:'Не удалось принять приглашение'})}
 })
 app.get('/api/auth/me',requireAuth,async(req,res)=>res.json({user:req.user,studio:req.studio}))
