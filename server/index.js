@@ -733,7 +733,7 @@ app.post('/api/projects', async (req, res) => {
   const slugBase=slugify(name)
   let slug=slugBase
   let suffix=2
-  while(memoryProjects.some(x=>x.slug===slug)) slug=slugBase+'-'+suffix++
+  while(memoryProjects.some(x=>x.slug.toLowerCase()===slug.toLowerCase())) slug=slugBase+'-'+suffix++
   const project={id:crypto.randomUUID(),studio_id:req.user.studio_id,name,slug,project_type:projectType,status:'draft',domain:null,settings:{miniApp:{enabled:projectType.includes('miniapp')}}}
   memoryProjects.unshift(project)
   memoryPages.set(project.id,[{id:crypto.randomUUID(),title:'Главная',slug:'home',published:false,content:{blocks:template.blocks}}])
@@ -746,7 +746,7 @@ app.post('/api/projects', async (req, res) => {
   let slug = slugify(name)
   const slugBase = slug
   let suffix = 2
-  while ((await pool.query('select 1 from projects where studio_id::text=$1::text and slug=$2',[req.user.studio_id,slug])).rows[0]) slug = slugBase + '-' + suffix++
+  while ((await pool.query('select 1 from projects where lower(slug)=lower($1)',[slug])).rows[0]) slug = slugBase + '-' + suffix++
   const template=templateDefinition(templateId)
   const { rows } = await pool.query(
     'insert into projects (studio_id, name, slug, project_type, status, settings) values ($1,$2,$3,$4,$5,$6) returning *',
