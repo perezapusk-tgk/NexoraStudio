@@ -18,3 +18,4 @@ jobs:
       - run: npx --yes esbuild src/main.jsx --loader:.jsx=jsx --outfile=/tmp/nexora-check.js
       - run: npm run build
       - run: node --check server/index.js
+      - run: node server/release-smoke.test.js
