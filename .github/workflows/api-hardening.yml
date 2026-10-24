@@ -2,42 +2,19 @@ name: API hardening
 on:
   push:
     branches: [main]
-permissions:
-  contents: write
+  pull_request:
+    branches: [main]
+
 jobs:
   harden:
-    if: ${{ !contains(github.event.head_commit.message, '[api-hardening]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch API routing
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --legacy-peer-deps --no-audit --no-fund
+      - name: Validate API source
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          p=Path('server/index.js')
-          s=p.read_text()
-          marker="app.use(express.json({limit:'1mb',verify:(req,_res,buf)=>{req.rawBody=Buffer.from(buf)}}))"
-          insert="""\n\n// Production API compatibility: keep API requests on /api even when a client is configured with the bare Render origin.\napp.use((req,res,next)=>{\n  const apiPrefixes=['/auth','/studio','/projects','/leads','/clients','/bookings','/payments','/invoices','/orders','/analytics','/templates','/connect','/billing','/team','/public']\n  if(!req.path.startsWith('/api') && apiPrefixes.some(prefix=>req.path===prefix||req.path.startsWith(prefix+'/'))){ req.url='/api'+req.url }\n  next()\n})\n"""
-          if 'Production API compatibility:' not in s: s=s.replace(marker,marker+insert,1)
-          health="""app.get('/api/health', (_req,res) => {\n  res.set(noStore)\n  res.status(200).json({ok:true,service:'nexora-api',version:'0.3.0',storage:pool?'postgres':'memory'})\n})\n"""
-          anchor="app.get('/', (_req, res) => {"
-          if "app.get('/api/health'" not in s: s=s.replace(anchor,health+'\n'+anchor,1)
-          fallback="""\n// Unknown API methods must return JSON, never the frontend HTML shell.\napp.use('/api',(req,res)=>res.status(404).json({error:'API route not found',path:req.originalUrl,method:req.method}))\n"""
-          anchor2="app.use((req,res,next)=>{\n  if(req.method==='GET' && !req.path.startsWith('/api')"
-          if 'API route not found' not in s: s=s.replace(anchor2,fallback+'\n'+anchor2,1)
-          p.write_text(s)
-          p=Path('src/api.js')
-          s=p.read_text()
-          old="const API_BASE = import.meta.env.VITE_API_URL || '/api'"
-          new="""const rawApiBase=String(import.meta.env.VITE_API_URL||'/api').trim().replace(/\\/+$/,'')\nconst API_BASE=rawApiBase==='/'?'/api':(rawApiBase.startsWith('http')?(rawApiBase.endsWith('/api')?rawApiBase:rawApiBase+'/api'):(rawApiBase||'/api'))"""
-          if old in s: s=s.replace(old,new,1)
-          p.write_text(s)
-          PY
           node --check server/index.js
-      - name: Commit API hardening
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add server/index.js src/api.js
-          git diff --cached --quiet || git commit -m "fix: harden production API client routing [api-hardening]"
-          git push
+          node server/release-smoke.test.js
