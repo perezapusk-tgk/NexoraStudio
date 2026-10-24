@@ -1280,9 +1280,29 @@ app.post('/api/projects/:id/catalog', async (req,res) => {
 app.patch('/api/projects/:id/catalog/:itemId', async (req,res) => {
   const owned=await ownedProject(req,req.params.id)
   if(!owned)return res.status(404).json({error:'Проект не найден'})
-  if (!pool){const list=memoryCatalog.get(owned.id)||[];const item=list.find(x=>x.id===req.params.itemId);if(!item)return res.status(404).json({error:'Позиция каталога не найдена'});Object.assign(item,req.body);return res.json({item})}
-  const q = await pool.query('update catalog_items set name=coalesce($1,name),description=coalesce($2,description),price=coalesce($3,price),currency=\'RUB\',image_url=coalesce($4,image_url),active=coalesce($5,active) where id::text=$6 and project_id::text=$7 returning *',[req.body?.name,req.body?.description,req.body?.price === '' ? null : req.body?.price,req.body?.image_url,req.body?.active,req.params.itemId,owned.id])
-  if (!q.rows[0]) return res.status(404).json({error:'Позиция каталога не найдена'})
+  const name=req.body?.name===undefined?undefined:String(req.body?.name||'').trim()
+  const description=req.body?.description===undefined?undefined:String(req.body?.description||'').trim()
+  const imageUrl=req.body?.image_url===undefined?undefined:String(req.body?.image_url||'').trim()
+  const rawPrice=req.body?.price
+  const price=rawPrice===undefined?undefined:(rawPrice===''||rawPrice==null?null:Number(rawPrice))
+  if(name!==undefined && (!name||name.length>160))return res.status(400).json({error:'Некорректное название товара'})
+  if(description!==undefined && description.length>2000)return res.status(400).json({error:'Описание товара слишком длинное'})
+  if(imageUrl!==undefined && imageUrl.length>2000)return res.status(400).json({error:'Ссылка на изображение слишком длинная'})
+  if(price!==undefined && price!==null && (!Number.isFinite(price)||price<0||price>100000000))return res.status(400).json({error:'Некорректная цена'})
+  if(req.body?.active!==undefined && typeof req.body.active!=='boolean')return res.status(400).json({error:'Некорректный статус товара'})
+  if(!pool){
+    const list=memoryCatalog.get(owned.id)||[]
+    const item=list.find(x=>x.id===req.params.itemId)
+    if(!item)return res.status(404).json({error:'Позиция каталога не найдена'})
+    if(name!==undefined)item.name=name
+    if(description!==undefined)item.description=description
+    if(price!==undefined)item.price=price
+    if(imageUrl!==undefined)item.image_url=imageUrl
+    if(req.body?.active!==undefined)item.active=req.body.active
+    return res.json({item})
+  }
+  const q=await pool.query("update catalog_items set name=coalesce($1,name),description=coalesce($2,description),price=coalesce($3,price),currency='RUB',image_url=coalesce($4,image_url),active=coalesce($5,active) where id::text=$6 and project_id::text=$7 returning *",[name,description,price,imageUrl,req.body?.active,req.params.itemId,owned.id])
+  if(!q.rows[0])return res.status(404).json({error:'Позиция каталога не найдена'})
   res.json({item:q.rows[0]})
 })
 app.delete('/api/projects/:id/catalog/:itemId', async (req,res) => {
