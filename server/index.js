@@ -74,7 +74,7 @@ function authRateLimit(req,res,next){
 app.use(authRateLimit)
 
 // Health must be available independently of the frontend bundle.
-const healthPayload = ({db='unknown',ready=true}={}) => ({ok:ready,ready,service:'nexora-api',version:'0.8.0',storage:pool?'postgres':'memory',db,auth:'development-session'})
+const healthPayload = ({db='unknown',ready=true}={}) => ({ok:ready,ready,service:'nexora-api',version:'0.8.0',storage:pool?'postgres':'memory',db,auth:'bearer-session'})
 async function healthCheck(){
   if(!pool) return {db:'memory',ready:true}
   try{ await pool.query('select 1'); return {db:'postgres',ready:true} }
@@ -1931,6 +1931,9 @@ async function runStartupMigrations(){
 }
 
 if (process.env.NODE_ENV !== 'test') {
+  if (process.env.NODE_ENV === 'production' && !process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is required in production')
+  }
   await runStartupMigrations()
   await bootstrapOwnerAccount()
   const server = app.listen(port, host, () => console.log('Nexora API listening on '+host+':'+port))
