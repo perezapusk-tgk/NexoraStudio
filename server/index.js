@@ -1727,13 +1727,51 @@ app.patch('/api/payments/:id', async (req,res) => {
   if(!pool){
     const p=memoryPayments.find(x=>x.id===req.params.id&&x.studio_id===req.user.studio_id)
     if(!p)return res.status(404).json({error:'Платёж не найден'})
+    const previous=p.status
+    if(status==='paid'){
+      const duplicate=memoryPayments.find(x=>x.id!==p.id&&x.order_id&&x.order_id===p.order_id&&x.status==='paid'&&x.studio_id===req.user.studio_id)
+      if(duplicate)return res.status(409).json({error:'Для заказа уже есть оплаченный платёж'})
+      if(p.order_id){
+        const o=memoryOrders.find(x=>x.id===p.order_id&&x.studio_id===req.user.studio_id)
+        if(!o)return res.status(404).json({error:'Заказ не найден'})
+        if(Number(p.amount)!==Number(o.total))return res.status(409).json({error:'Сумма платежа не совпадает с суммой заказа'})
+        o.status='paid'
+      }
+    } else if(status==='refunded' && p.order_id){
+      const o=memoryOrders.find(x=>x.id===p.order_id&&x.studio_id===req.user.studio_id)
+      if(o)o.status='refunded'
+    }
     p.status=status
-    if(p.order_id){const o=memoryOrders.find(x=>x.id===p.order_id&&x.studio_id===req.user.studio_id);if(o)o.status=status==='paid'?'paid':status==='refunded'?'refunded':o.status}
+    if(p.project_id && previous!==status && status==='paid'){
+      const project=memoryProjects.find(x=>x.id===p.project_id&&x.studio_id===req.user.studio_id)
+      if(project)memoryEvents.push({studio_id:req.user.studio_id,slug:project.slug,event_type:'payment',path:'/payment',value:Number(p.amount||0),created_at:new Date().toISOString()})
+    }
+    if(p.project_id && previous!==status && status==='refunded'){
+      const project=memoryProjects.find(x=>x.id===p.project_id&&x.studio_id===req.user.studio_id)
+      if(project)memoryEvents.push({studio_id:req.user.studio_id,slug:project.slug,event_type:'payment',path:'/refund',value:-Number(p.amount||0),created_at:new Date().toISOString()})
+    }
     return res.json({payment:p})
+  }
+  const current=(await pool.query("select p.* from payments p join projects pr on pr.id=p.project_id where p.id::text=$1 and pr.studio_id::text=$2::text limit 1",[req.params.id,req.user.studio_id])).rows[0]
+  if(!current)return res.status(404).json({error:'Платёж не найден'})
+  const previous=current.status
+  if(status==='paid'){
+    if(current.order_id){
+      const order=(await pool.query("select id,total from orders where id=$1 and project_id in (select id from projects where studio_id::text=$2::text) limit 1",[current.order_id,req.user.studio_id])).rows[0]
+      if(!order)return res.status(404).json({error:'Заказ не найден'})
+      if(Number(current.amount)!==Number(order.total))return res.status(409).json({error:'Сумма платежа не совпадает с суммой заказа'})
+      const duplicate=(await pool.query("select id from payments where order_id=$1 and status='paid' and id<>$2 limit 1",[current.order_id,current.id])).rows[0]
+      if(duplicate)return res.status(409).json({error:'Для заказа уже есть оплаченный платёж'})
+    }
   }
   const q=await pool.query("update payments p set status=$1 from projects pr where p.id::text=$2 and p.project_id::text=pr.id::text and pr.studio_id::text=$3::text returning p.*",[status,req.params.id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Платёж не найден'})
   if(q.rows[0].order_id) await pool.query("update orders set status=$1 where id=$2 and project_id in (select id from projects where studio_id::text=$3::text)",[status==='paid'?'paid':status==='refunded'?'refunded':'pending',q.rows[0].order_id,req.user.studio_id])
+  if(previous!==status && status==='paid'){
+    await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[q.rows[0].project_id,'payment','/payment',Number(q.rows[0].amount||0),JSON.stringify({payment_id:q.rows[0].id})])
+  } else if(previous!==status && status==='refunded'){
+    await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[q.rows[0].project_id,'payment','/refund',-Number(q.rows[0].amount||0),JSON.stringify({payment_id:q.rows[0].id})])
+  }
   res.json({payment:q.rows[0]})
 })
 
