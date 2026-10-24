@@ -231,6 +231,15 @@ const memoryLeads = [...demoLeads()]
 const memoryClients = [...demoClients()]
 const memoryBookings = [...demoBookings()]
 const memoryBookingLocks = new Map()
+const memoryWorkspaceLocks = new Map()
+async function withMemoryWorkspaceLock(key, fn){
+  const previous=memoryWorkspaceLocks.get(key)||Promise.resolve()
+  let release
+  const current=new Promise(resolve=>{release=resolve})
+  memoryWorkspaceLocks.set(key,current)
+  await previous
+  try{return await fn()}finally{release();if(memoryWorkspaceLocks.get(key)===current)memoryWorkspaceLocks.delete(key)}
+}
 async function withMemoryBookingLock(key, fn){
   const previous=memoryBookingLocks.get(key)||Promise.resolve()
   let release
@@ -628,38 +637,40 @@ app.post('/api/team', async (req,res) => {
   if(!email)return res.status(400).json({error:'Email обязателен'})
   if(email.length>160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(400).json({error:'Укажите корректный email'})
   if(!['admin','member','viewer'].includes(role))return res.status(400).json({error:'Недопустимая роль'})
+  if(role==='admin' && req.user.role!=='owner')return res.status(403).json({error:'Только владелец может назначать роль администратора'})
   try{
-    if(role==='admin' && req.user.role!=='owner')return res.status(403).json({error:'Только владелец может назначать роль администратора'})
     if(!pool){
-      const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
-      const cfg=planConfig(studio.plan)
-      const activeMembers=memoryUsers.filter(x=>x.studio_id===req.user.studio_id).length
-      const activeInvites=memoryInvitations.filter(x=>x.studio_id===req.user.studio_id&&!x.accepted_at&&x.expires_at>Date.now()).length
-      if(activeMembers+activeInvites>=cfg.teamLimit)return res.status(409).json({error:'Достигнут лимит участников тарифа',code:'PLAN_LIMIT',limit:cfg.teamLimit,plan:cfg.name})
+      return withMemoryWorkspaceLock(req.user.studio_id,async()=>{
+        const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
+        const cfg=planConfig(studio.plan)
+        const activeMembers=memoryUsers.filter(x=>x.studio_id===req.user.studio_id).length
+        const activeInvites=memoryInvitations.filter(x=>x.studio_id===req.user.studio_id&&!x.accepted_at&&x.expires_at>Date.now()).length
+        if(activeMembers+activeInvites>=cfg.teamLimit)return res.status(409).json({error:'Достигнут лимит участников тарифа',code:'PLAN_LIMIT',limit:cfg.teamLimit,plan:cfg.name})
+        if(memoryUsers.some(x=>String(x.email).toLowerCase()===email))return res.status(409).json({error:'Пользователь с таким email уже существует'})
+        if(memoryInvitations.some(x=>x.studio_id===req.user.studio_id&&String(x.email).toLowerCase()===email&&!x.accepted_at&&x.expires_at>Date.now()))return res.status(409).json({error:'Для этого email уже есть активное приглашение'})
+        const raw=createInviteToken(),inv={id:crypto.randomUUID(),studio_id:req.user.studio_id,email,role,token_hash:tokenHash(raw),token:raw,expires_at:Date.now()+7*86400000,created_at:Date.now(),accepted_at:null}
+        memoryInvitations.push(inv)
+        return res.status(201).json({invitation:{id:inv.id,email,role,expires_at:new Date(inv.expires_at).toISOString(),created_at:new Date(inv.created_at).toISOString(),invite_url:inviteUrl(raw)}})
+      })
     }
-    if(pool){
+    const client=await pool.connect()
+    try{
+      await client.query('begin')
+      await client.query('select pg_advisory_xact_lock(hashtext($1))',[String(req.user.studio_id)])
       const [users,invites]=await Promise.all([
-        pool.query('select count(*)::int as count from users where studio_id::text=$1::text',[req.user.studio_id]),
-        pool.query("select count(*)::int as count from team_invitations where studio_id::text=$1::text and accepted_at is null and expires_at>now()",[req.user.studio_id])
+        client.query('select count(*)::int as count from users where studio_id::text=$1::text',[req.user.studio_id]),
+        client.query("select count(*)::int as count from team_invitations where studio_id::text=$1::text and accepted_at is null and expires_at>now()",[req.user.studio_id])
       ])
-      if(users.rows[0].count+invites.rows[0].count>=planConfig(req.studio.plan).teamLimit)return res.status(409).json({error:'Достигнут лимит участников тарифа'})
-      if((await pool.query('select id from users where lower(email)=lower($1)',[email])).rows[0])return res.status(409).json({error:'Пользователь с таким email уже существует'})
-      if((await pool.query("select id from team_invitations where studio_id::text=$1::text and lower(email)=lower($2) and accepted_at is null and expires_at>now()",[req.user.studio_id,email])).rows[0])return res.status(409).json({error:'Для этого email уже есть активное приглашение'})
+      if(users.rows[0].count+invites.rows[0].count>=planConfig(req.studio.plan).teamLimit){await client.query('rollback');return res.status(409).json({error:'Достигнут лимит участников тарифа'})}
+      if((await client.query('select id from users where lower(email)=lower($1)',[email])).rows[0]){await client.query('rollback');return res.status(409).json({error:'Пользователь с таким email уже существует'})}
+      if((await client.query("select id from team_invitations where studio_id::text=$1::text and lower(email)=lower($2) and accepted_at is null and expires_at>now()",[req.user.studio_id,email])).rows[0]){await client.query('rollback');return res.status(409).json({error:'Для этого email уже есть активное приглашение'})}
       const raw=createInviteToken()
-      const q=await pool.query('insert into team_invitations(studio_id,email,role,token_hash,expires_at,invited_by) values($1,$2,$3,$4,now()+interval \'7 days\',$5) returning id,email,role,expires_at,created_at',[req.user.studio_id,email,role,tokenHash(raw),req.user.id])
+      const q=await client.query('insert into team_invitations(studio_id,email,role,token_hash,expires_at,invited_by) values($1,$2,$3,$4,now()+interval \'7 days\',$5) returning id,email,role,expires_at,created_at',[req.user.studio_id,email,role,tokenHash(raw),req.user.id])
+      await client.query('commit')
       return res.status(201).json({invitation:{...q.rows[0],invite_url:inviteUrl(raw)}})
-    }
-    const activeUsers=memoryUsers.filter(x=>x.studio_id===req.user.studio_id).length
-    const activeInvites=memoryInvitations.filter(x=>x.studio_id===req.user.studio_id&&!x.accepted_at&&x.expires_at>Date.now()).length
-    if(activeUsers+activeInvites>=planConfig(req.studio.plan).teamLimit)return res.status(409).json({error:'Достигнут лимит участников тарифа'})
-    if(memoryUsers.some(x=>x.email===email))return res.status(409).json({error:'Пользователь с таким email уже существует'})
-    if(memoryInvitations.some(x=>x.studio_id===req.user.studio_id&&x.email===email&&!x.accepted_at&&x.expires_at>Date.now()))return res.status(409).json({error:'Для этого email уже есть активное приглашение'})
-    const raw=createInviteToken(),inv={id:crypto.randomUUID(),studio_id:req.user.studio_id,email,role,token_hash:tokenHash(raw),token:raw,expires_at:Date.now()+7*86400000,created_at:Date.now(),accepted_at:null}
-    memoryInvitations.push(inv)
-    res.status(201).json({invitation:{id:inv.id,email,role,expires_at:new Date(inv.expires_at).toISOString(),created_at:new Date(inv.created_at).toISOString(),invite_url:inviteUrl(raw)}})
-  }catch(e){res.status(500).json({error:'Не удалось создать приглашение'})}
+    }catch(e){try{await client.query('rollback')}catch{};throw e}finally{client.release()}
+  }catch(e){console.error('team invite error',e);return res.status(500).json({error:'Не удалось создать приглашение'})}
 })
-
 app.delete('/api/team/invitations/:id', async (req,res) => {
   if(!requireRole(req,res,['owner','admin'])) return
   const id=req.params.id
