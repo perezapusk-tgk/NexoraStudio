@@ -45,6 +45,7 @@ export const api = {
   studioUsage: () => request('/studio/usage'),
   billingPlans: () => request('/billing/plans'),
   billingAccount: () => request('/billing/account'),
+  billingConfirm: (paymentId) => request('/billing/confirm',{method:'POST',body:JSON.stringify({provider:'yookassa',payment_id:paymentId})}),
   updateBillingSettings: (currency) => request('/billing/settings',{method:'PATCH',body:JSON.stringify({currency})}),
   switchBillingPlan: (plan) => request('/billing/checkout',{method:'POST',body:JSON.stringify({plan})}),
 
