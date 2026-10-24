@@ -1212,20 +1212,27 @@ app.get('/api/public/order/:id/payment-status', async (_req,res)=>{
 })
 
 app.post('/api/public/:slug/events', async (req,res) => {
-  const slug=String(req.params.slug||'').trim()
-  const type=String(req.body?.event_type||'page_view').slice(0,64)
-  const pathValue=String(req.body?.path||'').slice(0,500)
+  const slug=String(req.params.slug||'').trim().slice(0,120)
+  const allowedEventTypes=new Set(['page_view','lead','booking','payment','order_created'])
+  const type=String(req.body?.event_type||'page_view').trim().slice(0,64)
+  const pathValue=String(req.body?.path||'').trim().slice(0,500)
   const value=Number(req.body?.value||0)
-  if(!Number.isFinite(value)) return res.status(400).json({error:'Некорректное значение события'})
+  if(!slug) return res.status(400).json({error:'Проект не указан'})
+  if(!allowedEventTypes.has(type)) return res.status(400).json({error:'Недопустимый тип события'})
+  if(!Number.isFinite(value)||Math.abs(value)>100000000) return res.status(400).json({error:'Некорректное значение события'})
+  const metadata=req.body?.metadata && typeof req.body.metadata==='object' && !Array.isArray(req.body.metadata) ? req.body.metadata : {}
+  let metadataJson=''
+  try{metadataJson=JSON.stringify(metadata)}catch{return res.status(400).json({error:'Некорректные данные события'})}
+  if(metadataJson.length>10000) return res.status(400).json({error:'Данные события слишком большие'})
   if(!pool){
     const project=memoryProjects.find(p=>p.slug===slug && p.status==='published')
     if(!project)return res.status(404).json({error:'Публичный проект не найден'})
-    memoryEvents.push({slug,studio_id:project.studio_id,event_type:type,path:pathValue,value,metadata:req.body?.metadata||{},created_at:new Date().toISOString()})
+    memoryEvents.push({slug,studio_id:project.studio_id,event_type:type,path:pathValue,value,metadata,created_at:new Date().toISOString()})
     return res.status(204).end()
   }
   const pr=await pool.query("select id from projects where slug=$1 and status='published' limit 1",[slug])
   if(!pr.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
-  await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[pr.rows[0].id,type,pathValue,value,JSON.stringify(req.body?.metadata||{})])
+  await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[pr.rows[0].id,type,pathValue,value,metadataJson])
   res.status(204).end()
 })
 
