@@ -854,19 +854,28 @@ app.delete('/api/projects/:id',async(req,res)=>{
     for(const list of [memoryLeads,memoryBookings,memoryPayments,memoryInvoices,memoryOrders]){for(let i=list.length-1;i>=0;i--)if(list[i].project_id===id)list.splice(i,1)}
     return res.json({deleted:true})
   }
-  const check=await pool.query('select id from projects where (id::text=$1::text or slug=$1::text) and studio_id::text=$2::text limit 1',[req.params.id,req.user.studio_id])
-  if(!check.rows[0])return res.status(404).json({error:'Проект не найден'})
-  await pool.query('delete from pages where project_id::text=$1::text',[check.rows[0].id])
-  await pool.query('delete from catalog_items where project_id::text=$1::text',[check.rows[0].id])
-  await pool.query('delete from leads where project_id::text=$1::text',[check.rows[0].id])
-  await pool.query('delete from bookings where project_id::text=$1::text',[check.rows[0].id])
-  await pool.query('delete from payments where project_id::text=$1::text',[check.rows[0].id])
-  await pool.query('delete from invoices where project_id::text=$1::text',[check.rows[0].id])
-  await pool.query('delete from orders where project_id::text=$1::text',[check.rows[0].id])
-  await pool.query('delete from analytics_events where project_id::text=$1::text',[check.rows[0].id])
-  const deleted=await pool.query('delete from projects where id::text=$1::text and studio_id::text=$2::text returning id',[check.rows[0].id,req.user.studio_id])
-  if(!deleted.rows[0])return res.status(404).json({error:'Проект не найден'})
-  res.json({deleted:true})
+  const client=await pool.connect()
+  try{
+    await client.query('begin')
+    const check=await client.query('select id from projects where (id::text=$1::text or slug=$1::text) and studio_id::text=$2::text limit 1',[req.params.id,req.user.studio_id])
+    if(!check.rows[0]){await client.query('rollback');return res.status(404).json({error:'Проект не найден'})}
+    const projectId=check.rows[0].id
+    await client.query('delete from payments where project_id::text=$1::text',[projectId])
+    await client.query('delete from invoices where project_id::text=$1::text',[projectId])
+    await client.query('delete from orders where project_id::text=$1::text',[projectId])
+    await client.query('delete from bookings where project_id::text=$1::text',[projectId])
+    await client.query('delete from leads where project_id::text=$1::text',[projectId])
+    await client.query('delete from analytics_events where project_id::text=$1::text',[projectId])
+    await client.query('delete from pages where project_id::text=$1::text',[projectId])
+    await client.query('delete from catalog_items where project_id::text=$1::text',[projectId])
+    const deleted=await client.query('delete from projects where id::text=$1::text and studio_id::text=$2::text returning id',[projectId,req.user.studio_id])
+    if(!deleted.rows[0]){await client.query('rollback');return res.status(404).json({error:'Проект не найден'})}
+    await client.query('commit')
+    res.json({deleted:true})
+  }catch(error){
+    try{await client.query('rollback')}catch{}
+    throw error
+  }finally{client.release()}
 })
 app.patch('/api/projects/:id',async(req,res)=>{if(!pool){
   const p=memoryProjects.find(x=>(x.id===req.params.id||x.slug===req.params.id)&&x.studio_id===req.user.studio_id)
