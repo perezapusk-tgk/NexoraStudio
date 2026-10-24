@@ -115,13 +115,31 @@ function PublicMiniApp({data,slug}){
   useEffect(()=>{
     const webApp=window.Telegram?.WebApp;
     if(!webApp) return;
+    const root=document.documentElement;
+    const applyTelegramTheme=()=>{
+      try{
+        const tp=webApp.themeParams||{};
+        if(tp.bg_color) root.style.setProperty('--tg-bg',tp.bg_color);
+        if(tp.text_color) root.style.setProperty('--tg-text',tp.text_color);
+        if(tp.hint_color) root.style.setProperty('--tg-hint',tp.hint_color);
+        if(tp.button_color) root.style.setProperty('--tg-button',tp.button_color);
+        if(tp.button_text_color) root.style.setProperty('--tg-button-text',tp.button_text_color);
+        if(tp.secondary_bg_color) root.style.setProperty('--tg-secondary-bg',tp.secondary_bg_color);
+      }catch{}
+    };
     try{
       webApp.ready();
       webApp.expand();
+      applyTelegramTheme();
+      webApp.onEvent?.('themeChanged',applyTelegramTheme);
       if(webApp.enableClosingConfirmation) webApp.enableClosingConfirmation();
     }catch{}
     return()=>{
-      try{if(webApp.disableClosingConfirmation) webApp.disableClosingConfirmation()}catch{}
+      try{
+        webApp.offEvent?.('themeChanged',applyTelegramTheme);
+        if(webApp.disableClosingConfirmation) webApp.disableClosingConfirmation();
+        ['--tg-bg','--tg-text','--tg-hint','--tg-button','--tg-button-text','--tg-secondary-bg'].forEach(k=>root.style.removeProperty(k));
+      }catch{}
     };
   },[]);
   useEffect(()=>{
