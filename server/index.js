@@ -692,11 +692,11 @@ app.patch('/api/team/:id', async (req,res) => {
   const id=req.params.id, role=String(req.body?.role||'').trim()
   if(!['admin','member','viewer'].includes(role)) return res.status(400).json({error:'Недопустимая роль'})
   if(pool){
-    const q=await pool.query("update users set role=$1 where id::text=$2 and studio_id::text=$3::text and role<>'owner' returning id,name,email,role,created_at",[role,id,req.user.studio_id])
+    const q=await pool.query("update users set role=$1 where id::text=$2 and studio_id::text=$3::text and role not in ('owner','superadmin') returning id,name,email,role,created_at",[role,id,req.user.studio_id])
     if(!q.rows[0]) return res.status(404).json({error:'Участник не найден'})
     return res.json({member:q.rows[0]})
   }
-  const u=memoryUsers.find(x=>x.id===id&&x.studio_id===req.user.studio_id&&x.role!=='owner')
+  const u=memoryUsers.find(x=>x.id===id&&x.studio_id===req.user.studio_id&&!['owner','superadmin'].includes(x.role))
   if(!u)return res.status(404).json({error:'Участник не найден'})
   u.role=role
   res.json({member:{id:u.id,name:u.name,email:u.email,role:u.role,created_at:u.created_at||new Date().toISOString()}})
@@ -705,10 +705,10 @@ app.delete('/api/team/:id', async (req,res) => {
   if(!requireRole(req,res,['owner','admin'])) return
   const id=req.params.id
   if(pool){
-    const q=await pool.query("delete from users where id::text=$1 and studio_id::text=$2::text and role<>'owner' returning id",[id,req.user.studio_id])
+    const q=await pool.query("delete from users where id::text=$1 and studio_id::text=$2::text and role not in ('owner','superadmin') returning id",[id,req.user.studio_id])
     if(!q.rows[0])return res.status(404).json({error:'Участник не найден'})
   } else {
-    const i=memoryUsers.findIndex(x=>x.id===id&&x.studio_id===req.user.studio_id&&x.role!=='owner')
+    const i=memoryUsers.findIndex(x=>x.id===id&&x.studio_id===req.user.studio_id&&!['owner','superadmin'].includes(x.role))
     if(i<0)return res.status(404).json({error:'Участник не найден'})
     memoryUsers.splice(i,1)
   }
