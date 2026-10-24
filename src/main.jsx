@@ -172,9 +172,9 @@ function AuthScreen({onAuthenticated}){
 class AppErrorBoundary extends React.Component {
   constructor(props){super(props);this.state={error:null}}
   static getDerivedStateFromError(error){return {error}}
-  componentDidCatch(error,info){console.error('Nexora render error',error,info)}
+  componentDidCatch(){/* Keep production UI free of internal error details. */}
   render(){
-    if(this.state.error) return <div style={{minHeight:'100vh',display:'grid',placeItems:'center',padding:32,fontFamily:'Inter,system-ui',background:'#f6f7fb',color:'#111827'}}><div style={{maxWidth:720,background:'#fff',padding:28,borderRadius:18,boxShadow:'0 10px 40px rgba(0,0,0,.08)'}}><h1 style={{marginTop:0}}>Nexora Studio</h1><p>Интерфейс не смог загрузиться. Ошибка уже зафиксирована.</p><pre style={{whiteSpace:'pre-wrap',color:'#b42318'}}>{String(this.state.error?.message||this.state.error)}</pre><button onClick={()=>location.reload()} style={{padding:'10px 16px',borderRadius:10,border:0,cursor:'pointer'}}>Обновить</button></div></div>
+    if(this.state.error) return <div style={{minHeight:'100vh',display:'grid',placeItems:'center',padding:32,fontFamily:'Inter,system-ui',background:'#f6f7fb',color:'#111827'}}><div style={{maxWidth:520,background:'#fff',padding:28,borderRadius:18,boxShadow:'0 10px 40px rgba(0,0,0,.08)',textAlign:'center'}}><h1 style={{marginTop:0}}>Nexora Studio</h1><p style={{color:'#667085'}}>Интерфейс временно не смог загрузиться. Попробуйте обновить страницу.</p><button onClick={()=>location.reload()} style={{padding:'10px 16px',borderRadius:10,border:0,cursor:'pointer'}}>Обновить</button></div></div>
     return this.props.children
   }
 }
