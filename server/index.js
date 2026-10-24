@@ -30,13 +30,6 @@ app.set('trust proxy', 1)
 app.use(cors({origin:(origin,callback)=>{if(!origin)return callback(null,true);try{const url=new URL(origin);const host=url.hostname.toLowerCase();const appHost=new URL(billingAppUrl()).hostname.toLowerCase();if(host===appHost||host==='localhost'||host==='127.0.0.1'||host.endsWith('.nexora.site'))return callback(null,true)}catch{}return callback(new Error('Origin not allowed'))},credentials:true}))
 app.use(express.json({limit:'1mb',verify:(req,_res,buf)=>{req.rawBody=Buffer.from(buf)}}))
 
-// Production API compatibility: keep API requests on /api even when a client is configured with the bare Render origin.
-app.use((req,res,next)=>{
-  const apiPrefixes=['/auth','/studio','/projects','/leads','/clients','/bookings','/payments','/invoices','/orders','/analytics','/templates','/connect','/billing','/team','/public']
-  if(!req.path.startsWith('/api') && apiPrefixes.some(prefix=>req.path===prefix||req.path.startsWith(prefix+'/'))){ req.url='/api'+req.url }
-  next()
-})
-
 const distDir = path.resolve(process.cwd(), 'dist')
 
 const noStore = {
@@ -44,6 +37,13 @@ const noStore = {
   'Pragma':'no-cache',
   'Expires':'0'
 }
+
+// Production API compatibility: keep API requests on /api even when a client is configured with the bare Render origin.
+app.use((req,res,next)=>{
+  const apiPrefixes=['/auth','/studio','/projects','/leads','/clients','/bookings','/payments','/invoices','/orders','/analytics','/templates','/connect','/billing','/team','/public']
+  if(!req.path.startsWith('/api') && apiPrefixes.some(prefix=>req.path===prefix||req.path.startsWith(prefix+'/'))){ req.url='/api'+req.url }
+  next()
+})
 
 // Lightweight abuse protection for public endpoints. Express resolves the client IP via the trusted proxy.
 const publicRateBuckets = new Map()
