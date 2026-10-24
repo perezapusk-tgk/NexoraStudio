@@ -1127,7 +1127,7 @@ app.get('/api/public/order/:id/payment-status', async (_req,res)=>{
 
 app.post('/api/public/:slug/events', async (req,res) => {
   const slug=String(req.params.slug||'').trim().slice(0,120)
-  const allowedEventTypes=new Set(['page_view','lead','booking','order_created'])
+  const allowedEventTypes=new Set(['page_view'])
   const type=String(req.body?.event_type||'page_view').trim().slice(0,64)
   const pathValue=String(req.body?.path||'').trim().slice(0,500)
   const value=Number(req.body?.value||0)
