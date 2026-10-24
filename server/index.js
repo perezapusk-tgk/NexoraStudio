@@ -409,7 +409,6 @@ app.post('/api/auth/accept-invite',async(req,res)=>{
       const session=createSessionToken();memorySessions.set(tokenHash(session),{user_id:user.id,expiresAt:Date.now()+30*86400000})
       return res.status(201).json(authPayload(user,studio,session))
     })
-  }
   }catch(e){res.status(500).json({error:'Не удалось принять приглашение'})}
 })
 app.get('/api/auth/me',requireAuth,async(req,res)=>res.json({user:req.user,studio:req.studio}))
