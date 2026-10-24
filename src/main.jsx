@@ -651,21 +651,15 @@ function Integrations(){const items=[['Telegram','Заявки, уведомле
 function Templates({onCreate}){const templates=[['barber','Барбершоп','Барбершоп','dark'],['beauty','Салон красоты','Салон красоты','blue'],['fitness','Фитнес','Фитнес-студия','purple'],['cafe','Кафе','Кафе / ресторан','orange'],['shop','Магазин','Интернет-магазин','green'],['services','Услуги','Бизнес и услуги','pink']];return <><Header eyebrow="Библиотека" title="Шаблоны" description="Готовые стартовые проекты с готовыми страницами, блоками и каталогом."/><div className="template-grid">{templates.map(([id,name,desc,color])=><div className="card template" key={id}><div className={`template-preview ${color}`}><span>{name}</span><div className="template-lines"><i/><i/><i/></div></div><div className="template-info"><div><h3>{name}</h3><span>{desc} · страницы + каталог</span></div><button className="filter" onClick={()=>onCreate('site',id)}>Использовать</button></div></div>)}</div></>}
 
 function PaymentsPage(){
-  return <><Header eyebrow="Финансы" title="Оплата" description="Платёжная инфраструктура подготовлена, подключение провайдера выполняется на финальном этапе."/><div className="settings-layout">
-    <div className="card setting-block">
-      <h2>Оплата — финальный этап</h2>
-      <span>Сейчас Nexora работает без активного внешнего платёжного провайдера. Заказы, счета и CRM уже создаются и сохраняются в системе.</span>
-      <div className="security-cards">
-        <div><b>Статус</b><span>Подключение оплаты отложено</span></div>
-        <div><b>Валюта</b><span>RUB (₽)</span></div>
-      </div>
-      <p className="pricing-note"><ShieldCheck size={17}/> На финальном этапе подключим выбранный российский платёжный провайдер, вебхуки, подтверждение оплаты и автоматическую сверку.</p>
-      <div className="security-cards">
-        <div><b>Заказы клиентов</b><span>Создаются без внешней оплаты и доступны в разделе «Заказы».</span></div>
-        <div><b>Счета</b><span>Можно создавать и привязывать к заказам уже сейчас.</span></div>
-      </div>
-    </div>
-  </div></>
+  const [plans,setPlans]=useState([]),[account,setAccount]=useState(null),[busy,setBusy]=useState(false)
+  useEffect(()=>{Promise.allSettled([api.billingPlans(),api.billingAccount()]).then(([p,a])=>{if(p.status==='fulfilled')setPlans(p.value.plans||[]);if(a.status==='fulfilled')setAccount(a.value)})},[])
+  const checkout=async plan=>{setBusy(true);try{const r=await api.billingCheckout(plan);if(r.checkout_url)window.location.href=r.checkout_url;else window.alert(r.mode==='manual'?'Тариф активирован':'Тариф уже активен')}catch(e){let m=e.message||'Не удалось создать оплату';try{m=JSON.parse(e.message).error||m}catch{}window.alert(m)}finally{setBusy(false)}}
+  const active=account?.plan||'free'
+  return <><Header eyebrow="Финансы" title="Тариф и оплата" description="ЮKassa используется для оплаты подписки Nexora. Клиентские заказы и платежи управляются отдельно."/>
+    <div className="metrics compact"><Metric title="Тариф" value={String(account?.plan_name||active)} change={account?.subscription_status==='active'?'Активен':'Не активен'} icon={ShieldCheck}/><Metric title="Валюта" value="RUB ₽" change="рабочая" icon={CircleDollarSign}/><Metric title="Провайдер" value={account?.billing_provider==='yookassa'?'ЮKassa':'—'} change={account?.billing_provider||'не подключён'} icon={CreditCard}/><Metric title="Статус" value={account?.subscription_status==='active'?'Активна':'Ожидает'} change="подписка" icon={CheckCircle2}/></div>
+    <div className="pricing-grid">{plans.map(p=><div className={p.id===active?'pricing-card featured':'pricing-card'} key={p.id}><div className="pricing-head"><div><b>{p.name}</b><span>{p.projectLimit} проектов</span></div></div><div className="pricing-price">{p.price===0?'Бесплатно':'₽'+Number(p.rubPrice||p.price||0).toLocaleString('ru-RU')}<small>{p.price===0?'':' / мес'}</small></div><ul><li>До {Number(p.clientLimit||0).toLocaleString('ru-RU')} клиентов</li><li>{p.teamLimit} участников</li><li>Сайт + Telegram Mini App</li></ul><button className={p.id===active?'primary':'filter'} disabled={busy||p.id===active} onClick={()=>checkout(p.id)}>{p.id===active?'Текущий тариф':'Подключить'}</button></div>)}</div>
+    <div className="card setting-block"><h2>Платёжная схема</h2><div className="security-cards"><div><b>ЮKassa</b><span>Создание checkout, проверка статуса платежа и webhook уже реализованы на сервере.</span></div><div><b>Безопасность</b><span>Сумма, валюта, студия и тариф сверяются перед активацией подписки.</span></div></div><p className="pricing-note"><ShieldCheck size={17}/> Для production нужны YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY и адрес webhook на сервере.</p></div>
+  </>
 }
 function SettingsPage(){
   const [tab,setTab]=useState('profile')
