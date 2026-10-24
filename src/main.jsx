@@ -113,6 +113,30 @@ function PublicMiniApp({data,slug}){
   const [modal,setModal]=useState(null),[open,setOpen]=useState(false),[sent,setSent]=useState(null),[cart,setCart]=useState([]),[form,setForm]=useState({name:'',phone:'',email:''}),[sending,setSending]=useState(false);
   useEffect(()=>{api.publicEvent(slug,{event_type:'page_view',path:window.location.pathname,metadata:{surface:'miniapp'}}).catch(()=>{})},[slug]);
   useEffect(()=>{
+    const webApp=window.Telegram?.WebApp;
+    if(!webApp) return;
+    try{
+      webApp.ready();
+      webApp.expand();
+      if(webApp.enableClosingConfirmation) webApp.enableClosingConfirmation();
+    }catch{}
+    return()=>{
+      try{if(webApp.disableClosingConfirmation) webApp.disableClosingConfirmation()}catch{}
+    };
+  },[]);
+  useEffect(()=>{
+    const webApp=window.Telegram?.WebApp;
+    if(!webApp?.BackButton) return;
+    const close=()=>{
+      if(open) setOpen(false);
+      else if(modal) setModal(null);
+      else if(sent) setSent(null);
+      else if(typeof webApp.close==='function') webApp.close();
+    };
+    try{webApp.BackButton.onClick(close); if(open||modal||sent) webApp.BackButton.show(); else webApp.BackButton.hide()}catch{}
+    return()=>{try{webApp.BackButton.offClick(close);webApp.BackButton.hide()}catch{}};
+  },[open,modal,sent]);
+  useEffect(()=>{
     const params=new URLSearchParams(window.location.search)
     const orderId=params.get('order'), paymentState=params.get('payment'), provider=params.get('provider')
     if(!orderId || paymentState!=='success' || !provider) return
