@@ -22,8 +22,8 @@ Nexora Studio — SaaS Operating System for digital studios and agencies.
 - Аналитика проекта и студии.
 - Подключение домена с DNS CNAME-проверкой.
 - Telegram Mini App через Bot API.
-- ЮKassa для RUB-платежей; Stripe из продукта исключён.
-- ЮKassa checkout + серверная проверка статуса + webhook для биллинга.
+- Архитектура ЮKassa подготовлена для финального этапа; Stripe из продукта исключён.
+- Внешний checkout и webhook ЮKassa намеренно отключены до финальной production-настройки.
 - Ограничения тарифов по проектам, клиентам и участникам.
 - Автоматический запуск PostgreSQL migrations перед API.
 
@@ -41,11 +41,11 @@ Nexora Studio — SaaS Operating System for digital studios and agencies.
 
 - `DATABASE_URL` — PostgreSQL.
 - `APP_URL` или `RENDER_EXTERNAL_URL` — публичный HTTPS URL приложения.
-- `YOOKASSA_SHOP_ID` — идентификатор магазина ЮKassa.
-- `YOOKASSA_SECRET_KEY` — секретный ключ ЮKassa.
+- `YOOKASSA_SHOP_ID` — идентификатор магазина ЮKassa, нужен на финальном этапе.
+- `YOOKASSA_SECRET_KEY` — секретный ключ ЮKassa, нужен на финальном этапе.
 - `TELEGRAM_BOT_TOKEN` — токен Telegram-бота для подключения Mini App.
 
-Для ручного тестирования тарифов можно использовать `BILLING_MODE=manual`. В production реальные платежи должны проходить через ЮKassa.
+Для ручного тестирования тарифов можно использовать `BILLING_MODE=manual`. До финального этапа внешние платежи отключены; после production-проверки ЮKassa реальные платежи должны проходить через неё.
 
 ## Миграции
 
@@ -56,7 +56,7 @@ Nexora Studio — SaaS Operating System for digital studios and agencies.
 1. Задать production `DATABASE_URL`.
 2. Задать `APP_URL` на HTTPS-домен приложения.
 3. Задать `YOOKASSA_SHOP_ID` и `YOOKASSA_SECRET_KEY`.
-4. В кабинете ЮKassa настроить webhook на `/api/billing/yookassa/webhook`.
+4. На финальном этапе в кабинете ЮKassa настроить webhook на `/api/billing/yookassa/webhook`.
 5. Для Telegram задать `TELEGRAM_BOT_TOKEN`.
 6. Опубликовать проект и проверить публичный URL.
 7. Для собственного домена направить CNAME на `<slug>.nexora.site` и пройти проверку домена.
