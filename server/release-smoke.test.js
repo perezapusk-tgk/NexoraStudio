@@ -47,5 +47,5 @@ assert.ok(server.includes("status:'pending'"),'public checkout must create pendi
 assert.ok(!server.includes('stripe.com'),'Stripe must not be used')
 assert.ok(!api.includes('stripe'),'Stripe must not be used in frontend API client')
 assert.equal(pkg.scripts.build,'vite build','build script missing')
-assert.equal(pkg.scripts.start,'node server/migrate.js && node server/index.js','production start must run migrations')
+assert.equal(pkg.scripts.start,'node server/index.js','production start must run migrations inside server startup')
 console.log('Nexora release smoke: OK')
