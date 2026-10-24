@@ -393,7 +393,9 @@ app.post('/api/auth/accept-invite',async(req,res)=>{
         return res.status(201).json(authPayload(user,{id:inv.studio_id,name:inv.studio_name,owner_name:inv.owner_name,plan:inv.plan,project_limit:inv.project_limit},session))
       }catch(e){await c.query('rollback');throw e}finally{c.release()}
     }
-    return withMemoryWorkspaceLock(req.body?.token ? tokenHash(token) : 'invite-unknown',async()=>{
+    const initialInvite=memoryInvitations.find(x=>x.token_hash===hash&&x.expires_at>Date.now()&&!x.accepted_at)
+    if(!initialInvite)return res.status(400).json({error:'Приглашение недействительно или уже истекло'})
+    return withMemoryWorkspaceLock(initialInvite.studio_id,async()=>{
       const inv=memoryInvitations.find(x=>x.token_hash===hash&&x.expires_at>Date.now()&&!x.accepted_at)
       if(!inv)return res.status(400).json({error:'Приглашение недействительно или уже истекло'})
       if(memoryUsers.some(x=>String(x.email).toLowerCase()===String(inv.email).toLowerCase()))return res.status(409).json({error:'Пользователь с таким email уже существует'})
