@@ -366,3 +366,10 @@ button,input,select,textarea{transition:border-color .16s ease,background-color 
 .mini-public-bottom{padding-bottom:max(10px,env(safe-area-inset-bottom));}
 .mini-public button.primary,.mini-public-hero button{background:var(--tg-button,var(--mini-accent,#17191d));color:var(--tg-button-text,#fff);}
 .mini-public input,.mini-public textarea{background:var(--tg-secondary-bg,#fff);color:var(--tg-text,#17191d);}
+
+
+/* Production UI polish: consistent focus, motion and mobile touch targets */
+:where(button,a,input,textarea,select):focus-visible{outline:2px solid var(--accent,#17191d);outline-offset:2px}
+button,.btn,.primary{min-height:40px}
+@media (max-width:720px){button,.btn,.primary{min-height:44px}input,textarea,select{min-height:44px}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
