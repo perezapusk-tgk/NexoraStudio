@@ -724,7 +724,7 @@ app.post('/api/billing/confirm', async (_req,res)=>{
 app.get('/api/studio/usage', async (req,res) => {
   if(!pool){
     const activeProjects=memoryProjects.filter(x=>x.studio_id===req.user.studio_id).length
-    const cfg=planConfig(demoStudio.plan); return res.json({studio:demoStudio,usage:{projects:activeProjects,clients:memoryClients.filter(x=>x.studio_id===req.user.studio_id).length,team:memoryUsers.filter(x=>x.studio_id===req.user.studio_id).length},limits:{projects:demoStudio.projectLimit,clients:cfg.clientLimit,team:cfg.teamLimit},plan:cfg})
+    const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio; const cfg=planConfig(studio.plan); return res.json({studio,usage:{projects:activeProjects,clients:memoryClients.filter(x=>x.studio_id===req.user.studio_id).length,team:memoryUsers.filter(x=>x.studio_id===req.user.studio_id).length},limits:{projects:studio.projectLimit||studio.project_limit||cfg.projectLimit,clients:cfg.clientLimit,team:cfg.teamLimit},plan:cfg})
   }
   const [projects,clients,team]=await Promise.all([
     pool.query('select count(*)::int as count from projects where studio_id::text=$1::text',[req.user.studio_id]),
@@ -1738,8 +1738,10 @@ app.post('/api/invoices', async (req,res) => {
   if(number.length>80)return res.status(400).json({error:'Номер счёта слишком длинный'})
   if(!Number.isFinite(amount)||amount<=0||amount>100000000)return res.status(400).json({error:'Некорректная сумма счёта'})
   if(!['draft','sent','paid','overdue','cancelled'].includes(status))return res.status(400).json({error:'Недопустимый статус счёта'})
-  if(!pool){const x={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,client_id:req.body?.client_id||null,number,amount,currency,status,due_date:req.body?.due_date||null,description:String(req.body?.description||''),created_at:new Date().toISOString()};memoryInvoices.unshift(x);return res.status(201).json({invoice:x})}
-  const q=await pool.query('insert into invoices(project_id,client_id,number,amount,currency,status,due_date,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,number,amount,currency,status,req.body?.due_date||null,String(req.body?.description||'')])
+  const description=String(req.body?.description||'').trim()
+  if(description.length>500)return res.status(400).json({error:'Описание счёта слишком длинное'})
+  if(!pool){const x={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,client_id:req.body?.client_id||null,number,amount,currency,status,due_date:req.body?.due_date||null,description,created_at:new Date().toISOString()};memoryInvoices.unshift(x);return res.status(201).json({invoice:x})}
+  const q=await pool.query('insert into invoices(project_id,client_id,number,amount,currency,status,due_date,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,number,amount,currency,status,req.body?.due_date||null,description])
   res.status(201).json({invoice:q.rows[0]})
 })
 app.patch('/api/invoices/:id', async (req,res) => {
