@@ -45,7 +45,7 @@ const activities = [
 function PublicApp({mode,slug}){
   const [data,setData]=useState(null),[error,setError]=useState(''),[retry,setRetry]=useState(0)
   useEffect(()=>{let alive=true;setData(null);setError('');api.publicProject(slug).then(v=>alive&&setData(v)).catch(e=>alive&&setError(e?.message||'Проект не найден')).finally(()=>{});return()=>{alive=false}},[slug,retry])
-  if(error) return <div className="public-error"><div className="public-error-icon"><Globe2 size={28}/></div><b>Не удалось открыть проект</b><span>{error}</span><button className="primary" onClick={()=>setRetry(v=>v+1)}>Повторить</button><a href="/">На главную Nexora</a></div>
+  if(error) return <div className="public-error"><div className="public-error-icon"><Globe2 size={28}/></div><b>Не удалось открыть проект</b><span>Проект временно недоступен. Попробуйте повторить загрузку.</span><button className="primary" onClick={()=>setRetry(v=>v+1)}>Повторить</button><a href="/">На главную Nexora</a></div>
   if(!data) return <div className="public-loading"><div className="public-loading-card"><div className="brand-mark">N</div><b>Загрузка проекта…</b><span>Подготавливаем {mode==='miniapp'?'Mini App':'сайт'}</span></div></div>
   return mode==='miniapp'?<PublicMiniApp data={data} slug={slug}/>:<PublicSite data={data} slug={slug}/>
 }
@@ -812,7 +812,7 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh,onProjectU
   const [saving,setSaving]=useState(false), [name,setName]=useState(''), [domain,setDomain]=useState('');
   const [device,setDevice]=useState('desktop');
   const [tg,setTg]=useState({enabled:false,configured:false,botUsername:'',buttonText:'Открыть Mini App',url:''});
-  const [telegramBusy,setTelegramBusy]=useState(false);
+  const [telegramBusy,setTelegramBusy]=useState(false), [workspaceNotice,setWorkspaceNotice]=useState('');
   const [publishedUrl,setPublishedUrl]=useState('');
   const [domainBusy,setDomainBusy]=useState(false), [domainInfo,setDomainInfo]=useState(null);
   const [analytics,setAnalytics]=useState(null), [openFaq,setOpenFaq]=useState({});
@@ -857,7 +857,7 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh,onProjectU
     finally{setSaving(false)}
   };
   const saveSettings=async()=>{setSaving(true);try{await api.updateProject(current.id,{name,domain,settings:{miniApp:{enabled:tg.enabled,buttonText:tg.buttonText}}});await onRefresh()}finally{setSaving(false)}};
-  const configureTelegram=async()=>{setTelegramBusy(true);try{const result=await api.configureTelegram(current.id,{button_text:tg.buttonText});setTg(v=>({...v,enabled:true,configured:true,botUsername:result.bot?.username||v.botUsername,url:result.url||v.url}));await onRefresh();window.alert('Telegram Mini App подключён к боту @'+(result.bot?.username||'bot'))}catch(error){window.alert(error.message||'Не удалось подключить Telegram')}finally{setTelegramBusy(false)}};
+  const configureTelegram=async()=>{setTelegramBusy(true);setWorkspaceNotice('');try{const result=await api.configureTelegram(current.id,{button_text:tg.buttonText});setTg(v=>({...v,enabled:true,configured:true,botUsername:result.bot?.username||v.botUsername,url:result.url||v.url}));setWorkspaceNotice('Telegram Mini App подключён к боту @'+(result.bot?.username||'bot'));await onRefresh()}catch(error){setWorkspaceNotice(error?.message||'Не удалось подключить Telegram')}finally{setTelegramBusy(false)}};
   const publish=async()=>{setSaving(true);try{const result=await api.publishProject(current.id);setPublishedUrl(result?.url||'');onProjectUpdated?.(result?.project||{...current,status:'published'});await onRefresh()}catch(e){window.alert(e.message||'Не удалось опубликовать проект')}finally{setSaving(false)}};
 
   return <div className="workspace-page">
@@ -866,7 +866,7 @@ function ProjectWorkspace({project,data,view,setView,onBack,onRefresh,onProjectU
       <div className="workspace-title"><div className="project-logo dark">{current.name?.slice(0,1)}</div><div><b>{current.name}</b><span>{current.project_type||'website'} · {current.status==='published'?'Опубликован':'Черновик'}</span></div></div>
       <div className="workspace-actions"><button className="filter" onClick={()=>setView('preview')}><ExternalLink size={14}/> Предпросмотр</button><button className="primary" onClick={publish} disabled={saving}><Globe2 size={15}/> Опубликовать</button>{current.status==='published'&&<button className="filter" onClick={async()=>{if(!window.confirm('Снять проект с публикации?'))return;setSaving(true);try{const r=await api.unpublishProject(current.id);onProjectUpdated?.(r.project||{...current,status:'draft'});await onRefresh()}finally{setSaving(false)}}} disabled={saving}>Снять с публикации</button>}</div>
     </div>
-    {publishedUrl&&<div className="publish-success card"><div><b>Проект опубликован</b><span>{publishedUrl}</span></div><a className="primary" href={publishedUrl} target="_blank" rel="noreferrer"><ExternalLink size={14}/> Открыть сайт</a></div>}
+    {publishedUrl&&<div className="publish-success card"><div><b>Проект опубликован</b><span>{publishedUrl}</span></div><a className="primary" href={publishedUrl} target="_blank" rel="noreferrer"><ExternalLink size={14}/> Открыть сайт</a></div>}{workspaceNotice&&<div className="publish-success card"><div><b>Статус</b><span>{workspaceNotice}</span></div><button className="filter" onClick={()=>setWorkspaceNotice('')}>Закрыть</button></div>}
 
     <div className="workspace-tabs">{[['overview','Обзор'],['pages','Страницы'],['catalog','Каталог'],['editor','Редактор'],['preview','Предпросмотр'],['settings','Настройки']].map(([id,label])=><button key={id} className={view===id?'selected':''} onClick={()=>setView(id)}>{label}</button>)}</div>
 
