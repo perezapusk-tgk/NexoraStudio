@@ -1144,33 +1144,51 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
     if(!Number.isFinite(total)||total>100000000) return res.status(400).json({error:'Сумма заказа превышает допустимый лимит'})
     normalized.push({catalog_id:source.id,name:source.name,price,quantity})
   }
-  let clientId=null
-  if(pool){
-    const existing=(await pool.query("select id from clients where studio_id::text=$1::text and ((phone=$2 and $2 <> '') or (email=$3 and $3 <> '')) limit 1",[project.studio_id||demoStudio.id,phone,email])).rows[0]
+  const createMemoryCheckout=async()=>{
+    let clientId=null
+    const studioId=project.studio_id||demoStudio.id
+    const existing=memoryClients.find(c=>c.studio_id===studioId&&((phone && c.phone===phone)||(email && c.email===email)))
     if(existing) clientId=existing.id
     else {
-      if(!await requireClientCapacity(project.studio_id,res))return
-      clientId=(await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id',[project.studio_id,name,email||null,phone||null])).rows[0].id
-    }
-  } else {
-    const existing=memoryClients.find(c=>c.studio_id===project.studio_id&&((phone && c.phone===phone)||(email && c.email===email)))
-    if(existing) clientId=existing.id
-    else {
-      const studioId=project.studio_id||demoStudio.id
-      if(!await requireClientCapacity(studioId,res))return
+      if(!await requireClientCapacity(studioId,res))return null
       const client={id:crypto.randomUUID(),studio_id:studioId,name,email,phone,created_at:new Date().toISOString()}
       memoryClients.unshift(client); clientId=client.id
     }
+    const number='ORD-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
+    const order={id:crypto.randomUUID(),studio_id:studioId,project_id:project.id,client_id:clientId,number,status:'pending',total,currency:currency||'RUB',items:normalized,created_at:new Date().toISOString()}
+    memoryOrders.unshift(order)
+    memoryEvents.push({slug,studio_id:studioId,event_type:'order_created',path:'/checkout',value:total,created_at:new Date().toISOString()})
+    return order
   }
-  const number='ORD-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
   let order
   if(!pool){
-    order={id:crypto.randomUUID(),studio_id:project.studio_id||demoStudio.id,project_id:project.id,client_id:clientId,number,status:'pending',total,currency:currency||'RUB',items:normalized,created_at:new Date().toISOString()}
-    memoryOrders.unshift(order)
-    memoryEvents.push({slug,studio_id:project.studio_id,event_type:'order_created',path:'/checkout',value:total,created_at:new Date().toISOString()})
+    order=await withMemoryWorkspaceLock('checkout:'+project.studio_id,createMemoryCheckout)
+    if(!order)return
   } else {
-    order=(await pool.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[project.id,clientId,number,'pending',total,'RUB',JSON.stringify(normalized)])).rows[0]
-    await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[project.id,'order_created','/checkout',total,JSON.stringify({order_id:order.id})])
+    const dbClient=await pool.connect()
+    try{
+      await dbClient.query('begin')
+      await dbClient.query('select pg_advisory_xact_lock(hashtext($1))',[String(project.studio_id||'')])
+      const existing=(await dbClient.query("select id from clients where studio_id::text=$1::text and (($2 <> '' and phone=$2) or ($3 <> '' and lower(email)=lower($3))) limit 1",[project.studio_id,phone,email])).rows[0]
+      let clientId=existing?.id||null
+      if(!clientId){
+        const studio=(await dbClient.query('select plan from studios where id::text=$1::text for update',[project.studio_id])).rows[0]
+        const plan=planConfig(studio?.plan)
+        const count=Number((await dbClient.query('select count(*)::int as count from clients where studio_id::text=$1::text',[project.studio_id])).rows[0]?.count||0)
+        if(count>=plan.clientLimit){
+          await dbClient.query('rollback')
+          return res.status(409).json({error:'Достигнут лимит клиентов вашего тарифа',code:'PLAN_LIMIT',limit:plan.clientLimit,plan:plan.name})
+        }
+        clientId=(await dbClient.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id',[project.studio_id,name,email||null,phone||null])).rows[0].id
+      }
+      const number='ORD-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
+      order=(await dbClient.query('insert into orders(project_id,client_id,number,status,total,currency,items) values($1,$2,$3,$4,$5,$6,$7) returning *',[project.id,clientId,number,'pending',total,'RUB',JSON.stringify(normalized)])).rows[0]
+      await dbClient.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[project.id,'order_created','/checkout',total,JSON.stringify({order_id:order.id})])
+      await dbClient.query('commit')
+    }catch(error){
+      try{await dbClient.query('rollback')}catch{}
+      throw error
+    }finally{dbClient.release()}
   }
   // External payments are intentionally deferred to the final billing phase.
   // The public checkout still creates a real pending order and CRM client now.
