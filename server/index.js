@@ -10,7 +10,7 @@ const { Pool } = pg
 const app = express()
 const port = Number(process.env.PORT || 4000)
 const host = process.env.HOST || '0.0.0.0'
-const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000, max: 5 }) : null
+const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.NODE_ENV === 'production' ? true : false, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000, max: 5 }) : null
 
 app.disable('x-powered-by')
 // Baseline security headers; CSP is intentionally omitted because the SPA/editor uses dynamic inline styles.
