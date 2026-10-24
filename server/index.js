@@ -137,14 +137,6 @@ app.use(express.static(distDir, {
   }
 }))
 
-async function ensurePaymentColumns(){
-  if(!pool) return
-  try{
-    await pool.query('alter table orders add column if not exists payment_provider text')
-    await pool.query('alter table orders add column if not exists payment_external_id text')
-  }catch(e){ console.error('Payment schema migration:',e.message) }
-}
-ensurePaymentColumns()
 const PLAN_CONFIG = { free:{name:'Free',price:0,rubPrice:0,projectLimit:1,teamLimit:1,clientLimit:100}, starter:{name:'Starter',price:9,rubPrice:900,projectLimit:10,teamLimit:3,clientLimit:1000}, pro:{name:'Pro',price:19,rubPrice:1900,projectLimit:50,teamLimit:5,clientLimit:10000}, agency:{name:'Agency',price:39,rubPrice:3900,projectLimit:200,teamLimit:15,clientLimit:50000} }
 const planConfig=plan=>PLAN_CONFIG[String(plan||'starter').toLowerCase()]||PLAN_CONFIG.starter
 async function clientLimitState(studioId){
