@@ -466,6 +466,14 @@ app.use('/api',async(req,res,next)=>{
       if(req.user.role==='viewer' && req.method!=='GET') return res.status(403).json({error:'Режим просмотра: изменения недоступны'})
       if(req.path.startsWith('/team') && !requireRole(req,res,['owner','admin'])) return
       if((req.path.startsWith('/payments')||req.path.startsWith('/invoices')||req.path.startsWith('/orders')) && req.method!=='GET' && !requireRole(req,res,['owner','admin'])) return
+      // High-impact workspace operations require owner/admin privileges.
+      const ownerAdminOnly = (
+        req.path.startsWith('/billing/') ||
+        /^\/projects\/[^/]+\/(publish|unpublish|archive|restore|duplicate)$/.test(req.path) ||
+        /^\/projects\/[^/]+\/domain\//.test(req.path) ||
+        /^\/projects\/[^/]+\/telegram\//.test(req.path)
+      )
+      if(ownerAdminOnly && req.method!=='GET' && !requireRole(req,res,['owner','admin'])) return
       const parts=req.path.split('/').filter(Boolean)
       const type=parts[0],id=parts[1]
       if(!id)return next()
@@ -1295,9 +1303,10 @@ app.delete('/api/projects/:id/catalog/:itemId', async (req,res) => {
 })
 
 app.post('/api/projects/:id/publish',async(req,res)=>{
+  const owned=await ownedProject(req,req.params.id)
+  if(!owned)return res.status(404).json({error:'Проект не найден'})
   if(!pool){
-    const p=memoryProjects.find(x=>(x.id===req.params.id||x.slug===req.params.id)&&x.studio_id===req.user.studio_id)
-    if(!p)return res.status(404).json({error:'Проект не найден'})
+    const p=owned
     p.status='published'
     ;(memoryPages.get(p.id)||[]).forEach(x=>x.published=true)
     const publicBase=p.domain?'https://'+p.domain:billingAppUrl()
@@ -1432,7 +1441,7 @@ app.post('/api/bookings/:id/payment', async (req,res) => {
   const currency=String(req.body?.currency||'RUB').trim().toUpperCase()
   if(!Number.isFinite(amount)||amount<=0)return res.status(400).json({error:'Укажите корректную сумму оплаты'})
   let booking
-  if(!pool) booking=memoryBookings.find(x=>x.id===id)
+  if(!pool) booking=memoryBookings.find(x=>x.id===id&&x.studio_id===req.user.studio_id)
   else booking=(await pool.query('select b.* from bookings b join projects p on p.id=b.project_id where b.id::text=$1 and p.studio_id::text=$2::text limit 1',[id,req.user.studio_id])).rows[0]
   if(!booking)return res.status(404).json({error:'Бронирование не найдено'})
   const projectId=booking.project_id||null
@@ -1620,7 +1629,7 @@ app.get('/api/orders', async (req,res) => {
 app.get('/api/orders/:id', async (req,res) => {
   const id=String(req.params.id)
   if(!pool){
-    const order=memoryOrders.find(x=>x.id===id)
+    const order=memoryOrders.find(x=>x.id===id&&x.studio_id===req.user.studio_id)
     if(!order)return res.status(404).json({error:'Заказ не найден'})
     const client=order.client_id?memoryClients.find(x=>x.id===order.client_id):null
     const payments=memoryPayments.filter(x=>x.order_id===id)
