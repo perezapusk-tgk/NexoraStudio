@@ -620,6 +620,7 @@ app.post('/api/team', async (req,res) => {
   if(email.length>160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(400).json({error:'Укажите корректный email'})
   if(!['admin','member','viewer'].includes(role))return res.status(400).json({error:'Недопустимая роль'})
   try{
+    if(role==='admin' && req.user.role!=='owner')return res.status(403).json({error:'Только владелец может назначать роль администратора'})
     if(!pool){
       const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
       const cfg=planConfig(studio.plan)
