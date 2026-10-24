@@ -353,8 +353,11 @@ app.post('/api/auth/accept-invite',async(req,res)=>{
       const c=await pool.connect()
       try{
         await c.query('begin')
-        const user=(await c.query('insert into users(studio_id,name,email,role,password_hash) values($1,$2,$3,$4,$5) returning id,name,email,role',[inv.studio_id,name,inv.email,inv.role,hashPassword(password)])).rows[0]
-        await c.query('update team_invitations set accepted_at=now() where id=$1',[inv.id])
+        const locked=(await c.query('select id,studio_id,email,role from team_invitations where id=$1 and accepted_at is null and expires_at>now() for update',[inv.id])).rows[0]
+        if(!locked){await c.query('rollback');return res.status(400).json({error:'Приглашение недействительно или уже истекло'})}
+        if((await c.query('select id from users where lower(email)=lower($1) limit 1',[locked.email])).rows[0]){await c.query('rollback');return res.status(409).json({error:'Пользователь с таким email уже существует'})}
+        const user=(await c.query('insert into users(studio_id,name,email,role,password_hash) values($1,$2,$3,$4,$5) returning id,name,email,role',[locked.studio_id,name,locked.email,locked.role,hashPassword(password)])).rows[0]
+        await c.query('update team_invitations set accepted_at=now() where id=$1',[locked.id])
         const session=createSessionToken()
         await c.query("insert into sessions(user_id,token_hash,expires_at) values($1,$2,now()+interval '30 days')",[user.id,tokenHash(session)])
         await c.query('commit')
