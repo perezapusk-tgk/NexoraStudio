@@ -1499,9 +1499,9 @@ app.get('/api/clients', async (req, res) => {
   if (!pool) {
     const rows=memoryClients.filter(x=>x.studio_id===req.user.studio_id).map(client=>{
       const phone=client.phone||'',email=client.email||''
-      const leads=memoryLeads.filter(x=>(phone&&x.phone===phone)||(email&&x.email===email))
-      const bookings=memoryBookings.filter(x=>x.client_id===client.id||(phone&&x.customer_phone===phone))
-      const orders=memoryOrders.filter(x=>x.client_id===client.id)
+      const leads=memoryLeads.filter(x=>x.studio_id===client.studio_id&&((phone&&x.phone===phone)||(email&&x.email===email)))
+      const bookings=memoryBookings.filter(x=>x.studio_id===client.studio_id&&(x.client_id===client.id||(phone&&x.customer_phone===phone)))
+      const orders=memoryOrders.filter(x=>x.studio_id===client.studio_id&&x.client_id===client.id)
       const projects=new Set([...orders.map(x=>x.project_id),...bookings.map(x=>x.project_id)].filter(Boolean))
       const dates=[...leads,...bookings,...orders].map(x=>new Date(x.created_at||x.starts_at||0).getTime()).filter(Boolean)
       return {...client,project_count:projects.size,contact_count:leads.length+bookings.length+orders.length,last_activity:dates.length?new Date(Math.max(...dates)).toISOString():client.created_at}
@@ -1509,9 +1509,9 @@ app.get('/api/clients', async (req, res) => {
     return res.json({clients:rows})
   }
   const sql="select c.id,c.name,c.email,c.phone,c.created_at,"+
-    "(select count(distinct x.project_id)::int from (select project_id from leads where phone=c.phone or email=c.email union all select project_id from bookings where client_id::text=c.id::text or customer_phone=c.phone union all select project_id from orders where client_id::text=c.id::text) x) as project_count,"+
-    "((select count(*) from leads where phone=c.phone or email=c.email)+(select count(*) from bookings where client_id::text=c.id::text or customer_phone=c.phone)+(select count(*) from orders where client_id::text=c.id::text))::int as contact_count,"+
-    "greatest(c.created_at,(select max(created_at) from orders where client_id::text=c.id::text),(select max(created_at) from payments where client_id::text=c.id::text),(select max(starts_at) from bookings where client_id::text=c.id::text or customer_phone=c.phone)) as last_activity "+
+    "(select count(distinct x.project_id)::int from (select l.project_id from leads l join projects lp on lp.id=l.project_id where lp.studio_id=c.studio_id and (l.phone=c.phone or l.email=c.email) union all select b.project_id from bookings b join projects bp on bp.id=b.project_id where bp.studio_id=c.studio_id and (b.client_id::text=c.id::text or b.customer_phone=c.phone) union all select o.project_id from orders o join projects op on op.id=o.project_id where op.studio_id=c.studio_id and o.client_id::text=c.id::text) x) as project_count,"+
+    "((select count(*) from leads l join projects lp on lp.id=l.project_id where lp.studio_id=c.studio_id and (l.phone=c.phone or l.email=c.email))+(select count(*) from bookings b join projects bp on bp.id=b.project_id where bp.studio_id=c.studio_id and (b.client_id::text=c.id::text or b.customer_phone=c.phone))+(select count(*) from orders o join projects op on op.id=o.project_id where op.studio_id=c.studio_id and o.client_id::text=c.id::text))::int as contact_count,"+
+    "greatest(c.created_at,(select max(o.created_at) from orders o join projects op on op.id=o.project_id where op.studio_id=c.studio_id and o.client_id::text=c.id::text),(select max(p.created_at) from payments p join orders po on po.id=p.order_id join projects pp on pp.id=po.project_id where pp.studio_id=c.studio_id and p.client_id::text=c.id::text),(select max(b.starts_at) from bookings b join projects bp on bp.id=b.project_id where bp.studio_id=c.studio_id and (b.client_id::text=c.id::text or b.customer_phone=c.phone))) as last_activity "+
     "from clients c where c.studio_id::text=$1::text order by last_activity desc nulls last limit 500"
   const { rows } = await pool.query(sql,[req.user.studio_id])
   res.json({ clients: rows })
@@ -1611,7 +1611,7 @@ app.post('/api/orders', async (req,res) => {
 app.patch('/api/orders/:id', async (req,res) => {
   const status=String(req.body?.status||'').trim()
   if(!['pending','paid','cancelled','refunded'].includes(status)) return res.status(400).json({error:'Недопустимый статус заказа'})
-  if(!pool){const x=memoryOrders.find(v=>v.id===req.params.id&&v.studio_id===req.user.studio_id);if(!x)return res.status(404).json({error:'Заказ не найден'});x.status=status;return res.json({order:x})}
+  if(!pool){const x=memoryOrders.find(v=>v.id===req.params.id&&v.studio_id===req.user.studio_id);if(!x)return res.status(404).json({error:'Заказ не найден'});if(status==='paid'){const paid=memoryPayments.some(p=>p.studio_id===req.user.studio_id&&p.order_id===x.id&&p.status==='paid');if(!paid)return res.status(409).json({error:'Нельзя пометить заказ оплаченным без подтверждённого платежа'})}x.status=status;return res.json({order:x})}
   const q=await pool.query('update orders o set status=$1 from projects p where o.id::text=$2::text and o.project_id::text=p.id::text and p.studio_id::text=$3::text returning o.*',[status,req.params.id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Заказ не найден'})
   res.json({order:q.rows[0]})
