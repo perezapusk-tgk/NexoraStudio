@@ -314,7 +314,7 @@ function App() {
         name: created.name || name.trim(),
         slug: created.slug || '',
         domain: created.domain || null,
-        type: projectType === 'miniapp' ? 'Mini App' : projectType === 'site' ? 'Сайт' : 'Сайт + Mini App',
+        type: projectType === 'miniapp' ? 'Mini App' : projectType === 'website' ? 'Сайт' : 'Сайт + Mini App',
         status: 'Черновик',
         color: 'dark',
         leads: 0,
