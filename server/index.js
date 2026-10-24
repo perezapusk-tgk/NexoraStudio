@@ -1185,7 +1185,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
       clientId=(await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id',[project.studio_id,name,email||null,phone||null])).rows[0].id
     }
   } else {
-    const existing=memoryClients.find(c=>(phone && c.phone===phone)||(email && c.email===email))
+    const existing=memoryClients.find(c=>c.studio_id===project.studio_id&&((phone && c.phone===phone)||(email && c.email===email)))
     if(existing) clientId=existing.id
     else {
       const studioId=project.studio_id||demoStudio.id
@@ -1281,7 +1281,7 @@ app.post('/api/projects/:id/catalog', async (req,res) => {
   const projectKey=String(req.params.id)
   const owned=await ownedProject(req,projectKey)
   if(!owned)return res.status(404).json({error:'Проект не найден'})
-  if (!pool) { const item={id:crypto.randomUUID(),project_id:projectId,...payload};const list=memoryCatalog.get(projectId)||[];list.unshift(item);memoryCatalog.set(projectId,list);return res.status(201).json({item}) }
+  if (!pool) { const item={id:crypto.randomUUID(),project_id:owned.id,...payload};const list=memoryCatalog.get(owned.id)||[];list.unshift(item);memoryCatalog.set(owned.id,list);return res.status(201).json({item}) }
   const q = await pool.query('insert into catalog_items(project_id,name,description,price,currency,image_url,active) values($1::uuid,$2,$3,$4,\'RUB\',$5,$6) returning *',[owned.id,payload.name,payload.description,payload.price,payload.image_url,payload.active])
   res.status(201).json({ item:q.rows[0] })
 })
@@ -1722,11 +1722,12 @@ app.post('/api/invoices', async (req,res) => {
   if(req.body?.client_id && !(await ownedClient(req,req.body.client_id)))return res.status(404).json({error:'Клиент не найден'})
   const number=String(req.body?.number||('INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase())).trim()
   const amount=Number(req.body?.amount||0),currency='RUB',status=String(req.body?.status||'sent')
+  const description=String(req.body?.description||'').trim().slice(0,500)
   if(number.length>80)return res.status(400).json({error:'Номер счёта слишком длинный'})
   if(!Number.isFinite(amount)||amount<=0||amount>100000000)return res.status(400).json({error:'Некорректная сумма счёта'})
   if(!['draft','sent','paid','overdue','cancelled'].includes(status))return res.status(400).json({error:'Недопустимый статус счёта'})
-  if(!pool){const x={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,client_id:req.body?.client_id||null,number,amount,currency,status,due_date:req.body?.due_date||null,description:String(req.body?.description||''),created_at:new Date().toISOString()};memoryInvoices.unshift(x);return res.status(201).json({invoice:x})}
-  const q=await pool.query('insert into invoices(project_id,client_id,number,amount,currency,status,due_date,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,number,amount,currency,status,req.body?.due_date||null,String(req.body?.description||'')])
+  if(!pool){const x={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,client_id:req.body?.client_id||null,number,amount,currency,status,due_date:req.body?.due_date||null,description,created_at:new Date().toISOString()};memoryInvoices.unshift(x);return res.status(201).json({invoice:x})}
+  const q=await pool.query('insert into invoices(project_id,client_id,number,amount,currency,status,due_date,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,number,amount,currency,status,req.body?.due_date||null,description])
   res.status(201).json({invoice:q.rows[0]})
 })
 app.patch('/api/invoices/:id', async (req,res) => {
@@ -1747,8 +1748,9 @@ app.post('/api/payments', async (req,res) => {
   const projectId=String(req.body?.project_id||'').trim()
   const amount=Number(req.body?.amount)
   const currency=String(req.body?.currency||'RUB').trim().toUpperCase()
-  const description=String(req.body?.description||'').trim()
+  const description=String(req.body?.description||'').trim().slice(0,500)
   const status=String(req.body?.status||'paid').trim()
+  if(currency!=='RUB')return res.status(400).json({error:'Платежи доступны только в RUB'})
   const orderId=req.body?.order_id||null
   if(!projectId || !Number.isFinite(amount) || amount<=0) return res.status(400).json({error:'Проект и сумма обязательны'})
   const owned=await ownedProject(req,projectId)
