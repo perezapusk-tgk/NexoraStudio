@@ -703,7 +703,6 @@ app.post('/api/billing/yookassa/webhook', async (req,res)=>{
 })
 app.post('/api/billing/confirm', async (req,res)=>{
   if(!requireRole(req,res,['owner','admin'])) return
-  if(!requireRole(req,res,['owner','admin'])) return
   const provider=String(req.body?.provider||'').toLowerCase()
   const paymentId=String(req.body?.payment_id||'').trim()
   if(provider!=='yookassa'||!paymentId) return res.status(400).json({error:'Оплата доступна только через ЮKassa'})
