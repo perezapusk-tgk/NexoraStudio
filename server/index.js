@@ -1093,7 +1093,6 @@ app.post('/api/public/:slug/bookings', async (req,res) => {
     try{await client.query('rollback')}catch{}
     throw error
   }finally{client.release()}
-}
 })
 
 app.post('/api/public/:slug/checkout', async (req,res) => {
