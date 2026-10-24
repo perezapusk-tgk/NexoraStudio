@@ -515,6 +515,7 @@ app.get('/api/billing/account', async (req,res)=>{
 })
 app.patch('/api/billing/settings', async (req,res)=>{
   if(!requireRole(req,res,['owner','admin'])) return
+  if(!requireRole(req,res,['owner','admin'])) return
   const currency='RUB'
   if(!pool){
     const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
@@ -525,6 +526,7 @@ app.patch('/api/billing/settings', async (req,res)=>{
   res.json({currency})
 })
 app.post('/api/billing/plan', async (req,res)=>{
+  if(!requireRole(req,res,['owner','admin'])) return
   if(!requireRole(req,res,['owner','admin'])) return
   const plan=String(req.body?.plan||'').toLowerCase()
   if(!PLAN_CONFIG[plan])return res.status(400).json({error:'Неизвестный тариф'})
@@ -579,6 +581,7 @@ async function createYookassaCheckout({studioId,plan,amount}){
   return {id:data.id,url:data?.confirmation?.confirmation_url}
 }
 app.post('/api/billing/checkout', async (req,res)=>{
+  if(!requireRole(req,res,['owner','admin'])) return
   if(!requireRole(req,res,['owner','admin'])) return
   const plan=String(req.body?.plan||'').toLowerCase()
   if(!PLAN_CONFIG[plan]) return res.status(400).json({error:'Неизвестный тариф'})
@@ -699,6 +702,7 @@ app.post('/api/billing/yookassa/webhook', async (req,res)=>{
   }
 })
 app.post('/api/billing/confirm', async (req,res)=>{
+  if(!requireRole(req,res,['owner','admin'])) return
   if(!requireRole(req,res,['owner','admin'])) return
   const provider=String(req.body?.provider||'').toLowerCase()
   const paymentId=String(req.body?.payment_id||'').trim()
