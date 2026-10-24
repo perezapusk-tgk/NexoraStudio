@@ -515,7 +515,6 @@ app.get('/api/billing/account', async (req,res)=>{
 })
 app.patch('/api/billing/settings', async (req,res)=>{
   if(!requireRole(req,res,['owner','admin'])) return
-  if(!requireRole(req,res,['owner','admin'])) return
   const currency='RUB'
   if(!pool){
     const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
@@ -526,7 +525,6 @@ app.patch('/api/billing/settings', async (req,res)=>{
   res.json({currency})
 })
 app.post('/api/billing/plan', async (req,res)=>{
-  if(!requireRole(req,res,['owner','admin'])) return
   if(!requireRole(req,res,['owner','admin'])) return
   const plan=String(req.body?.plan||'').toLowerCase()
   if(!PLAN_CONFIG[plan])return res.status(400).json({error:'Неизвестный тариф'})
