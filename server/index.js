@@ -1654,7 +1654,7 @@ app.get('/api/orders/:id', async (req,res) => {
     if(!order)return res.status(404).json({error:'Заказ не найден'})
     const client=order.client_id?memoryClients.find(x=>x.id===order.client_id):null
     const payments=memoryPayments.filter(x=>x.order_id===id)
-    const invoice=memoryInvoices.find(x=>x.description===('Счёт по заказу '+order.number))
+    const invoice=memoryInvoices.find(x=>x.order_id===id)||memoryInvoices.find(x=>x.description===('Счёт по заказу '+order.number))
     const timeline=[{type:'order',text:'Заказ создан',date:order.created_at},...payments.map(p=>({type:'payment',text:'Платёж · '+Number(p.amount||0)+' '+(p.currency||order.currency||'RUB'),date:p.created_at}))]
     return res.json({order,client,payments,invoice,timeline})
   }
@@ -1662,7 +1662,7 @@ app.get('/api/orders/:id', async (req,res) => {
   if(!oq.rows[0])return res.status(404).json({error:'Заказ не найден'})
   const [payments,invoices]=await Promise.all([
     pool.query('select id,amount,currency,status,description,created_at from payments where order_id::text=$1::text order by created_at desc',[id]),
-    pool.query('select id,number,amount,currency,status,due_date,description,created_at from invoices where description=$1 order by created_at desc limit 1',['Счёт по заказу '+oq.rows[0].number])
+    pool.query('select id,number,amount,currency,status,due_date,description,created_at from invoices where order_id::text=$1::text or description=$2 order by created_at desc limit 1',[id,'Счёт по заказу '+oq.rows[0].number])
   ])
   const timeline=[{type:'order',text:'Заказ создан',date:oq.rows[0].created_at},...(invoices.rows[0]?[{type:'invoice',text:'Счёт '+invoices.rows[0].number+' выставлен',date:invoices.rows[0].created_at}]:[]),...payments.rows.map(p=>({type:'payment',text:'Платёж · '+p.amount+' '+p.currency,date:p.created_at}))].sort((a,b)=>new Date(b.date)-new Date(a.date))
   res.json({order:oq.rows[0],client:oq.rows[0].client_id?{id:oq.rows[0].client_id,name:oq.rows[0].client_name,phone:oq.rows[0].phone,email:oq.rows[0].email}:null,payments:payments.rows,invoice:invoices.rows[0]||null,timeline})
@@ -1721,11 +1721,11 @@ app.post('/api/orders/:id/invoice', async (req,res) => {
   const number='INV-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomUUID().slice(0,6).toUpperCase()
   const description='Счёт по заказу '+order.number
   if(!pool){
-    if(memoryInvoices.some(x=>x.description===description&&x.project_id===order.project_id&&x.client_id===(order.client_id||null))) return res.status(409).json({error:'Счёт для этого заказа уже создан'})
-    const invoice={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:order.project_id,client_id:order.client_id||null,number,amount:Number(order.total),currency:order.currency||'RUB',status:'sent',due_date:null,description,created_at:new Date().toISOString()}; memoryInvoices.unshift(invoice); return res.status(201).json({invoice}) }
-  const existing=await pool.query('select id,number,amount,currency,status,due_date,description,created_at from invoices where project_id::text=$1::text and ((client_id is null and $2::text is null) or client_id::text=$2::text) and description=$3 order by created_at desc limit 1',[order.project_id,order.client_id||null,description])
+    if(memoryInvoices.some(x=>(x.order_id===id)||(x.description===description&&x.project_id===order.project_id&&x.client_id===(order.client_id||null)))) return res.status(409).json({error:'Счёт для этого заказа уже создан'})
+    const invoice={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:order.project_id,client_id:order.client_id||null,order_id:id,number,amount:Number(order.total),currency:order.currency||'RUB',status:'sent',due_date:null,description,created_at:new Date().toISOString()}; memoryInvoices.unshift(invoice); return res.status(201).json({invoice}) }
+  const existing=await pool.query('select id,number,amount,currency,status,due_date,description,created_at from invoices where order_id::text=$1::text or (project_id::text=$2::text and ((client_id is null and $3::text is null) or client_id::text=$3::text) and description=$4) order by created_at desc limit 1',[id,order.project_id,order.client_id||null,description])
   if(existing.rows[0]) return res.status(409).json({error:'Счёт для этого заказа уже создан',invoice:existing.rows[0]})
-  const q=await pool.query('insert into invoices(project_id,client_id,number,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7) returning *',[order.project_id,order.client_id||null,number,order.total,order.currency||'RUB','sent',description])
+  const q=await pool.query('insert into invoices(project_id,client_id,order_id,number,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[order.project_id,order.client_id||null,id,number,order.total,order.currency||'RUB','sent',description])
   res.status(201).json({invoice:q.rows[0]})
 })
 
