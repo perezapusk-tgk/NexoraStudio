@@ -347,9 +347,7 @@ function App() {
       let message = err?.message || 'Не удалось создать проект.'
       try { message = JSON.parse(message)?.error || message } catch {}
       if (message.includes('Достигнут лимит проектов')) {
-        window.alert(message + '\
-\
-Откройте Настройки → Тариф, чтобы увеличить лимит.')
+        window.alert(message + '\n\nОткройте Настройки → Тариф, чтобы увеличить лимит.')
       } else {
         window.alert(message)
       }
