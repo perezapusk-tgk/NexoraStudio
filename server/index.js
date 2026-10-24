@@ -718,27 +718,9 @@ app.post('/api/billing/yookassa/webhook', async (req,res)=>{
     res.status(200).json({received:true})
   }
 })
-app.post('/api/billing/confirm', async (req,res)=>{
-  if(!requireRole(req,res,['owner','admin'])) return
-  const provider=String(req.body?.provider||'').toLowerCase()
-  const paymentId=String(req.body?.payment_id||'').trim()
-  if(provider!=='yookassa'||!paymentId) return res.status(400).json({error:'Оплата доступна только через ЮKassa'})
-  if(!pool) return res.status(400).json({error:'Подтверждение реального платежа доступно только с базой данных'})
-  const tx=(await pool.query('select * from billing_transactions where studio_id::text=$1::text and provider=\'yookassa\' and provider_payment_id=$2 order by created_at desc limit 1',[req.user.studio_id,paymentId])).rows[0]
-  if(!tx) return res.status(404).json({error:'Платёж не найден'})
-  const shopId=String(process.env.YOOKASSA_SHOP_ID||'').trim(),secret=String(process.env.YOOKASSA_SECRET_KEY||'').trim()
-  if(!shopId||!secret) return res.status(503).json({error:'YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY не настроены'})
-  try{
-    const r=await fetch('https://api.yookassa.ru/v3/payments/'+encodeURIComponent(paymentId),{headers:{Authorization:'Basic '+Buffer.from(shopId+':'+secret).toString('base64')}})
-    const data=await r.json()
-    const paid=r.ok&&data.status==='succeeded'&&data.paid===true&&String(data.amount?.currency||'').toUpperCase()==='RUB'&&Math.abs(Number(data.amount?.value||0)-Number(tx.amount||0))<0.01&&String(data.metadata?.studio_id||'')===String(tx.studio_id)&&String(data.metadata?.plan||'').toLowerCase()===String(tx.plan||'').toLowerCase()
-    if(!paid) return res.status(409).json({error:'Оплата ещё не подтверждена'})
-    await pool.query('update billing_transactions set status=$1,paid_at=now() where id=$2',['paid',tx.id])
-    await pool.query("update studios set plan=$1,project_limit=$2,subscription_status='active',billing_provider='yookassa',subscription_started_at=coalesce(subscription_started_at,now()),subscription_renews_at=now()+interval '30 days',updated_at=now() where id::text=$3::text",[tx.plan,planConfig(tx.plan).projectLimit,tx.studio_id])
-    res.json({ok:true,plan:planConfig(tx.plan),currency:'RUB',amount:Number(tx.amount),provider:'yookassa'})
-  }catch(e){ return res.status(503).json({error:e.message||'Не удалось проверить платёж ЮKassa'}) }
+app.post('/api/billing/confirm', async (_req,res)=>{
+  return res.status(410).json({error:'Этот endpoint отключён. Активация подписки выполняется только через webhook ЮKassa.'})
 })
-
 app.get('/api/studio/usage', async (req,res) => {
   if(!pool){
     const activeProjects=memoryProjects.filter(x=>x.studio_id===req.user.studio_id).length
@@ -1440,7 +1422,8 @@ app.post('/api/bookings/:id/payment', async (req,res) => {
   const id=req.params.id
   const amount=Number(req.body?.amount)
   const currency=String(req.body?.currency||'RUB').trim().toUpperCase()
-  if(!Number.isFinite(amount)||amount<=0)return res.status(400).json({error:'Укажите корректную сумму оплаты'})
+  if(!Number.isFinite(amount)||amount<=0||amount>100000000)return res.status(400).json({error:'Укажите корректную сумму оплаты'})
+  if(currency!=='RUB')return res.status(400).json({error:'Оплата доступна только в RUB'})
   let booking
   if(!pool) booking=memoryBookings.find(x=>x.id===id&&x.studio_id===req.user.studio_id)
   else booking=(await pool.query('select b.* from bookings b join projects p on p.id=b.project_id where b.id::text=$1 and p.studio_id::text=$2::text limit 1',[id,req.user.studio_id])).rows[0]
@@ -1751,7 +1734,9 @@ app.post('/api/payments', async (req,res) => {
   const description=String(req.body?.description||'').trim()
   const status=String(req.body?.status||'paid').trim()
   const orderId=req.body?.order_id||null
-  if(!projectId || !Number.isFinite(amount) || amount<=0) return res.status(400).json({error:'Проект и сумма обязательны'})
+  if(!projectId || !Number.isFinite(amount) || amount<=0 || amount>100000000) return res.status(400).json({error:'Проект и сумма обязательны'})
+  if(currency!=='RUB') return res.status(400).json({error:'Платежи доступны только в RUB'})
+  if(description.length>500) return res.status(400).json({error:'Описание платежа слишком длинное'})
   const owned=await ownedProject(req,projectId)
   if(!owned)return res.status(404).json({error:'Проект не найден'})
   if(req.body?.client_id && !(await ownedClient(req,req.body.client_id)))return res.status(404).json({error:'Клиент не найден'})
