@@ -61,34 +61,6 @@ function PublicSite({data,slug}){
   const project=data.project,pages=data.pages||[],page=pages[0],blocks=page?.content?.blocks||[],catalog=(data.catalog||[]).filter(x=>x.active!==false),theme={accent:'#111827',background:'#ffffff',text:'#111827',font:'Inter',radius:'14px',...(page?.content?.theme||{})};
   const [modal,setModal]=useState(null),[sent,setSent]=useState(null),[cart,setCart]=useState([]),[openCart,setOpenCart]=useState(false),[form,setForm]=useState({name:'',phone:'',email:''}),[sending,setSending]=useState(false);
   useEffect(()=>{api.publicEvent(slug,{event_type:'page_view',path:window.location.pathname}).catch(()=>{})},[slug]);
-  useEffect(()=>{
-    const params=new URLSearchParams(window.location.search)
-    const orderId=params.get('order'), paymentState=params.get('payment'), provider=params.get('provider')
-    if(!orderId || paymentState!=='success' || !provider) return
-    let alive=true, attempts=0
-    const check=async()=>{
-      attempts++
-      try{
-        const r=await api.publicPaymentStatus(orderId)
-        if(!alive) return
-        if(r.status==='paid'){
-          setSent({paymentConfirmed:true,number:orderId})
-          setOpenCart(false)
-          window.history.replaceState({},'',window.location.pathname)
-          return
-        }
-        if(r.status==='cancelled'){
-          setSent({paymentCancelled:true,number:orderId})
-          setOpenCart(false)
-          window.history.replaceState({},'',window.location.pathname)
-          return
-        }
-      }catch{}
-      if(alive && attempts<8) setTimeout(check,1500)
-    }
-    check()
-    return()=>{alive=false}
-  },[slug]);
   const add=item=>setCart(v=>{const found=v.find(x=>x.id===item.id);return found?v.map(x=>x.id===item.id?{...x,quantity:x.quantity+1}:x):[...v,{...item,quantity:1}]});
   const change=(id,delta)=>setCart(v=>v.map(x=>x.id===id?{...x,quantity:Math.max(0,x.quantity+delta)}:x).filter(x=>x.quantity>0));
   const total=cart.reduce((s,x)=>s+Number(x.price||0)*x.quantity,0);
@@ -154,34 +126,6 @@ function PublicMiniApp({data,slug}){
     try{webApp.BackButton.onClick(close); if(open||modal||sent) webApp.BackButton.show(); else webApp.BackButton.hide()}catch{}
     return()=>{try{webApp.BackButton.offClick(close);webApp.BackButton.hide()}catch{}};
   },[open,modal,sent]);
-  useEffect(()=>{
-    const params=new URLSearchParams(window.location.search)
-    const orderId=params.get('order'), paymentState=params.get('payment'), provider=params.get('provider')
-    if(!orderId || paymentState!=='success' || !provider) return
-    let alive=true, attempts=0
-    const check=async()=>{
-      attempts++
-      try{
-        const r=await api.publicPaymentStatus(orderId)
-        if(!alive) return
-        if(r.status==='paid'){
-          setSent({paymentConfirmed:true,number:orderId})
-          setOpen(false)
-          window.history.replaceState({},'',window.location.pathname)
-          return
-        }
-        if(r.status==='cancelled'){
-          setSent({paymentCancelled:true,number:orderId})
-          setOpen(false)
-          window.history.replaceState({},'',window.location.pathname)
-          return
-        }
-      }catch{}
-      if(alive && attempts<8) setTimeout(check,1500)
-    }
-    check()
-    return()=>{alive=false}
-  },[slug]);
   const add=item=>setCart(v=>{const found=v.find(x=>x.id===item.id);return found?v.map(x=>x.id===item.id?{...x,quantity:x.quantity+1}:x):[...v,{...item,quantity:1}]});
   const change=(id,d)=>setCart(v=>v.map(x=>x.id===id?{...x,quantity:Math.max(0,x.quantity+d)}:x).filter(x=>x.quantity>0));
   const total=cart.reduce((s,x)=>s+Number(x.price||0)*x.quantity,0);
