@@ -10,7 +10,7 @@ const { Pool } = pg
 const app = express()
 const port = Number(process.env.PORT || 4000)
 const host = process.env.HOST || '0.0.0.0'
-const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.NODE_ENV === 'production' ? true : false, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000, max: 5 }) : null
+const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000, max: 5 }) : null
 
 app.disable('x-powered-by')
 // Baseline security headers; CSP is intentionally omitted because the SPA/editor uses dynamic inline styles.
@@ -32,7 +32,7 @@ app.use(express.json({limit:'1mb',verify:(req,_res,buf)=>{req.rawBody=Buffer.fro
 
 const distDir = path.resolve(process.cwd(), 'dist')
 
-const noStore = {
+app.get('/api/health', async (_req,res)=>{\n  try {\n    if(pool) await pool.query('select 1')\n    res.status(200).json({ok:true,service:'nexora-studio',database:Boolean(pool),time:new Date().toISOString()})\n  } catch(error) {\n    res.status(503).json({ok:false,service:'nexora-studio',database:false,error:'database_unavailable'})\n  }\n})\n\nconst noStore = {
   'Cache-Control':'no-store, no-cache, must-revalidate, proxy-revalidate',
   'Pragma':'no-cache',
   'Expires':'0'
