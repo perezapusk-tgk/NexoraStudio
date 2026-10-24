@@ -1700,6 +1700,8 @@ app.post('/api/payments', async (req,res) => {
       const order=memoryOrders.find(x=>x.id===orderId&&x.studio_id===req.user.studio_id)
       if(!order)return res.status(404).json({error:'Заказ не найден'})
       if(order.project_id!==projectId)return res.status(400).json({error:'Заказ относится к другому проекту'})
+      if(req.body?.client_id && order.client_id && String(req.body.client_id)!==String(order.client_id))return res.status(400).json({error:'Клиент платежа не совпадает с клиентом заказа'})
+      if(order.client_id && !req.body?.client_id){} else if(!order.client_id && req.body?.client_id)return res.status(400).json({error:'У заказа не указан клиент'})
       if(Math.abs(Number(order.total||0)-amount)>0.01)return res.status(400).json({error:'Сумма платежа не совпадает с заказом'})
       if(status==='paid' && memoryPayments.some(x=>x.order_id===orderId&&x.status==='paid'))return res.status(409).json({error:'Заказ уже оплачен'})
     }
@@ -1766,6 +1768,8 @@ app.patch('/api/payments/:id', async (req,res) => {
     if(current.order_id){
       const order=(await pool.query("select id,total from orders where id=$1 and project_id in (select id from projects where studio_id::text=$2::text) limit 1",[current.order_id,req.user.studio_id])).rows[0]
       if(!order)return res.status(404).json({error:'Заказ не найден'})
+      if(current.client_id && order.client_id && String(current.client_id)!==String(order.client_id))return res.status(409).json({error:'Клиент платежа не совпадает с клиентом заказа'})
+      if(order.client_id && !current.client_id)return res.status(409).json({error:'У платежа не указан клиент заказа'})
       if(Number(current.amount)!==Number(order.total))return res.status(409).json({error:'Сумма платежа не совпадает с суммой заказа'})
       const duplicate=(await pool.query("select id from payments where order_id=$1 and status='paid' and id<>$2 limit 1",[current.order_id,current.id])).rows[0]
       if(duplicate)return res.status(409).json({error:'Для заказа уже есть оплаченный платёж'})
