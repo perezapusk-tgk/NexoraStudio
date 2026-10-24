@@ -582,7 +582,6 @@ async function createYookassaCheckout({studioId,plan,amount}){
 }
 app.post('/api/billing/checkout', async (req,res)=>{
   if(!requireRole(req,res,['owner','admin'])) return
-  if(!requireRole(req,res,['owner','admin'])) return
   const plan=String(req.body?.plan||'').toLowerCase()
   if(!PLAN_CONFIG[plan]) return res.status(400).json({error:'Неизвестный тариф'})
   const studio=pool?(await pool.query('select plan,billing_currency from studios where id=$1',[req.user.studio_id])).rows[0]:(memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio)
