@@ -1504,8 +1504,8 @@ app.get('/api/clients/:id', async (req,res) => {
     const phone=client.phone||'',email=client.email||''
     return res.json({
       client,
-      leads:memoryLeads.filter(x=>(phone&&x.phone===phone)||(email&&x.email===email)),
-      bookings:memoryBookings.filter(x=>x.customer_phone===phone),
+      leads:memoryLeads.filter(x=>x.studio_id===req.user.studio_id&&((phone&&x.phone===phone)||(email&&x.email===email))),
+      bookings:memoryBookings.filter(x=>x.studio_id===req.user.studio_id&&x.customer_phone===phone),
       payments:memoryPayments.filter(x=>x.client_id===id),
       invoices:memoryInvoices.filter(x=>x.client_id===id),
       orders:memoryOrders.filter(x=>x.client_id===id)
@@ -1754,6 +1754,16 @@ app.post('/api/payments', async (req,res) => {
   const owned=await ownedProject(req,projectId)
   if(!owned)return res.status(404).json({error:'Проект не найден'})
   if(req.body?.client_id && !(await ownedClient(req,req.body.client_id)))return res.status(404).json({error:'Клиент не найден'})
+  const bookingId=req.body?.booking_id?String(req.body.booking_id).trim():null
+  if(bookingId){
+    if(!pool){
+      const booking=memoryBookings.find(x=>x.id===bookingId&&x.studio_id===req.user.studio_id&&x.project_id===projectId)
+      if(!booking)return res.status(404).json({error:'Бронирование не найдено'})
+    }else{
+      const booking=(await pool.query('select b.id from bookings b join projects p on p.id=b.project_id where b.id::text=$1::text and b.project_id::text=$2::text and p.studio_id::text=$3::text limit 1',[bookingId,projectId,req.user.studio_id])).rows[0]
+      if(!booking)return res.status(404).json({error:'Бронирование не найдено'})
+    }
+  }
   if(!['pending','paid','refunded','failed'].includes(status)) return res.status(400).json({error:'Недопустимый статус платежа'})
   if(!pool){
     if(orderId){
@@ -1763,7 +1773,7 @@ app.post('/api/payments', async (req,res) => {
       if(Math.abs(Number(order.total||0)-amount)>0.01)return res.status(400).json({error:'Сумма платежа не совпадает с заказом'})
       if(status==='paid' && memoryPayments.some(x=>x.order_id===orderId&&x.status==='paid'))return res.status(409).json({error:'Заказ уже оплачен'})
     }
-    const payment={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,client_id:req.body?.client_id||null,booking_id:req.body?.booking_id||null,order_id:orderId,amount,currency,status,description,created_at:new Date().toISOString()}
+    const payment={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,client_id:req.body?.client_id||null,booking_id:bookingId,order_id:orderId,amount,currency,status,description,created_at:new Date().toISOString()}
     memoryPayments.unshift(payment)
     if(orderId && status==='paid'){
       const order=memoryOrders.find(x=>x.id===orderId)
@@ -1781,7 +1791,7 @@ app.post('/api/payments', async (req,res) => {
     const dup=await pool.query("select id from payments where order_id::text=$1::text and status='paid' limit 1",[orderId])
     if(status==='paid' && dup.rows[0])return res.status(409).json({error:'Заказ уже оплачен'})
   }
-  const q=await pool.query('insert into payments(project_id,client_id,booking_id,order_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,req.body?.booking_id||null,orderId,amount,currency,status,description||null])
+  const q=await pool.query('insert into payments(project_id,client_id,booking_id,order_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,bookingId,orderId,amount,currency,status,description||null])
   if(orderId && status==='paid'){
     await pool.query("update orders set status='paid' where id::text=$1 and project_id in (select id from projects where studio_id::text=$2::text)",[orderId,req.user.studio_id])
     await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[projectId,'payment','/payment',amount,JSON.stringify({order_id:orderId,payment_id:q.rows[0].id})])
