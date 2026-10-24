@@ -358,3 +358,11 @@ button,input,select,textarea{transition:border-color .16s ease,background-color 
 @media (max-width:720px){.publish-success{align-items:flex-start;flex-direction:column}.publish-success a{width:100%;justify-content:center}}
 
 .public-error{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;background:#f6f7f9;color:#17191d}.public-error-icon{width:58px;height:58px;border-radius:18px;display:grid;place-items:center;background:#fff;border:1px solid #e5e7eb}.public-error span{max-width:520px;color:#667085}.public-error a{color:inherit;font-size:13px}.public-loading{min-height:100vh;display:grid;place-items:center;background:#f6f7f9}.public-loading-card{display:flex;flex-direction:column;align-items:center;gap:8px;padding:32px 38px;border:1px solid #e5e7eb;border-radius:24px;background:#fff;box-shadow:0 20px 60px rgba(16,24,40,.08)}.public-loading-card .brand-mark{width:42px;height:42px;display:grid;place-items:center;border-radius:12px;background:#17191d;color:#fff;font-weight:800;margin-bottom:4px}.public-loading-card span{font-size:13px;color:#667085}
+
+
+/* Telegram Mini App theme bridge */
+.mini-public{background:var(--tg-bg,var(--mini-bg,#f5f6f8));color:var(--tg-text,var(--mini-text,#17191d));padding-bottom:calc(76px + env(safe-area-inset-bottom));}
+.mini-public-top{padding-top:max(14px,env(safe-area-inset-top));}
+.mini-public-bottom{padding-bottom:max(10px,env(safe-area-inset-bottom));}
+.mini-public button.primary,.mini-public-hero button{background:var(--tg-button,var(--mini-accent,#17191d));color:var(--tg-button-text,#fff);}
+.mini-public input,.mini-public textarea{background:var(--tg-secondary-bg,#fff);color:var(--tg-text,#17191d);}
