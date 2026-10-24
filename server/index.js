@@ -544,23 +544,8 @@ app.patch('/api/billing/settings', async (req,res)=>{
   await pool.query('update studios set billing_currency=$1,updated_at=now() where id=$2',[currency,req.user.studio_id])
   res.json({currency})
 })
-app.post('/api/billing/plan', async (req,res)=>{
-  if(!requireRole(req,res,['owner','admin'])) return
-  const plan=String(req.body?.plan||'').toLowerCase()
-  if(!PLAN_CONFIG[plan])return res.status(400).json({error:'Неизвестный тариф'})
-  const current=pool?((await pool.query('select plan,billing_currency from studios where id=$1',[req.user.studio_id])).rows[0]):(memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio)
-  if(current?.plan===plan)return res.json({ok:true,plan:planConfig(plan),message:'Этот тариф уже активен'})
-  if(process.env.BILLING_MODE!=='manual')return res.status(402).json({error:'Для реального переключения тарифа требуется подключить платёжного провайдера. Сейчас доступен безопасный режим без списания средств.'})
-  const currency=current?.billing_currency||'RUB'
-  const amount=Number(PLAN_CONFIG[plan].rubPrice.toFixed(2))
-  if(!pool){
-    const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
-    studio.plan=plan;studio.projectLimit=PLAN_CONFIG[plan].projectLimit;studio.project_limit=PLAN_CONFIG[plan].projectLimit;studio.subscription_status='active';studio.subscription_started_at=new Date().toISOString()
-    return res.json({ok:true,mode:'manual',plan:planConfig(plan),currency,amount})
-  }
-  await pool.query('update studios set plan=$1,project_limit=$2,subscription_status=$3,subscription_started_at=now(),subscription_renews_at=now()+interval \'30 days\',billing_provider=$4,updated_at=now() where id::text=$5::text',[plan,PLAN_CONFIG[plan].projectLimit,'active','manual',req.user.studio_id])
-  await pool.query('insert into billing_transactions(studio_id,plan,amount,currency,status,provider,paid_at) values($1,$2,$3,$4,$5,$6,now())',[req.user.studio_id,plan,amount,currency,'paid','manual'])
-  res.json({ok:true,mode:'manual',plan:planConfig(plan),currency,amount})
+app.post('/api/billing/plan', async (_req,res)=>{
+  return res.status(410).json({error:'Переключение тарифа временно отключено до подключения платёжного провайдера.'})
 })
 app.get('/api/billing/plans',(req,res)=>res.json({plans:Object.entries(PLAN_CONFIG).map(([id,p])=>({id,...p}))}))
 
@@ -598,128 +583,14 @@ async function createYookassaCheckout({studioId,plan,amount}){
   if(!r.ok) throw new Error(data?.description||'ЮKassa не смогла создать оплату')
   return {id:data.id,url:data?.confirmation?.confirmation_url}
 }
-app.post('/api/billing/checkout', async (req,res)=>{
-  if(!requireRole(req,res,['owner','admin'])) return
-  const plan=String(req.body?.plan||'').toLowerCase()
-  if(!PLAN_CONFIG[plan]) return res.status(400).json({error:'Неизвестный тариф'})
-  const studio=pool?(await pool.query('select plan,billing_currency from studios where id=$1',[req.user.studio_id])).rows[0]:(memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio)
-  if(studio?.plan===plan) return res.json({ok:true,already_active:true,plan:planConfig(plan)})
-  const currency='RUB'
-  const amount=billingAmount(plan,currency)
-  if(plan==='free'){
-    if(!pool){const s=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio;s.plan='free';s.projectLimit=1;s.project_limit=1;return res.json({ok:true,mode:'free',plan:planConfig(plan),currency})}
-    await pool.query('update studios set plan=$1,project_limit=$2,subscription_status=$3,billing_provider=null,subscription_started_at=now(),subscription_renews_at=null,updated_at=now() where id::text=$4::text',['free',1,'active',req.user.studio_id])
-    return res.json({ok:true,mode:'free',plan:planConfig(plan),currency})
-  }
-  if(process.env.BILLING_MODE==='manual'){
-    if(!pool){const s=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio;s.plan=plan;s.projectLimit=planConfig(plan).projectLimit;s.project_limit=s.projectLimit;s.subscription_status='active';s.subscription_started_at=new Date().toISOString();return res.json({ok:true,mode:'manual',plan:planConfig(plan),currency,amount})}
-    await pool.query('update studios set plan=$1,project_limit=$2,subscription_status=$3,subscription_started_at=now(),subscription_renews_at=now()+interval \'30 days\',billing_provider=$4,updated_at=now() where id::text=$5::text',[plan,planConfig(plan).projectLimit,'active','manual',req.user.studio_id])
-    await pool.query('insert into billing_transactions(studio_id,plan,amount,currency,status,provider,paid_at) values($1,$2,$3,$4,$5,$6,now())',[req.user.studio_id,plan,amount,currency,'paid','manual'])
-    return res.json({ok:true,mode:'manual',plan:planConfig(plan),currency,amount})
-  }
-  try{
-    const checkout=await createYookassaCheckout({studioId:req.user.studio_id,plan,amount})
-    if(!checkout.url) throw new Error('Платёжный провайдер не вернул ссылку оплаты')
-    if(pool) {
-      await pool.query('insert into billing_transactions(studio_id,plan,amount,currency,status,provider,provider_payment_id,checkout_url) values($1,$2,$3,$4,$5,$6,$7,$8)',[req.user.studio_id,plan,amount,currency,'pending','yookassa',checkout.id,checkout.url])
-    }
-    res.json({ok:true,mode:'checkout',provider:'yookassa',checkout_url:checkout.url,provider_payment_id:checkout.id,plan:planConfig(plan),currency,amount})
-  }catch(e){res.status(503).json({error:e.message||'Не удалось создать платёж'})}
+app.post('/api/billing/checkout', async (_req,res)=>{
+  return res.status(410).json({error:'Внешняя оплата пока отключена. Подключение платёжного провайдера будет выполнено на финальном этапе.'})
 })
-app.post('/api/billing/yookassa/webhook', async (req,res)=>{
-  try{
-    if(!pool) return res.status(200).json({received:true})
-    const event=req.body||{}
-    const obj=event.object||{}
-    const paymentId=String(obj.id||'').trim()
-    if(!paymentId) return res.status(200).json({received:true})
-
-    // Never trust the webhook body as the source of truth. Re-fetch the payment
-    // from YooKassa and validate the amount/currency/metadata before changing
-    // either a SaaS subscription or a client order.
-    const payment=await yookassaRequest('/payments/'+encodeURIComponent(paymentId))
-    const metadata=payment.metadata||{}
-    const paidBase=payment.status==='succeeded' &&
-      payment.paid===true &&
-      String(payment.amount?.currency||'').toUpperCase()==='RUB' &&
-      Number.isFinite(Number(payment.amount?.value))
-
-    const tx=(await pool.query(
-      "select * from billing_transactions where provider='yookassa' and provider_payment_id=$1 order by created_at desc limit 1",
-      [paymentId]
-    )).rows[0]
-
-    if(tx){
-      const paid=paidBase &&
-        Math.abs(Number(payment.amount.value)-Number(tx.amount||0))<0.01 &&
-        String(metadata.studio_id||'')===String(tx.studio_id) &&
-        String(metadata.plan||'').toLowerCase()===String(tx.plan||'').toLowerCase()
-
-      if(event.type==='payment.succeeded' && paid){
-        const changed=await pool.query(
-          "update billing_transactions set status='paid',paid_at=coalesce(paid_at,now()) where id=$1 and status<>'paid' returning id",
-          [tx.id]
-        )
-        if(changed.rows[0]){
-          await pool.query(
-            "update studios set plan=$1,project_limit=$2,subscription_status='active',billing_provider='yookassa',subscription_started_at=now(),subscription_renews_at=now()+interval '30 days',updated_at=now() where id::text=$3::text",
-            [tx.plan,planConfig(tx.plan).projectLimit,tx.studio_id]
-          )
-        }
-      }else if(event.type==='payment.canceled'){
-        await pool.query(
-          "update billing_transactions set status='cancelled' where id=$1 and status='pending'",
-          [tx.id]
-        )
-      }
-      return res.status(200).json({received:true})
-    }
-
-    // Project checkout payments use metadata.order_id. This is the real
-    // production webhook path for client orders; YooKassa calls one fixed URL,
-    // so the per-order webhook route is kept only as a compatibility fallback.
-    const orderId=String(metadata.order_id||'').trim()
-    if(!orderId) return res.status(200).json({received:true})
-
-    const order=(await pool.query(
-      "select o.id,o.project_id,o.studio_id,o.total,o.currency,o.status,o.payment_provider,o.payment_external_id,p.status as project_status from orders o join projects p on p.id=o.project_id where o.id::text=$1 limit 1",
-      [orderId]
-    )).rows[0]
-    if(!order) return res.status(200).json({received:true})
-
-    const orderMatches=paidBase &&
-      Math.abs(Number(payment.amount.value)-Number(order.total||0))<0.01 &&
-      String(order.currency||'RUB').toUpperCase()==='RUB' &&
-      String(metadata.order_id||'')===String(order.id) &&
-      String(metadata.studio_id||'')===String(order.studio_id) &&
-      String(metadata.project_id||'')===String(order.project_id)
-
-    if(event.type==='payment.succeeded' && orderMatches){
-      await pool.query(
-        "update orders set status='paid',payment_provider='yookassa',payment_external_id=$1,paid_at=coalesce(paid_at,now()) where id::text=$2 and status<>'paid'",
-        [paymentId,order.id]
-      )
-      await pool.query(
-        "insert into analytics_events(project_id,event_type,path,value,metadata) values($1,'payment','/checkout',$2,$3)",
-        [order.project_id,Number(order.total||0),JSON.stringify({order_id:order.id,payment_id:paymentId,provider:'yookassa'})]
-      )
-    }else if(event.type==='payment.canceled'){
-      await pool.query(
-        "update orders set status='cancelled' where id::text=$1 and status='pending' and (payment_external_id=$2 or payment_external_id is null)",
-        [order.id,paymentId]
-      )
-    }
-
-    res.status(200).json({received:true})
-  }catch(e){
-    console.error('YooKassa global webhook error:',e.message)
-    // YooKassa expects a successful response; status is always verified by
-    // querying the provider again on the next webhook/payment-status check.
-    res.status(200).json({received:true})
-  }
+app.post('/api/billing/yookassa/webhook', async (_req,res)=>{
+  return res.status(410).json({error:'Внешняя оплата пока отключена.'})
 })
 app.post('/api/billing/confirm', async (_req,res)=>{
-  return res.status(410).json({error:'Этот endpoint отключён. Активация подписки выполняется только через webhook ЮKassa.'})
+  return res.status(410).json({error:'Внешняя оплата пока отключена.'})
 })
 app.get('/api/studio/usage', async (req,res) => {
   if(!pool){
