@@ -781,26 +781,28 @@ app.post('/api/projects', async (req, res) => {
   memoryCatalog.set(project.id,template.catalog.map(item=>({id:crypto.randomUUID(),project_id:project.id,...item})))
   return res.status(201).json({project})
 }
-  const usage=await pool.query('select count(*)::int as count from projects where studio_id::text=$1::text',[req.user.studio_id])
-  const limit=Number(req.studio.project_limit||planConfig(req.studio.plan).projectLimit)
-  if(usage.rows[0].count>=limit)return res.status(409).json({error:'Достигнут лимит проектов вашего тарифа'})
-  let slug = slugify(name)
-  const slugBase = slug
-  let suffix = 2
-  while ((await pool.query('select 1 from projects where lower(slug)=lower($1)',[slug])).rows[0]) slug = slugBase + '-' + suffix++
-  const template=templateDefinition(templateId)
-  const { rows } = await pool.query(
-    'insert into projects (studio_id, name, slug, project_type, status, settings) values ($1,$2,$3,$4,$5,$6) returning *',
-    [req.user.studio_id, name, slug, projectType, 'draft', JSON.stringify({miniApp:{enabled:projectType.includes('miniapp')}})]
-  )
-  await pool.query(
-    'insert into pages(project_id,title,slug,content) values($1,$2,$3,$4)',
-    [rows[0].id,'Главная','home',JSON.stringify({blocks:template.blocks})]
-  )
-  for (const item of template.catalog) {
-    await pool.query('insert into catalog_items(project_id,name,description,price,currency,active) values($1,$2,$3,$4,$5,$6)',[rows[0].id,item.name,item.description,item.price,item.currency,true])
-  }
-  res.status(201).json({ project: rows[0] })
+  const client=await pool.connect()
+  try{
+    await client.query('begin')
+    await client.query('select pg_advisory_xact_lock(hashtext($1))',[String('project-create:'+req.user.studio_id)])
+    const usage=await client.query('select count(*)::int as count from projects where studio_id::text=$1::text',[req.user.studio_id])
+    const limit=Number(req.studio.project_limit||planConfig(req.studio.plan).projectLimit)
+    if(usage.rows[0].count>=limit){await client.query('rollback');return res.status(409).json({error:'Достигнут лимит проектов вашего тарифа',code:'PLAN_LIMIT',limit,plan:planConfig(req.studio.plan).name})}
+    let slug = slugify(name)
+    const slugBase = slug
+    let suffix = 2
+    while ((await client.query('select 1 from projects where lower(slug)=lower($1)',[slug])).rows[0]) slug = slugBase + '-' + suffix++
+    const template=templateDefinition(templateId)
+    const { rows } = await client.query('insert into projects (studio_id,name,slug,project_type,status,settings) values ($1,$2,$3,$4,$5,$6) returning *',[req.user.studio_id,name,slug,projectType,'draft',JSON.stringify({miniApp:{enabled:projectType.includes('miniapp')}})])
+    await client.query('insert into pages(project_id,title,slug,content) values($1,$2,$3,$4)',[rows[0].id,'Главная','home',JSON.stringify({blocks:template.blocks})])
+    for(const item of template.catalog) await client.query('insert into catalog_items(project_id,name,description,price,currency,active) values($1,$2,$3,$4,$5,$6)',[rows[0].id,item.name,item.description,item.price,item.currency,true])
+    await client.query('commit')
+    res.status(201).json({project:rows[0]})
+  }catch(error){
+    try{await client.query('rollback')}catch{}
+    if(error?.code==='23505')return res.status(409).json({error:'Не удалось создать уникальный проект. Попробуйте ещё раз.',code:'SLUG_CONFLICT'})
+    throw error
+  }finally{client.release()}
 })
 
 app.get('/api/projects/:id', async (req,res)=>{const id=req.params.id;if(!pool){
@@ -1233,7 +1235,7 @@ app.post('/api/projects/:id/catalog', async (req,res) => {
   if (!name) return res.status(400).json({ error:'Название товара обязательно' })
   const rawPrice=req.body?.price
   const price = rawPrice === '' || rawPrice == null ? null : Number(rawPrice)
-  if(price!=null && (!Number.isFinite(price) || price<0)) return res.status(400).json({error:'Некорректная цена'})
+  if(price!=null && (!Number.isFinite(price) || price<0 || price>100000000)) return res.status(400).json({error:'Некорректная цена'})
   const description=String(req.body?.description || '').trim()
   const imageUrl=String(req.body?.image_url || '').trim()
   if(name.length>160||description.length>2000||imageUrl.length>2000)return res.status(400).json({error:'Слишком длинные данные товара'})
@@ -1539,18 +1541,29 @@ app.post('/api/clients', async (req,res) => {
   if(phone.length>40)return res.status(400).json({error:'Телефон клиента слишком длинный'})
   if(!(await requireClientCapacity(req.user.studio_id,res)))return
   if(!pool){
-    const duplicate=memoryClients.find(x=>x.studio_id===req.user.studio_id && ((phone&&x.phone===phone)||(email&&x.email===email)))
-    if(duplicate)return res.status(409).json({error:'Клиент с таким телефоном или email уже существует'})
-    const client={id:crypto.randomUUID(),studio_id:req.user.studio_id,name,email:email||null,phone:phone||null,created_at:new Date().toISOString()}
-    memoryClients.unshift(client)
-    return res.status(201).json({client})
+    return withMemoryWorkspaceLock('client-create:'+req.user.studio_id,async()=>{
+      const duplicate=memoryClients.find(x=>x.studio_id===req.user.studio_id && ((phone&&x.phone===phone)||(email&&x.email===email)))
+      if(duplicate)return res.status(409).json({error:'Клиент с таким телефоном или email уже существует'})
+      const client={id:crypto.randomUUID(),studio_id:req.user.studio_id,name,email:email||null,phone:phone||null,created_at:new Date().toISOString()}
+      memoryClients.unshift(client)
+      return res.status(201).json({client})
+    })
   }
-  const duplicate=await pool.query('select id from clients where studio_id::text=$1::text and ((nullif($2,\'\') is not null and phone=$2) or (nullif($3,\'\') is not null and lower(email)=lower($3))) limit 1',[req.user.studio_id,phone,email])
-  if(duplicate.rows[0])return res.status(409).json({error:'Клиент с таким телефоном или email уже существует'})
-  const q=await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id,studio_id,name,email,phone,created_at',[req.user.studio_id,name,email||null,phone||null])
-  res.status(201).json({client:q.rows[0]})
+  const client=await pool.connect()
+  try{
+    await client.query('begin')
+    await client.query('select pg_advisory_xact_lock(hashtext($1))',[String('client-create:'+req.user.studio_id)])
+    const duplicate=await client.query('select id from clients where studio_id::text=$1::text and ((nullif($2,'') is not null and phone=$2) or (nullif($3,'') is not null and lower(email)=lower($3))) limit 1',[req.user.studio_id,phone,email])
+    if(duplicate.rows[0]){await client.query('rollback');return res.status(409).json({error:'Клиент с таким телефоном или email уже существует'})}
+    const q=await client.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id,studio_id,name,email,phone,created_at',[req.user.studio_id,name,email||null,phone||null])
+    await client.query('commit')
+    res.status(201).json({client:q.rows[0]})
+  }catch(error){
+    try{await client.query('rollback')}catch{}
+    if(error?.code==='23505')return res.status(409).json({error:'Клиент с таким телефоном или email уже существует'})
+    throw error
+  }finally{client.release()}
 })
-
 app.get('/api/clients', async (req, res) => {
   if (!pool) {
     const rows=memoryClients.filter(x=>x.studio_id===req.user.studio_id).map(client=>{
