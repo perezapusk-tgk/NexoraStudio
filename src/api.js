@@ -47,8 +47,6 @@ export const api = {
   billingAccount: () => request('/billing/account'),
   updateBillingSettings: (currency) => request('/billing/settings',{method:'PATCH',body:JSON.stringify({currency})}),
   switchBillingPlan: (plan) => request('/billing/checkout',{method:'POST',body:JSON.stringify({plan})}),
-  billingCheckout: (plan) => request('/billing/checkout',{method:'POST',body:JSON.stringify({plan})}),
-  billingConfirm: (payment_id) => request('/billing/confirm',{method:'POST',body:JSON.stringify({provider:'yookassa',payment_id})}),
 
   team: () => request('/team'),
   addTeamMember: (payload) => request('/team',{method:'POST',body:JSON.stringify(payload)}),
