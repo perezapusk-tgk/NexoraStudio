@@ -10,7 +10,17 @@ const { Pool } = pg
 const app = express()
 const port = Number(process.env.PORT || 4000)
 const host = process.env.HOST || '0.0.0.0'
-const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000, max: 5 }) : null
+const databaseUrl = process.env.DATABASE_URL || ''
+let normalizedDatabaseUrl = databaseUrl
+if (normalizedDatabaseUrl) {
+  try {
+    const url = new URL(normalizedDatabaseUrl)
+    url.searchParams.delete('sslmode')
+    url.searchParams.delete('uselibpqcompat')
+    normalizedDatabaseUrl = url.toString()
+  } catch {}
+}
+const pool = normalizedDatabaseUrl ? new Pool({ connectionString: normalizedDatabaseUrl, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000, max: 5 }) : null
 
 app.disable('x-powered-by')
 // Baseline security headers; CSP is intentionally omitted because the SPA/editor uses dynamic inline styles.
@@ -31,15 +41,6 @@ app.use(cors({origin:(origin,callback)=>{if(!origin)return callback(null,true);t
 app.use(express.json({limit:'1mb',verify:(req,_res,buf)=>{req.rawBody=Buffer.from(buf)}}))
 
 const distDir = path.resolve(process.cwd(), 'dist')
-
-app.get('/api/health', async (_req,res)=>{
-  try {
-    if(pool) await pool.query('select 1')
-    res.status(200).json({ok:true,service:'nexora-studio',database:Boolean(pool),time:new Date().toISOString()})
-  } catch(error) {
-    res.status(503).json({ok:false,service:'nexora-studio',database:false,error:'database_unavailable'})
-  }
-})
 
 const noStore = {
   'Cache-Control':'no-store, no-cache, must-revalidate, proxy-revalidate',
