@@ -32,7 +32,16 @@ app.use(express.json({limit:'1mb',verify:(req,_res,buf)=>{req.rawBody=Buffer.fro
 
 const distDir = path.resolve(process.cwd(), 'dist')
 
-app.get('/api/health', async (_req,res)=>{\n  try {\n    if(pool) await pool.query('select 1')\n    res.status(200).json({ok:true,service:'nexora-studio',database:Boolean(pool),time:new Date().toISOString()})\n  } catch(error) {\n    res.status(503).json({ok:false,service:'nexora-studio',database:false,error:'database_unavailable'})\n  }\n})\n\nconst noStore = {
+app.get('/api/health', async (_req,res)=>{
+  try {
+    if(pool) await pool.query('select 1')
+    res.status(200).json({ok:true,service:'nexora-studio',database:Boolean(pool),time:new Date().toISOString()})
+  } catch(error) {
+    res.status(503).json({ok:false,service:'nexora-studio',database:false,error:'database_unavailable'})
+  }
+})
+
+const noStore = {
   'Cache-Control':'no-store, no-cache, must-revalidate, proxy-revalidate',
   'Pragma':'no-cache',
   'Expires':'0'
