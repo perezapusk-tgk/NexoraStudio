@@ -411,11 +411,12 @@ function App() {
     if (!name?.trim()) return
     try {
       const created = await api.createProject({ name: name.trim(), projectType, templateId })
+      const project = created?.project || created
       const mapped = {
-        id: created.id,
-        name: created.name || name.trim(),
-        slug: created.slug || '',
-        domain: created.domain || null,
+        id: project.id,
+        name: project.name || name.trim(),
+        slug: project.slug || '',
+        domain: project.domain || null,
         type: projectType === 'miniapp' ? 'Mini App' : projectType === 'website' ? 'Сайт' : 'Сайт + Mini App',
         status: 'Черновик',
         color: 'dark',
