@@ -121,4 +121,4 @@ assert.ok(server.includes("app.use('/api',(req,res)=>res.status(404).json({error
 assert.ok(server.includes("req.path.startsWith('/published/')") && server.includes("req.path.startsWith('/miniapp/')"),'published and Mini App paths must bypass custom-domain routing')
 assert.ok(server.includes("res.redirect(302,'/published/'+encodeURIComponent(project.slug))"),'custom domains must resolve to published project route')
 assert.ok(api.includes("if(response.status===401) setAuthToken('')"),'API client must clear stale auth token on 401')
-assert.ok(frontend.includes("api.authMe().then(session=>") && frontend.includes("setAuthLoading(false)"),'auth boot must always leave loading state')
+assert.ok(frontend.includes("api.authMe().then(session=>") && frontend.includes("setAuthLoading(false)"),'auth boot must always leave loading state')assert.ok(frontend.includes('const refreshWorkspace = async ()'),'workspace refresh recovery contract missing')
