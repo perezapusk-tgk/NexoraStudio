@@ -577,7 +577,8 @@ app.get('/api/billing/account', async (req,res)=>{
 })
 app.patch('/api/billing/settings', async (req,res)=>{
   if(!requireRole(req,res,['owner','admin'])) return
-  const currency='RUB'
+  const currency=String(req.body?.currency||'RUB').trim().toUpperCase()
+  if(!['RUB','USD'].includes(currency)) return res.status(400).json({error:'Поддерживаются только RUB и USD'})
   if(!pool){
     const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio
     studio.billing_currency=currency
