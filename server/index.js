@@ -1817,6 +1817,7 @@ app.post('/api/invoices', async (req,res) => {
   if(number.length>80)return res.status(400).json({error:'Номер счёта слишком длинный'})
   if(!Number.isFinite(amount)||amount<=0||amount>100000000)return res.status(400).json({error:'Некорректная сумма счёта'})
   if(!['draft','sent','paid','overdue','cancelled'].includes(status))return res.status(400).json({error:'Недопустимый статус счёта'})
+  if(status==='paid')return res.status(409).json({error:'Оплаченный счёт создаётся только после подтверждённого платежа'})
   const description=String(req.body?.description||'').trim()
   if(description.length>500)return res.status(400).json({error:'Описание счёта слишком длинное'})
   if(!pool){const x={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,client_id:req.body?.client_id||null,number,amount,currency,status,due_date:req.body?.due_date||null,description,created_at:new Date().toISOString()};memoryInvoices.unshift(x);return res.status(201).json({invoice:x})}
