@@ -1879,6 +1879,8 @@ app.patch('/api/payments/:id', async (req,res) => {
     const p=memoryPayments.find(x=>x.id===req.params.id&&x.studio_id===req.user.studio_id)
     if(!p)return res.status(404).json({error:'Платёж не найден'})
     const previous=p.status
+    if(previous==='refunded' && status!=='refunded') return res.status(409).json({error:'Возвращённый платёж нельзя изменить'})
+    if(previous==='paid' && ['pending','failed'].includes(status)) return res.status(409).json({error:'Оплаченный платёж нельзя отменить таким способом — используйте возврат'})
     if(status==='paid'){
       const duplicate=memoryPayments.find(x=>x.id!==p.id&&x.order_id&&x.order_id===p.order_id&&x.status==='paid'&&x.studio_id===req.user.studio_id)
       if(duplicate)return res.status(409).json({error:'Для заказа уже есть оплаченный платёж'})
@@ -1906,6 +1908,8 @@ app.patch('/api/payments/:id', async (req,res) => {
   const current=(await pool.query("select p.* from payments p join projects pr on pr.id=p.project_id where p.id::text=$1 and pr.studio_id::text=$2::text limit 1",[req.params.id,req.user.studio_id])).rows[0]
   if(!current)return res.status(404).json({error:'Платёж не найден'})
   const previous=current.status
+  if(previous==='refunded' && status!=='refunded') return res.status(409).json({error:'Возвращённый платёж нельзя изменить'})
+  if(previous==='paid' && ['pending','failed'].includes(status)) return res.status(409).json({error:'Оплаченный платёж нельзя отменить таким способом — используйте возврат'})
   if(status==='refunded' && previous!=='paid') return res.status(409).json({error:'Возврат возможен только для оплаченного платежа'})
   if(status==='paid' && previous==='refunded') return res.status(409).json({error:'Возвращённый платёж нельзя повторно отметить оплаченным'})
   if(status==='paid'){
