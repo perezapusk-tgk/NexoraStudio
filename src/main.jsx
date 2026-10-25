@@ -330,6 +330,92 @@ function MiniApps({projects,onCreate,onOpenProject}) {
   </>
 }
 
+
+function ProjectWorkspace({project,data,view,setView,onProjectUpdated,onBack,onRefresh}){
+  const current=data?.project||project||{}
+  const pages=Array.isArray(data?.pages)?data.pages:[]
+  const [name,setName]=useState(current.name||'')
+  const [domain,setDomain]=useState(current.domain||'')
+  const [saving,setSaving]=useState(false)
+  const [pageId,setPageId]=useState('')
+  const [pageTitle,setPageTitle]=useState('')
+  const [pageContent,setPageContent]=useState('')
+  const [catalog,setCatalog]=useState([])
+  const [newItem,setNewItem]=useState({name:'',price:'',description:''})
+  const [busy,setBusy]=useState('')
+  const [telegram,setTelegram]=useState(null)
+  const [telegramToken,setTelegramToken]=useState('')
+  const [notice,setNotice]=useState('')
+  const [error,setError]=useState('')
+
+  useEffect(()=>{
+    setName(current.name||'');setDomain(current.domain||'')
+    if(pages.length){
+      const p=pages.find(x=>x.id===pageId)||pages[0]
+      setPageId(p.id);setPageTitle(p.title||'');setPageContent(JSON.stringify(p.content||{blocks:[]},null,2))
+    }
+  },[current.id,current.name,current.domain,pages.length])
+
+  useEffect(()=>{if(view==='catalog'&&current.id)api.catalog(current.id).then(r=>setCatalog(r.items||r.catalog||[])).catch(()=>setCatalog([]))},[view,current.id])
+
+  const saveProject=async()=>{
+    setSaving(true);setError('');setNotice('')
+    try{const r=await api.updateProject(current.id,{name:name.trim(),domain:domain.trim()});onProjectUpdated?.(r.project||{...current,name,domain});setNotice('Изменения сохранены')}
+    catch(e){setError(e.message||'Не удалось сохранить проект')}finally{setSaving(false)}
+  }
+  const savePage=async()=>{
+    if(!pageId)return
+    setBusy('page');setError('');setNotice('')
+    try{
+      const content=JSON.parse(pageContent)
+      const r=await api.updatePage(current.id,pageId,{title:pageTitle.trim()||'Страница',content})
+      setPageContent(JSON.stringify(r.page?.content||content,null,2));setNotice('Страница сохранена');await onRefresh?.()
+    }catch(e){setError(e.message||'Не удалось сохранить страницу')}finally{setBusy('')}
+  }
+  const addPage=async()=>{
+    setBusy('add-page');setError('')
+    try{const r=await api.createPage(current.id,{title:'Новая страница'});await onRefresh?.();if(r.page){setPageId(r.page.id);setPageTitle(r.page.title);setPageContent(JSON.stringify(r.page.content||{blocks:[]},null,2))}}
+    catch(e){setError(e.message||'Не удалось создать страницу')}finally{setBusy('')}
+  }
+  const publish=async()=>{
+    setBusy('publish');setError('');setNotice('')
+    try{const r=current.status==='published'?await api.unpublishProject(current.id):await api.publishProject(current.id);onProjectUpdated?.(r.project||{...current,status:current.status==='published'?'draft':'published'});setNotice(current.status==='published'?'Проект снят с публикации':'Проект опубликован')}
+    catch(e){setError(e.message||'Не удалось изменить публикацию')}finally{setBusy('')}
+  }
+  const saveCatalog=async()=>{
+    if(!newItem.name.trim()||!Number(newItem.price))return setError('Укажите название и цену товара')
+    setBusy('catalog');setError('')
+    try{await api.createCatalogItem(current.id,{name:newItem.name.trim(),description:newItem.description.trim(),price:Number(newItem.price),currency:'RUB',active:true});const r=await api.catalog(current.id);setCatalog(r.items||r.catalog||[]);setNewItem({name:'',price:'',description:''})}
+    catch(e){setError(e.message||'Не удалось добавить товар')}finally{setBusy('')}
+  }
+  const removeCatalog=async id=>{if(!window.confirm('Удалить товар из каталога?'))return;setBusy('delete-catalog');try{await api.deleteCatalogItem(current.id,id);setCatalog(v=>v.filter(x=>x.id!==id))}catch(e){setError(e.message||'Не удалось удалить товар')}finally{setBusy('')}}
+  const configureBot=async()=>{
+    if(!telegramToken.trim())return setError('Вставьте токен Telegram-бота')
+    setBusy('telegram');setError('')
+    try{const r=await api.configureTelegram(current.id,{token:telegramToken.trim()});setTelegram(r);setNotice(r.botUrl?'Telegram подключён: '+r.botUrl:'Telegram подключён')}
+    catch(e){setError(e.message||'Не удалось подключить Telegram')}finally{setBusy('')}
+  }
+  const publicUrl=location.origin+'/'+(current.project_type==='miniapp'?'miniapp':'published')+'/'+encodeURIComponent(current.slug||'')
+  const tabs=[['overview','Обзор'],['pages','Страницы'],['catalog','Каталог'],['telegram','Telegram'],['settings','Настройки']]
+  return <div className="project-workspace">
+    <div className="page-head">
+      <div><button className="text-btn" onClick={onBack}>← Все проекты</button><div className="eyebrow">Рабочее пространство</div><h1>{current.name||'Проект'}</h1><p>{current.project_type==='miniapp'?'Telegram Mini App':current.project_type==='site_miniapp'?'Сайт + Telegram Mini App':'Сайт'} · {current.status==='published'?'Опубликован':'Черновик'}</p></div>
+      <div className="workspace-actions"><button className="filter" onClick={()=>window.open(publicUrl,'_blank','noopener,noreferrer')}>Предпросмотр <ExternalLink size={14}/></button><button className="primary" onClick={publish} disabled={busy==='publish'}>{busy==='publish'?'Сохраняем…':current.status==='published'?'Снять с публикации':'Опубликовать'}</button></div>
+    </div>
+    {(notice||error)&&<div className={error?'form-error':'status success'} style={{marginBottom:16}}>{error||notice}</div>}
+    <div className="settings-layout">
+      <div className="settings-nav card">{tabs.map(([id,label])=><button key={id} className={view===id?'selected':''} onClick={()=>setView(id)}>{label}</button>)}</div>
+      <section className="card settings-form">
+        {view==='overview'&&<div className="setting-block"><h2>Проект готов к работе</h2><span>Редактируйте страницы, каталог, Telegram и домен из одного пространства.</span><div className="metrics compact"><Metric title="Страницы" value={String(pages.length)} change="в проекте" icon={Globe2}/><Metric title="Товары" value={String(catalog.length)} change="в каталоге" icon={ShoppingCart}/><Metric title="Статус" value={current.status==='published'?'Онлайн':'Черновик'} change="публикация" icon={CheckCircle2}/></div><div className="setting-actions"><button className="primary" onClick={()=>setView('pages')}>Редактировать страницы</button><button className="filter" onClick={()=>setView('catalog')}>Открыть каталог</button></div></div>}
+        {view==='pages'&&<div className="setting-block"><div className="card-head"><div><h2>Страницы</h2><span>Контент хранится как структурированные блоки.</span></div><button className="filter" onClick={addPage} disabled={busy==='add-page'}>{busy==='add-page'?'Создаём…':'＋ Новая страница'}</button></div><div className="team-list">{pages.map(p=><button key={p.id} className={pageId===p.id?'team-row selected':'team-row'} onClick={()=>{setPageId(p.id);setPageTitle(p.title||'');setPageContent(JSON.stringify(p.content||{blocks:[]},null,2))}}><div className="team-person"><b>{p.title}</b><span>/{p.slug}</span></div><ChevronRight size={16}/></button>)}</div>{pageId&&<><label>Название страницы<input value={pageTitle} onChange={e=>setPageTitle(e.target.value)}/></label><label>Контент (JSON блоков)<textarea rows="18" value={pageContent} onChange={e=>setPageContent(e.target.value)} style={{fontFamily:'monospace'}}/></label><button className="primary" onClick={savePage} disabled={busy==='page'}>{busy==='page'?'Сохраняем…':'Сохранить страницу'}</button></>}</div>}
+        {view==='catalog'&&<div className="setting-block"><h2>Каталог</h2><span>Товары проекта используются на сайте и в Mini App.</span><div className="catalog-form-grid"><input placeholder="Название товара" value={newItem.name} onChange={e=>setNewItem(v=>({...v,name:e.target.value}))}/><input type="number" min="0.01" placeholder="Цена, ₽" value={newItem.price} onChange={e=>setNewItem(v=>({...v,price:e.target.value}))}/><input placeholder="Описание" value={newItem.description} onChange={e=>setNewItem(v=>({...v,description:e.target.value}))}/><button className="primary" onClick={saveCatalog} disabled={busy==='catalog'}>Добавить</button></div><div className="team-list">{catalog.map(x=><div className="team-row" key={x.id}><div className="team-person"><b>{x.name}</b><span>{Number(x.price||0).toLocaleString('ru-RU')} ₽ · {x.description||'Без описания'}</span></div><button className="filter" onClick={()=>removeCatalog(x.id)}>Удалить</button></div>)}{catalog.length===0&&<div className="empty-editor"><ShoppingCart size={22}/><b>Каталог пуст</b><span>Добавьте первый товар.</span></div>}</div></div>}
+        {view==='telegram'&&<div className="setting-block"><h2>Telegram Mini App</h2><span>Подключите бота, чтобы проект можно было открыть из Telegram.</span><label>Bot Token<input type="password" value={telegramToken} onChange={e=>setTelegramToken(e.target.value)} placeholder="123456:AA..." /></label><button className="primary" onClick={configureBot} disabled={busy==='telegram'}>{busy==='telegram'?'Подключаем…':'Подключить Telegram'}</button>{telegram?.botUrl&&<div className="status success" style={{marginTop:14}}><i/>Бот: <a href={telegram.botUrl} target="_blank" rel="noreferrer">{telegram.botUrl}</a></div>}</div>}
+        {view==='settings'&&<div className="setting-block"><h2>Настройки проекта</h2><span>Название, домен и публикация.</span><label>Название<input value={name} onChange={e=>setName(e.target.value)}/></label><label>Домен<input value={domain} onChange={e=>setDomain(e.target.value)} placeholder="example.com"/></label><button className="primary" onClick={saveProject} disabled={saving}>{saving?'Сохраняем…':'Сохранить изменения'}</button></div>}
+      </section>
+    </div>
+  </div>
+}
+
 function App() {
   const [auth,setAuth]=useState(null)
   const [authLoading,setAuthLoading]=useState(true)
