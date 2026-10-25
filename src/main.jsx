@@ -513,7 +513,7 @@ function App() {
       }
       setProjectData(v => [mapped, ...v])
       setShowCreate(false)
-      setActive('Проекты')
+      await openProject(mapped)
     } catch (err) {
       let message = err?.message || 'Не удалось создать проект.'
       try { message = JSON.parse(message)?.error || message } catch {}
