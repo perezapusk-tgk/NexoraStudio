@@ -390,3 +390,34 @@ button,.btn,.primary{min-height:40px}
   .project-row-button .status,.project-row-button .project-stat,.project-row-button .updated,.project-row-button>.filter:not(.project-open-button){display:none}
   .project-row-button .project-open-button{grid-column:1 / -1;width:100%;justify-content:center}
 }
+
+
+/* Dashboard polish v2 */
+.dashboard-surface{position:relative}
+.metrics .metric{position:relative;overflow:hidden}
+.metrics .metric::after{content:"";position:absolute;right:-34px;top:-42px;width:110px;height:110px;border-radius:50%;background:linear-gradient(135deg,rgba(99,91,255,.08),rgba(99,91,255,0));pointer-events:none}
+.metrics .metric-top{position:relative;z-index:1}
+.metrics .metric-value{letter-spacing:-.035em;font-weight:750}
+.metrics .metric-foot{gap:6px}
+.metrics .metric-foot b{color:#554dd9}
+.projects-card,.activity{min-height:100%}
+.projects-card .card-head,.activity .card-head{padding-bottom:15px}
+.projects-card .table{border-top:1px solid #eef0f4}
+.project-row-button{position:relative;transition:background .16s ease,transform .16s ease}
+.project-row-button:hover{background:#fbfaff;transform:translateY(-1px)}
+.project-row-button .project-open-button{opacity:.92}
+.project-row-button:hover .project-open-button{opacity:1}
+.quick{margin-top:26px}
+.quick .section-title{margin-bottom:13px}
+.quick-card{min-height:78px;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease}
+.quick-card:hover{transform:translateY(-2px);border-color:#ddd9ff;box-shadow:0 10px 28px rgba(15,23,42,.07)}
+.quick-card:active{transform:translateY(0)}
+.activity-item{padding:14px 0}
+.activity-item+ .activity-item{border-top:1px solid #f0f1f4}
+.activity-item time{white-space:nowrap}
+@media(max-width:760px){
+ .projects-card .card-head,.activity .card-head{padding-bottom:12px}
+ .project-row-button{transform:none!important}
+ .quick{margin-top:20px}
+ .quick-card{min-height:68px}
+}
