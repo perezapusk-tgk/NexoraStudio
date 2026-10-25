@@ -424,7 +424,7 @@ function Header({ eyebrow, title, description, action }) {
   return <div className="page-head"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1>{description && <p>{description}</p>}</div>{action}</div>
 }
 
-function Dashboard({ projects, onCreate, onNavigate, onOpenProject, metrics }) {
+function Dashboard({ projects, onCreate, onNavigate, onOpenProject, onDuplicateProject, onArchiveProject, metrics }) {
   return <>
     <Header eyebrow="Среда студии" title="Доброе утро 👋" description="Вот что происходит с вашими клиентскими проектами сегодня." action={<button className="primary" onClick={onCreate}><Plus size={17}/> Новый проект</button>}/>
     <div className="metrics">
@@ -436,7 +436,7 @@ function Dashboard({ projects, onCreate, onNavigate, onOpenProject, metrics }) {
     <div className="grid-main">
       <section className="card projects-card">
         <div className="card-head"><div><h2>Последние проекты</h2><span>Обновления по клиентским пространствам</span></div><button className="text-btn" onClick={() => onNavigate('Проекты')}>Все проекты <ArrowUpRight size={15}/></button></div>
-        <ProjectTable projects={projects.slice(0, 4)} onOpenProject={onOpenProject}/>
+        <ProjectTable projects={projects.slice(0, 4)} onOpenProject={onOpenProject} onDuplicateProject={onDuplicateProject} onArchiveProject={onArchiveProject}/>
       </section>
       <Activity onNavigate={onNavigate} />
     </div>
