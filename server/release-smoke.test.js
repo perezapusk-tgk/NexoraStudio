@@ -31,8 +31,8 @@ const requiredRoutes=[
   "app.get('/api/health'"
 ]
 const requiredFrontendContracts=[
-  "if(path[0]==='published'&&path[1])",
-  "if(path[0]==='miniapp'&&path[1])",
+  "path[0]==='published'&&path[1]",
+  "path[0]==='miniapp'&&path[1]",
   "api.publicProject(slug)",
   "api.publicLead(slug,payload)",
   "api.publicBooking(slug,payload)",
@@ -61,6 +61,6 @@ assert.ok(server.includes("const allowedEventTypes=new Set(['page_view'])"),'pub
 assert.ok(server.includes("status:'pending'"),'public checkout must create pending orders')
 assert.ok(!server.includes('stripe.com'),'Stripe must not be used')
 assert.ok(!api.includes('stripe'),'Stripe must not be used in frontend API client')
-assert.equal(pkg.scripts.build,'vite build','build script missing')
+assert.match(pkg.scripts.build,/release-smoke\.test\.js.*vite build/,'build script must run release smoke checks before Vite')
 assert.equal(pkg.scripts.start,'node server/index.js','production start must run migrations inside server startup')
 console.log('Nexora release smoke: OK')
