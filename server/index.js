@@ -1739,10 +1739,24 @@ app.post('/api/orders/:id/invoice', async (req,res) => {
   if(!pool){
     if(memoryInvoices.some(x=>(x.order_id===id)||(x.description===description&&x.project_id===order.project_id&&x.client_id===(order.client_id||null)))) return res.status(409).json({error:'Счёт для этого заказа уже создан'})
     const invoice={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:order.project_id,client_id:order.client_id||null,order_id:id,number,amount:Number(order.total),currency:order.currency||'RUB',status:'sent',due_date:null,description,created_at:new Date().toISOString()}; memoryInvoices.unshift(invoice); return res.status(201).json({invoice}) }
-  const existing=await pool.query('select id,number,amount,currency,status,due_date,description,created_at from invoices where order_id::text=$1::text or (project_id::text=$2::text and ((client_id is null and $3::text is null) or client_id::text=$3::text) and description=$4) order by created_at desc limit 1',[id,order.project_id,order.client_id||null,description])
-  if(existing.rows[0]) return res.status(409).json({error:'Счёт для этого заказа уже создан',invoice:existing.rows[0]})
-  const q=await pool.query('insert into invoices(project_id,client_id,order_id,number,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[order.project_id,order.client_id||null,id,number,order.total,order.currency||'RUB','sent',description])
-  res.status(201).json({invoice:q.rows[0]})
+  const client=await pool.connect()
+  try {
+    await client.query('begin')
+    await client.query('select pg_advisory_xact_lock(hashtext($1))',[String('invoice-order:'+id)])
+    const existing=await client.query('select id,number,amount,currency,status,due_date,description,created_at from invoices where order_id::text=$1::text or (project_id::text=$2::text and ((client_id is null and $3::text is null) or client_id::text=$3::text) and description=$4) order by created_at desc limit 1',[id,order.project_id,order.client_id||null,description])
+    if(existing.rows[0]){
+      await client.query('commit')
+      return res.status(409).json({error:'Счёт для этого заказа уже создан',invoice:existing.rows[0]})
+    }
+    const q=await client.query('insert into invoices(project_id,client_id,order_id,number,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[order.project_id,order.client_id||null,id,number,order.total,order.currency||'RUB','sent',description])
+    await client.query('commit')
+    res.status(201).json({invoice:q.rows[0]})
+  }catch(error){
+    try{await client.query('rollback')}catch{}
+    throw error
+  }finally{
+    client.release()
+  }
 })
 
 
