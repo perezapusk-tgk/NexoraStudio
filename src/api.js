@@ -44,10 +44,8 @@ export const api = {
   studio: () => request('/studio'),
   studioUsage: () => request('/studio/usage'),
   billingPlans: () => request('/billing/plans'),
-  billingCheckout: (plan) => request('/billing/checkout',{method:'POST',body:JSON.stringify({plan})}),
   billingAccount: () => request('/billing/account'),
   updateBillingSettings: (currency) => request('/billing/settings',{method:'PATCH',body:JSON.stringify({currency})}),
-  switchBillingPlan: (plan) => request('/billing/checkout',{method:'POST',body:JSON.stringify({plan})}),
 
   team: () => request('/team'),
   addTeamMember: (payload) => request('/team',{method:'POST',body:JSON.stringify(payload)}),
