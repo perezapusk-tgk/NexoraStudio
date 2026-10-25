@@ -531,7 +531,7 @@ function CreateProjectModal({onClose,onCreate}) {
       <div className="create-project-grid">
         <button className="create-project-option" disabled={busy} onClick={()=>create('website')}><span className="create-project-icon"><Globe2 size={22}/></span><b>Сайт</b><small>Публичный сайт клиента</small></button>
         <button className="create-project-option" disabled={busy} onClick={()=>create('miniapp')}><span className="create-project-icon"><Smartphone size={22}/></span><b>Mini App</b><small>Telegram Mini App клиента</small></button>
-        <button className="create-project-option" disabled={busy} onClick={()=>create('both')}><span className="create-project-icon"><Layers3 size={22}/></span><b>Сайт + Mini App</b><small>Оба канала в одном проекте</small></button>
+        <button className="create-project-option" disabled={busy} onClick={()=>create('site_miniapp')}><span className="create-project-icon"><Layers3 size={22}/></span><b>Сайт + Mini App</b><small>Оба канала в одном проекте</small></button>
       </div>
       {busy&&<div className="create-project-busy">Создаём проект…</div>}
     </div>
