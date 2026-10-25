@@ -68,6 +68,10 @@ assert.ok(api.includes("billingCheckout: (plan)"),'frontend billing checkout con
 assert.ok(api.includes("billingConfirm: (transactionId)"),'frontend billing confirm contract missing')
 assert.ok(frontend.includes("api.billingCheckout(plan.id)"),'billing UI checkout action missing')
 assert.ok(frontend.includes('class PublicErrorBoundary'),'public runtime error boundary missing')
+assert.ok(frontend.includes('class AppErrorBoundary'),'private app runtime error boundary missing')
+assert.ok(api.includes('const controller = new AbortController()'),'API request timeout controller missing')
+assert.ok(api.includes("if(error?.name==='AbortError') throw new Error('Сервер не отвечает. Попробуйте обновить страницу.')"),'API timeout must produce a recoverable user error')
+assert.ok(server.includes("app.get(['/published/:slug','/miniapp/:slug']"),'public deep-link shell fallback missing')
 assert.ok(frontend.includes('const safe={project:v?.project||{name:\'Nexora\'}'),'public response normalization missing')
 assert.ok(frontend.includes('const isPublic='),'public route isolation missing')
 
