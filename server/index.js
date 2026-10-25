@@ -627,6 +627,51 @@ async function createYookassaCheckout({studioId,plan,amount,transactionId}){
   if(!r.ok) throw new Error(data?.description||'ЮKassa не смогла создать оплату')
   return {id:data.id,url:data?.confirmation?.confirmation_url}
 }
+async function createYookassaOrderCheckout({studioId,projectId,slug,orderId,amount,surface='site'}){
+  const shopId=String(process.env.YOOKASSA_SHOP_ID||'').trim()
+  const secret=String(process.env.YOOKASSA_SECRET_KEY||'').trim()
+  if(!shopId||!secret) throw new Error('YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY не настроены')
+  const safeSurface=surface==='miniapp'?'miniapp':'site'
+  const returnPath=safeSurface==='miniapp'?'/miniapp/':'/published/'
+  const r=await fetch('https://api.yookassa.ru/v3/payments',{method:'POST',headers:{Authorization:'Basic '+Buffer.from(shopId+':'+secret).toString('base64'),'Content-Type':'application/json','Idempotence-Key':crypto.randomUUID()},body:JSON.stringify({
+    amount:{value:Number(amount).toFixed(2),currency:'RUB'},capture:true,
+    confirmation:{type:'redirect',return_url:billingAppUrl()+returnPath+encodeURIComponent(slug)+'?payment=success&order_id='+encodeURIComponent(String(orderId))},
+    description:'Заказ '+String(orderId).slice(0,18),
+    metadata:{studio_id:studioId,project_id:projectId,slug,order_id:String(orderId),surface:safeSurface,type:'public_order'}
+  })})
+  const data=await r.json()
+  if(!r.ok) throw new Error(data?.description||'ЮKassa не смогла создать оплату заказа')
+  return {id:data.id,url:data?.confirmation?.confirmation_url}
+}
+
+async function applyYookassaOrderSuccess(payment){
+  const metadata=payment?.metadata||{}
+  const orderId=String(metadata.order_id||'').trim()
+  if(!orderId||metadata.type!=='public_order'||payment.status!=='succeeded') return {applied:false}
+  if(!pool){
+    const order=memoryOrders.find(x=>String(x.id)===orderId)
+    if(!order) return {applied:false,reason:'order_not_found'}
+    if(order.status==='paid') return {applied:true,duplicate:true,order}
+    if(['cancelled','refunded'].includes(String(order.status))) return {applied:false,reason:'order_closed'}
+    order.status='paid'
+    if(!memoryPayments.find(x=>x.order_id===order.id&&x.status==='paid')) memoryPayments.unshift({id:crypto.randomUUID(),studio_id:order.studio_id,project_id:order.project_id,client_id:order.client_id,order_id:order.id,amount:Number(order.total),currency:'RUB',status:'paid',description:'ЮKassa · публичный заказ '+order.number,created_at:new Date().toISOString()})
+    return {applied:true,order}
+  }
+  const client=await pool.connect()
+  try{
+    await client.query('begin')
+    const order=(await client.query('select o.* from orders o join projects p on p.id=o.project_id where o.id::text=$1 and p.studio_id::text=$2::text for update',[orderId,String(metadata.studio_id||'')])).rows[0]
+    if(!order){await client.query('rollback');return {applied:false,reason:'order_not_found'}}
+    if(order.status==='paid'){await client.query('commit');return {applied:true,duplicate:true,order}}
+    if(['cancelled','refunded'].includes(String(order.status))){await client.query('rollback');return {applied:false,reason:'order_closed'}}
+    await client.query("update orders set status='paid' where id=$1",[order.id])
+    await client.query("insert into payments(project_id,client_id,order_id,amount,currency,status,description) select $1,$2,$3,$4,'RUB','paid',$5 where not exists (select 1 from payments where order_id::text=$3::text and status='paid')",[order.project_id,order.client_id,order.id,Number(order.total),'ЮKassa · публичный заказ '+order.number])
+    await client.query("update invoices set status='paid' where order_id::text=$1::text and status<>'cancelled'",[order.id])
+    await client.query('commit')
+    return {applied:true,order}
+  }catch(error){try{await client.query('rollback')}catch{};throw error}finally{client.release()}
+}
+
 async function applyYookassaSuccess(payment){
   const transactionId=String(payment?.metadata?.transaction_id||'').trim()
   const studioId=String(payment?.metadata?.studio_id||'').trim()
