@@ -1722,7 +1722,11 @@ app.post('/api/orders', async (req,res) => {
 app.patch('/api/orders/:id', async (req,res) => {
   const status=String(req.body?.status||'').trim()
   if(!['pending','paid','cancelled','refunded'].includes(status)) return res.status(400).json({error:'Недопустимый статус заказа'})
-  if(!pool){const x=memoryOrders.find(v=>v.id===req.params.id&&v.studio_id===req.user.studio_id);if(!x)return res.status(404).json({error:'Заказ не найден'});if(status==='paid'){const paid=memoryPayments.some(p=>p.studio_id===req.user.studio_id&&p.order_id===x.id&&p.status==='paid');if(!paid)return res.status(409).json({error:'Нельзя пометить заказ оплаченным без подтверждённого платежа'})}x.status=status;return res.json({order:x})}
+  if(!pool){const x=memoryOrders.find(v=>v.id===req.params.id&&v.studio_id===req.user.studio_id);if(!x)return res.status(404).json({error:'Заказ не найден'});if(x.status==='paid'&&status!=='paid')return res.status(409).json({error:'Оплаченный заказ нельзя перевести в другой статус — изменяйте связанный платёж'});if(x.status==='refunded'&&status!=='refunded')return res.status(409).json({error:'Возвращённый заказ нельзя изменить'});if(status==='paid'){const paid=memoryPayments.some(p=>p.studio_id===req.user.studio_id&&p.order_id===x.id&&p.status==='paid');if(!paid)return res.status(409).json({error:'Нельзя пометить заказ оплаченным без подтверждённого платежа'})}x.status=status;return res.json({order:x})}
+  const currentOrder=await pool.query("select o.status from orders o join projects p on p.id=o.project_id where o.id::text=$1::text and p.studio_id::text=$2::text limit 1",[req.params.id,req.user.studio_id])
+  if(!currentOrder.rows[0]) return res.status(404).json({error:'Заказ не найден'})
+  if(currentOrder.rows[0].status==='paid'&&status!=='paid') return res.status(409).json({error:'Оплаченный заказ нельзя перевести в другой статус — изменяйте связанный платёж'})
+  if(currentOrder.rows[0].status==='refunded'&&status!=='refunded') return res.status(409).json({error:'Возвращённый заказ нельзя изменить'})
   if(status==='paid'){
     const paid=await pool.query("select id from payments where order_id::text=$1::text and status='paid' limit 1",[req.params.id])
     if(!paid.rows[0]) return res.status(409).json({error:'Нельзя пометить заказ оплаченным без подтверждённого платежа'})
