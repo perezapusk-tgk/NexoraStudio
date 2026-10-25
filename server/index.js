@@ -1533,7 +1533,10 @@ app.post('/api/leads/:id/convert', async (req,res) => {
   if(!leadQ.rows[0])return res.status(404).json({error:'Заявка не найдена'})
   const lead=leadQ.rows[0]
   const existingQ=await pool.query('select id,name,email,phone,created_at from clients where studio_id::text=$3::text and ((phone=$1 and $1 is not null) or (email=$2 and $2 is not null)) limit 1',[lead.phone,lead.email,lead.studio_id])
-  if(existingQ.rows[0])return res.json({client:existingQ.rows[0],existing:true})
+  if(existingQ.rows[0]){
+    await pool.query("update leads set status='won' where id::text=$1::text and project_id in (select id from projects where studio_id::text=$2::text)",[id,req.user.studio_id])
+    return res.json({client:existingQ.rows[0],existing:true})
+  }
   if(!await requireClientCapacity(lead.studio_id,res))return
   const q=await pool.query('insert into clients(studio_id,name,email,phone) values($1,$2,$3,$4) returning id,name,email,phone,created_at',[lead.studio_id,lead.name,lead.email||null,lead.phone||null])
   await pool.query("update leads set status='won' where id::text=$1::text and project_id in (select id from projects where studio_id::text=$2::text)",[id,req.user.studio_id])
