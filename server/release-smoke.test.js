@@ -116,3 +116,9 @@ assert.ok(!api.toLowerCase().includes('paymaster'),'PayMaster must not be active
 assert.match(pkg.scripts.build,/release-smoke\.test\.js.*vite build/,'build script must run release smoke checks before Vite')
 assert.equal(pkg.scripts.start,'node server/index.js','production start must run migrations inside server startup')
 console.log('Nexora release smoke: OK')
+
+assert.ok(server.includes("app.use('/api',(req,res)=>res.status(404).json({error:'API route not found'"),'unknown API routes must return JSON')
+assert.ok(server.includes("req.path.startsWith('/published/')") && server.includes("req.path.startsWith('/miniapp/')"),'published and Mini App paths must bypass custom-domain routing')
+assert.ok(server.includes("res.redirect(302,'/published/'+encodeURIComponent(project.slug))"),'custom domains must resolve to published project route')
+assert.ok(api.includes("if(response.status===401) setAuthToken('')"),'API client must clear stale auth token on 401')
+assert.ok(frontend.includes("api.authMe().then(session=>") && frontend.includes("setAuthLoading(false)"),'auth boot must always leave loading state')
