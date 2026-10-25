@@ -513,19 +513,7 @@ function App() {
       }
       setProjectData(v => [mapped, ...v.filter(x => x.id !== mapped.id)])
       setShowCreate(false)
-      try {
-        const fresh = await api.project(mapped.id)
-        setWorkspaceData(fresh)
-        setSelectedProject(fresh?.project || mapped)
-      } catch {
-        setWorkspaceData({project:mapped,pages:[]})
-        setSelectedProject(mapped)
-      }
-      const url=new URL(window.location.href)
-      url.searchParams.set('project',String(mapped.id))
-      window.history.pushState({project:String(mapped.id)},'',url.pathname+url.search)
-      setActive('Проекты')
-      setProjectView('overview')
+      await openProject(mapped)
     } catch (err) {
       let message = err?.message || 'Не удалось создать проект.'
       try { message = JSON.parse(message)?.error || message } catch {}
