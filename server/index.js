@@ -626,13 +626,13 @@ async function createYookassaCheckout({studioId,plan,amount}){
   return {id:data.id,url:data?.confirmation?.confirmation_url}
 }
 app.post('/api/billing/checkout', async (_req,res)=>{
-  return res.status(410).json({error:'Внешняя оплата PayMaster пока не подключена. Подключение платёжного провайдера будет выполнено на финальном этапе.'})
+  return res.status(410).json({error:'Внешняя оплата пока отключена. Подключение платёжного провайдера будет выполнено на финальном этапе.'})
 })
 app.post('/api/billing/yookassa/webhook', async (_req,res)=>{
-  return res.status(410).json({error:'Внешняя оплата PayMaster пока не подключена.'})
+  return res.status(410).json({error:'Внешняя оплата пока отключена.'})
 })
 app.post('/api/billing/confirm', async (_req,res)=>{
-  return res.status(410).json({error:'Внешняя оплата PayMaster пока не подключена.'})
+  return res.status(410).json({error:'Внешняя оплата пока отключена.'})
 })
 app.get('/api/studio/usage', async (req,res) => {
   if(!pool){
@@ -1214,12 +1214,12 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
 })
 
 
-app.post('/api/public/order/:id/paymaster-webhook', async (_req,res)=>{
-  return res.status(410).json({error:'Внешняя оплата PayMaster пока не подключена'})
+app.post('/api/public/order/:id/yookassa-webhook', async (_req,res)=>{
+  return res.status(410).json({error:'Внешняя оплата пока отключена'})
 })
 
 app.get('/api/public/order/:id/payment-status', async (_req,res)=>{
-  return res.status(410).json({error:'Внешняя оплата PayMaster пока не подключена'})
+  return res.status(410).json({error:'Внешняя оплата пока отключена'})
 })
 
 app.post('/api/public/:slug/events', async (req,res) => {
