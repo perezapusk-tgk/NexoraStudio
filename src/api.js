@@ -77,6 +77,7 @@ export const api = {
   publicLead: (slug,payload) => request('/public/' + slug + '/leads',{method:'POST',body:JSON.stringify(payload)}),
   publicBooking: (slug,payload) => request('/public/' + slug + '/bookings',{method:'POST',body:JSON.stringify(payload)}),
   publicCheckout: (slug,payload) => request('/public/' + slug + '/checkout',{method:'POST',body:JSON.stringify(payload)}),
+  publicOrderPaymentStatus: (orderId,slug) => request('/public/order/' + encodeURIComponent(orderId) + '/payment-status?slug=' + encodeURIComponent(slug)),
   publicEvent: (slug,payload) => request('/public/' + slug + '/events',{method:'POST',body:JSON.stringify(payload)}),
   catalog: (id) => request('/projects/' + id + '/catalog'),
   createCatalogItem: (id,payload) => request('/projects/' + id + '/catalog',{method:'POST',body:JSON.stringify(payload)}),
