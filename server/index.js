@@ -1727,6 +1727,10 @@ app.patch('/api/orders/:id', async (req,res) => {
     const paid=await pool.query("select id from payments where order_id::text=$1::text and status='paid' limit 1",[req.params.id])
     if(!paid.rows[0]) return res.status(409).json({error:'Нельзя пометить заказ оплаченным без подтверждённого платежа'})
   }
+  if(status==='refunded'){
+    const refunded=await pool.query("select id from payments where order_id::text=$1::text and status='refunded' limit 1",[req.params.id])
+    if(!refunded.rows[0]) return res.status(409).json({error:'Нельзя пометить заказ возвращённым без подтверждённого возврата'})
+  }
   const q=await pool.query('update orders o set status=$1 from projects p where o.id::text=$2::text and o.project_id::text=p.id::text and p.studio_id::text=$3::text returning o.*',[status,req.params.id,req.user.studio_id])
   if(!q.rows[0])return res.status(404).json({error:'Заказ не найден'})
   res.json({order:q.rows[0]})
@@ -1902,6 +1906,8 @@ app.patch('/api/payments/:id', async (req,res) => {
   const current=(await pool.query("select p.* from payments p join projects pr on pr.id=p.project_id where p.id::text=$1 and pr.studio_id::text=$2::text limit 1",[req.params.id,req.user.studio_id])).rows[0]
   if(!current)return res.status(404).json({error:'Платёж не найден'})
   const previous=current.status
+  if(status==='refunded' && previous!=='paid') return res.status(409).json({error:'Возврат возможен только для оплаченного платежа'})
+  if(status==='paid' && previous==='refunded') return res.status(409).json({error:'Возвращённый платёж нельзя повторно отметить оплаченным'})
   if(status==='paid'){
     if(current.order_id){
       const order=(await pool.query("select id,client_id,total from orders where id=$1 and project_id in (select id from projects where studio_id::text=$2::text) limit 1",[current.order_id,req.user.studio_id])).rows[0]
