@@ -1881,6 +1881,7 @@ app.patch('/api/payments/:id', async (req,res) => {
     const previous=p.status
     if(previous==='refunded' && status!=='refunded') return res.status(409).json({error:'Возвращённый платёж нельзя изменить'})
     if(previous==='paid' && ['pending','failed'].includes(status)) return res.status(409).json({error:'Оплаченный платёж нельзя отменить таким способом — используйте возврат'})
+    if(status==='refunded' && previous!=='paid') return res.status(409).json({error:'Возврат возможен только для оплаченного платежа'})
     if(status==='paid'){
       const duplicate=memoryPayments.find(x=>x.id!==p.id&&x.order_id&&x.order_id===p.order_id&&x.status==='paid'&&x.studio_id===req.user.studio_id)
       if(duplicate)return res.status(409).json({error:'Для заказа уже есть оплаченный платёж'})
