@@ -421,3 +421,11 @@ button,.btn,.primary{min-height:40px}
  .quick{margin-top:20px}
  .quick-card{min-height:68px}
 }
+
+
+/* Mobile sidebar overlay */
+.sidebar-backdrop{display:none}
+@media(max-width:760px){
+  .sidebar-backdrop{display:block;position:fixed;inset:0;z-index:55;background:rgba(15,23,42,.32);backdrop-filter:blur(2px);border:0;cursor:pointer}
+  .sidebar{z-index:60}
+}
