@@ -5,6 +5,7 @@ import path from 'node:path'
 const root=path.resolve(import.meta.dirname,'..')
 const server=fs.readFileSync(path.join(root,'server','index.js'),'utf8')
 const api=fs.readFileSync(path.join(root,'src','api.js'),'utf8')
+const frontend=fs.readFileSync(path.join(root,'src','main.jsx'),'utf8')
 const pkg=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'))
 
 const requiredRoutes=[
@@ -40,7 +41,7 @@ const requiredFrontendContracts=[
   "api.configureTelegram(id,payload)",
   "['Оплата', CreditCard]"
 ]
-for(const contract of requiredFrontendContracts) assert.ok(api.includes(contract),`missing frontend contract: ${contract}`)
+for(const contract of requiredFrontendContracts) assert.ok(api.includes(contract) || frontend.includes(contract),`missing frontend contract: ${contract}`)
 assert.ok(server.includes("app.get(['/published/:slug','/miniapp/:slug']"),'published/Mini App SPA fallback missing')
 assert.ok(server.includes("app.post('/api/public/order/:id/yookassa-webhook'"),'YooKassa webhook endpoint missing')
 assert.ok(server.includes("return res.status(410).json({error:'Внешняя оплата пока отключена'})"),'deferred YooKassa state must be explicit')
