@@ -88,6 +88,7 @@ assert.ok(server.includes("const allowedEventTypes=new Set(['page_view'])"),'pub
 assert.ok(server.includes("status:'pending'"),'public checkout must create pending orders')
 assert.ok(server.includes("if(status==='refunded') return res.status(409).json({error:'Возврат создаётся только через существующий оплаченный платёж'})"),'refunds must use an existing payment transition')
 assert.ok(server.includes("if(q.rows[0].order_id && (status==='paid' || status==='refunded'))"),'non-final payment updates must not rewrite order status')
+assert.ok(server.includes("['cancelled','refunded'].includes(String(oq.rows[0].status||''))"),'closed orders must reject new paid payments')
 assert.ok(server.includes("for update"),'order status transitions must lock the order row against payment races')
 assert.ok(!server.includes('stripe.com'),'Stripe must not be used')
 assert.ok(!api.includes('stripe'),'Stripe must not be used in frontend API client')
