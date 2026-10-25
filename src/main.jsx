@@ -1,3 +1,4 @@
+// API origin is configured in Vercel as VITE_API_URL; keep frontend and backend deployments decoupled.
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { useEffect, useMemo, useState } from 'react'
