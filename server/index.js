@@ -1324,8 +1324,7 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   const publicOrder={id:order.id,number:order.number,status:order.status,total:Number(order.total),currency:order.currency,items:order.items}
   try{
     const payment=await createYookassaOrderCheckout({studioId:project.studio_id,projectId:project.id,slug,orderId:order.id,amount:Number(order.total),surface:req.body?.surface})
-    if(pool) await pool.query('update orders set payment_provider=$1,payment_provider_id=$2,payment_checkout_url=$3 where id=$4',['yookassa',payment.id,payment.url,order.id])
-    else {order.payment_provider='yookassa';order.payment_provider_id=payment.id;order.payment_checkout_url=payment.url}
+    // YooKassa payment id is carried by the provider metadata; order state is finalized by webhook.
     return res.status(201).json({order:publicOrder,checkout_url:payment.url,payment_id:payment.id,payment_pending:true})
   }catch(error){
     console.error('Public YooKassa checkout error:',error.message)
