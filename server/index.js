@@ -1877,8 +1877,10 @@ app.post('/api/payments', async (req,res) => {
       const booking=memoryBookings.find(x=>x.id===bookingId&&x.studio_id===req.user.studio_id&&x.project_id===projectId)
       if(!booking)return res.status(404).json({error:'Бронирование не найдено'})
     }else{
-      const booking=(await pool.query('select b.id from bookings b join projects p on p.id=b.project_id where b.id::text=$1::text and b.project_id::text=$2::text and p.studio_id::text=$3::text limit 1',[bookingId,projectId,req.user.studio_id])).rows[0]
+      const booking=(await pool.query('select b.id,b.client_id from bookings b join projects p on p.id=b.project_id where b.id::text=$1::text and b.project_id::text=$2::text and p.studio_id::text=$3::text limit 1',[bookingId,projectId,req.user.studio_id])).rows[0]
       if(!booking)return res.status(404).json({error:'Бронирование не найдено'})
+      if(booking.client_id && req.body?.client_id && String(booking.client_id)!==String(req.body.client_id))return res.status(409).json({error:'Клиент платежа не совпадает с клиентом бронирования'})
+      if(booking.client_id && !req.body?.client_id)return res.status(409).json({error:'У платежа не указан клиент бронирования'})
     }
   }
   if(!['pending','paid','refunded','failed'].includes(status)) return res.status(400).json({error:'Недопустимый статус платежа'})
