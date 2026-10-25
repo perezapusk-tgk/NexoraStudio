@@ -1937,7 +1937,7 @@ app.patch('/api/payments/:id', async (req,res) => {
     throw error
   }
   if(!q.rows[0])return res.status(404).json({error:'Платёж не найден'})
-  if(q.rows[0].order_id) await pool.query("update orders set status=$1 where id=$2 and project_id in (select id from projects where studio_id::text=$3::text)",[status==='paid'?'paid':status==='refunded'?'refunded':'pending',q.rows[0].order_id,req.user.studio_id])
+  if(q.rows[0].order_id && (status==='paid' || status==='refunded')) await pool.query("update orders set status=$1 where id=$2 and project_id in (select id from projects where studio_id::text=$3::text)",[status,q.rows[0].order_id,req.user.studio_id])
   if(previous!==status && status==='paid'){
     await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[q.rows[0].project_id,'payment','/payment',Number(q.rows[0].amount||0),JSON.stringify({payment_id:q.rows[0].id})])
   } else if(previous!==status && status==='refunded'){
