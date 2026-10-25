@@ -57,6 +57,8 @@ assert.ok(server.includes("app.post('/api/public/yookassa/webhook'"),'global Yoo
 assert.ok(server.includes("payment?.metadata?.type||'')!=='public_order'"),'global YooKassa public-order type binding missing')
 assert.ok(server.includes("Idempotence-Key':'nexora-public-order-'+String(orderId)"),'public order YooKassa idempotency key missing')
 assert.ok(server.includes("payment?.metadata?.order_id||'')!==orderId"),'public YooKassa webhook order binding missing')
+assert.ok(server.includes("reason:'amount_mismatch'"),'public YooKassa webhook amount validation missing')
+assert.ok(server.includes("reason:'studio_mismatch'"),'public YooKassa webhook studio binding missing')
 assert.ok(server.includes('createYookassaOrderCheckout'),'public YooKassa checkout creator missing')
 assert.ok(server.includes('applyYookassaOrderSuccess'),'public YooKassa success handler missing')
 assert.ok(server.includes("metadata:{studio_id:studioId,project_id:projectId,slug,order_id:String(orderId),surface:safeSurface,type:'public_order'}"),'public payment metadata missing')
