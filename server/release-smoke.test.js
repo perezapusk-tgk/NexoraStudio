@@ -52,6 +52,8 @@ for(const contract of requiredFrontendContracts) {
 }
 assert.ok(server.includes("app.get(['/published/:slug','/miniapp/:slug']"),'published/Mini App SPA fallback missing')
 assert.ok(server.includes("app.post('/api/public/order/:id/yookassa-webhook'"),'YooKassa webhook endpoint missing')
+assert.ok(server.includes("const botUrl = bot.username ? 'https://t.me/' + bot.username : ''"),'Telegram bot link contract missing')
+assert.ok(server.includes("return res.json({configured:true,bot:{username:bot.username||'',name:bot.first_name||'',url:botUrl},botUrl,url:miniAppUrl,project})"),'Telegram configure response must expose bot URL')
 assert.ok(!frontend.includes('mini-public-bottom'),'Mini App must not expose bottom quick navigation')
 assert.ok(server.includes("return res.status(410).json({error:'Внешняя оплата пока отключена'})"),'deferred YooKassa state must be explicit')
 
