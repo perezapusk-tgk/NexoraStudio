@@ -797,7 +797,8 @@ function Orders({orders=[],projects=[]}){
   }
   const payOrder=async()=>{
     if(!detail?.order||detail.order.status==='paid')return
-    setBusy(true)    try{
+    setBusy(true)
+    try{
       const r=await api.createPayment({project_id:detail.order.project_id,client_id:detail.order.client_id||null,order_id:detail.order.id,amount:Number(detail.order.total),currency:detail.order.currency||'RUB',status:'paid',description:'Оплата заказа '+detail.order.number})
       setItems(v=>v.map(x=>x.id===detail.order.id?{...x,status:'paid'}:x))
       setDetail(v=>v?{...v,order:{...v.order,status:'paid'},payments:[r.payment,...(v.payments||[])]}:v)
