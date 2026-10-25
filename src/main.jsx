@@ -650,13 +650,30 @@ function Integrations(){const items=[['Telegram','Заявки, уведомле
 function Templates({onCreate}){const templates=[['barber','Барбершоп','Барбершоп','dark'],['beauty','Салон красоты','Салон красоты','blue'],['fitness','Фитнес','Фитнес-студия','purple'],['cafe','Кафе','Кафе / ресторан','orange'],['shop','Магазин','Интернет-магазин','green'],['services','Услуги','Бизнес и услуги','pink']];return <><Header eyebrow="Библиотека" title="Шаблоны" description="Готовые стартовые проекты с готовыми страницами, блоками и каталогом."/><div className="template-grid">{templates.map(([id,name,desc,color])=><div className="card template" key={id}><div className={`template-preview ${color}`}><span>{name}</span><div className="template-lines"><i/><i/><i/></div></div><div className="template-info"><div><h3>{name}</h3><span>{desc} · страницы + каталог</span></div><button className="filter" onClick={()=>onCreate('site',id)}>Использовать</button></div></div>)}</div></>}
 
 function PaymentsPage(){
-  const [plans,setPlans]=useState([]),[account,setAccount]=useState(null)
-  useEffect(()=>{Promise.allSettled([api.billingPlans(),api.billingAccount()]).then(([p,a])=>{if(p.status==='fulfilled')setPlans(p.value.plans||[]);if(a.status==='fulfilled')setAccount(a.value)})},[])
-  const active=account?.plan||'free'
-  return <><Header eyebrow="Финансы" title="Тариф и оплата" description="ЮKassa подготовлена как платёжный провайдер Nexora. Подключение внешней оплаты пока отложено."/>
-    <div className="metrics compact"><Metric title="Тариф" value={String(account?.plan_name||active)} change={account?.subscription_status==='active'?'Активен':'Подключение отложено'} icon={ShieldCheck}/><Metric title="Валюта" value="RUB ₽ / USD $" change="настройка студии" icon={CircleDollarSign}/><Metric title="Провайдер" value="ЮKassa" change="подготовлен" icon={CreditCard}/><Metric title="Статус" value="Ожидает" change="внешняя оплата отключена" icon={CheckCircle2}/></div>
-    <div className="pricing-grid">{plans.map(p=><div className={p.id===active?'pricing-card featured':'pricing-card'} key={p.id}><div className="pricing-head"><div><b>{p.name}</b><span>{p.projectLimit} проектов</span></div></div><div className="pricing-price">{p.price===0?'Бесплатно':'₽'+Number(p.rubPrice||p.price||0).toLocaleString('ru-RU')}<small>{p.price===0?'':' / мес'}</small></div><ul><li>До {Number(p.clientLimit||0).toLocaleString('ru-RU')} клиентов</li><li>{p.teamLimit} участников</li><li>Сайт + Telegram Mini App</li></ul><button className={p.id===active?'primary':'filter'} disabled>{p.id===active?'Текущий тариф':'Подключение позже'}</button></div>)}</div>
-    <div className="card setting-block"><h2>Платёжная схема</h2><div className="security-cards"><div><CreditCard size={18}/><b>ЮKassa</b><span>Интеграция подготовлена, но создание реального checkout и обработка внешних платежей сейчас отключены.</span></div><div><ShieldCheck size={18}/><b>Безопасный запуск</b><span>До финального подключения платёжные операции не отправляются во внешний сервис.</span></div></div><p className="pricing-note"><ShieldCheck size={17}/> В финальном этапе понадобятся YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY и webhook. Сейчас их добавлять не нужно.</p></div>
+  const [plans,setPlans]=useState([]),[account,setAccount]=useState(null),[busy,setBusy]=useState(''),[message,setMessage]=useState('');
+  const load=()=>Promise.allSettled([api.billingPlans(),api.billingAccount()]).then(([p,a])=>{if(p.status==='fulfilled')setPlans(p.value.plans||[]);if(a.status==='fulfilled')setAccount(a.value)});
+  useEffect(()=>{load()},[]);
+  const active=account?.plan?.id||'free';
+  const startCheckout=async plan=>{
+    if(plan.id===active)return;
+    setBusy(plan.id);setMessage('');
+    try{
+      const result=await api.billingCheckout(plan.id);
+      if(result.free){setMessage('Тариф Free подключён.');await load();return}
+      if(result.checkout_url) window.location.assign(result.checkout_url);
+      else setMessage('ЮKassa не вернула ссылку на оплату.');
+    }catch(error){setMessage(error?.message||'Не удалось создать оплату. Проверьте настройки ЮKassa.')}finally{setBusy('')}
+  };
+  return <><Header eyebrow="Финансы" title="Тариф и оплата" description="Управление тарифом Nexora Studio и безопасная оплата через ЮKassa."/>
+    <div className="metrics compact">
+      <Metric title="Тариф" value={account?.plan?.name||active} change={account?.status==='active'?'Активен':'Требует внимания'} icon={ShieldCheck}/>
+      <Metric title="Валюта" value={account?.currency==='USD'?'USD $':'RUB ₽'} change="валюта биллинга" icon={CircleDollarSign}/>
+      <Metric title="Провайдер" value={account?.provider==='yookassa'?'ЮKassa':'—'} change={account?.provider?'подключён':'не использован'} icon={CreditCard}/>
+      <Metric title="Продление" value={account?.renews_at?new Date(account.renews_at).toLocaleDateString('ru-RU'):'—'} change={account?.renews_at?'через 30 дней':'без автопродления'} icon={CheckCircle2}/>
+    </div>
+    {message&&<div className="form-error" style={{marginBottom:14}}>{message}</div>}
+    <div className="pricing-grid">{plans.map(p=><div className={p.id===active?'pricing-card featured':'pricing-card'} key={p.id}><div className="pricing-head"><div><b>{p.name}</b><span>{p.projectLimit} проектов</span></div></div><div className="pricing-price">{p.price===0?'Бесплатно':'₽'+Number(p.rubPrice||p.price||0).toLocaleString('ru-RU')}<small>{p.price===0?'':' / 30 дней'}</small></div><ul><li>До {Number(p.clientLimit||0).toLocaleString('ru-RU')} клиентов</li><li>{p.teamLimit} участников</li><li>Сайт + Telegram Mini App</li></ul><button className={p.id===active?'primary':'filter'} disabled={busy!==''||p.id===active} onClick={()=>startCheckout(p)}>{busy===p.id?'Создаём оплату…':p.id===active?'Текущий тариф':p.id==='free'?'Перейти на Free':'Оплатить через ЮKassa'}</button></div>)}</div>
+    <div className="card setting-block"><h2>Платёжная схема</h2><div className="security-cards"><div><CreditCard size={18}/><b>ЮKassa</b><span>Платёж создаётся на сервере с idempotency key, а тариф активируется только после подтверждённого payment.succeeded.</span></div><div><ShieldCheck size={18}/><b>Защита от повторов</b><span>Webhook идемпотентен: повторное уведомление не продлит подписку повторно.</span></div></div><p className="pricing-note"><ShieldCheck size={17}/> Для production нужны YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY и webhook <code>/api/billing/yookassa/webhook</code>.</p></div>
   </>
 }
 function SettingsPage(){
