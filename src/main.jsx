@@ -263,35 +263,35 @@ function App() {
   useEffect(() => {
     if(!auth) return
     let alive = true
-    api.projects().then(items => {
-      if (!alive) return
-      const list = Array.isArray(items) ? items : (items.projects || [])
-      setProjectData(list.map(p => ({
-        id: p.id,
-        name: p.name || p.title || 'Без названия',
-        slug: p.slug || '',
-        domain: p.domain || null,
-        project_type: p.project_type || '',
-        type: p.project_type === 'miniapp' ? 'Mini App' : p.project_type === 'site' ? 'Сайт' : 'Сайт + Mini App',
-        status: p.status === 'published' ? 'Опубликован' : p.status === 'draft' ? 'Черновик' : 'В работе',
-        color: 'dark', leads: Number(p.leads || 0), bookings: Number(p.bookings || 0), revenue: p.revenue || '₽0', updated: 'только что'
-      })))
-      setApiState('online')
-    }).catch(() => alive && setApiState('offline'))
-    Promise.allSettled([api.leads(), api.clients(), api.bookings(), api.payments(), api.invoices(), api.analytics(), api.orders()]).then(([leads, clients, bookings, payments, invoices, analytics, ordersResult]) => {
-      if (!alive) return
-      setOrders(ordersResult.status === 'fulfilled' ? (ordersResult.value.orders || []) : [])
-      setCrm({
-        leads: leads.status === 'fulfilled' ? (leads.value.leads || []) : [],
-        clients: clients.status === 'fulfilled' ? (clients.value.clients || []) : [],
-        bookings: bookings.status === 'fulfilled' ? (bookings.value.bookings || []) : [],
-        payments: payments.status === 'fulfilled' ? (payments.value.payments || []) : [],
-        invoices: invoices.status === 'fulfilled' ? (invoices.value.invoices || []) : [],
-        analytics: analytics.status === 'fulfilled' ? analytics.value.metrics : null
-      })
-    })
+    refreshWorkspace().catch(()=>{})
     return () => { alive = false }
   }, [auth])
+
+  const refreshWorkspace = async () => {
+    setApiState('loading')
+    try {
+      const [projects, leads, clients, bookings, payments, invoices, analytics, ordersResult] = await Promise.allSettled([
+        api.projects(), api.leads(), api.clients(), api.bookings(), api.payments(), api.invoices(), api.analytics(), api.orders()
+      ])
+      const list = projects.status === 'fulfilled' ? (Array.isArray(projects.value) ? projects.value : (projects.value.projects || [])) : []
+      setProjectData(list.map(p => ({
+        id:p.id,name:p.name||p.title||'Без названия',slug:p.slug||'',domain:p.domain||null,project_type:p.project_type||'',
+        type:p.project_type==='miniapp'?'Mini App':p.project_type==='site'?'Сайт':'Сайт + Mini App',
+        status:p.status==='published'?'Опубликован':p.status==='draft'?'Черновик':'В работе',
+        color:'dark',leads:Number(p.leads||0),bookings:Number(p.bookings||0),revenue:p.revenue||'₽0',updated:'только что'
+      })))
+      setOrders(ordersResult.status==='fulfilled'?(ordersResult.value.orders||[]):[])
+      setCrm({
+        leads:leads.status==='fulfilled'?(leads.value.leads||[]):[],
+        clients:clients.status==='fulfilled'?(clients.value.clients||[]):[],
+        bookings:bookings.status==='fulfilled'?(bookings.value.bookings||[]):[],
+        payments:payments.status==='fulfilled'?(payments.value.payments||[]):[],
+        invoices:invoices.status==='fulfilled'?(invoices.value.invoices||[]):[],
+        analytics:analytics.status==='fulfilled'?analytics.value.metrics:null
+      })
+      setApiState(projects.status==='fulfilled'?'online':'offline')
+    } catch { setApiState('offline') }
+  }
 
   const deleteProject = async (project) => {
     if (!project?.id) return
