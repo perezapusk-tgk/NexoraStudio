@@ -438,8 +438,8 @@ function App() {
   }
 
   const filteredProjects = useMemo(
-    () => projectData.filter(p => p.name.toLowerCase().includes(query.toLowerCase())),
-    [query]
+    () => projectData.filter(p => String(p?.name || '').toLowerCase().includes(query.toLowerCase())),
+    [projectData, query]
   )
 
   const go = (item) => {
@@ -517,9 +517,25 @@ function App() {
         </div>
       </main>
 
-      {showCreate && <CreateProject onClose={() => setShowCreate(false)} onCreate={createProject} />}
+      {showCreate && <CreateProjectModal onClose={() => setShowCreate(false)} onCreate={createProject} />}
     </div>
   )
+}
+
+function CreateProjectModal({onClose,onCreate}) {
+  const [busy,setBusy]=useState(false)
+  const create=async(type)=>{setBusy(true);try{await onCreate(type)}finally{setBusy(false)}}
+  return <div className="modal-backdrop" onMouseDown={onClose}>
+    <div className="card create-project-modal" onMouseDown={e=>e.stopPropagation()}>
+      <div className="modal-head"><div><div className="eyebrow">Новый проект</div><h2>Что создаём?</h2><p>Выберите формат клиентского проекта. Его можно настроить и опубликовать позже.</p></div><button className="icon-btn" onClick={onClose} aria-label="Закрыть"><X size={18}/></button></div>
+      <div className="create-project-grid">
+        <button className="create-project-option" disabled={busy} onClick={()=>create('website')}><span className="create-project-icon"><Globe2 size={22}/></span><b>Сайт</b><small>Публичный сайт клиента</small></button>
+        <button className="create-project-option" disabled={busy} onClick={()=>create('miniapp')}><span className="create-project-icon"><Smartphone size={22}/></span><b>Mini App</b><small>Telegram Mini App клиента</small></button>
+        <button className="create-project-option" disabled={busy} onClick={()=>create('both')}><span className="create-project-icon"><Layers3 size={22}/></span><b>Сайт + Mini App</b><small>Оба канала в одном проекте</small></button>
+      </div>
+      {busy&&<div className="create-project-busy">Создаём проект…</div>}
+    </div>
+  </div>
 }
 
 function Header({ eyebrow, title, description, action }) {
