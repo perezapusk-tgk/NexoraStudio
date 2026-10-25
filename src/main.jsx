@@ -613,16 +613,18 @@ function App() {
 function CreateProjectModal({onClose,onCreate,initialType='website'}) {
   const [busy,setBusy]=useState(false)
   const [type,setType]=useState(initialType)
-  const create=async()=>{setBusy(true);try{await onCreate(type)}finally{setBusy(false)}}
+  const [name,setName]=useState('')
+  const create=async()=>{if(!name.trim())return;setBusy(true);try{await onCreate(type,name.trim())}finally{setBusy(false)}}
   return <div className="modal-backdrop" onMouseDown={onClose}>
     <div className="card create-project-modal" onMouseDown={e=>e.stopPropagation()}>
       <div className="modal-head"><div><div className="eyebrow">Новый проект</div><h2>Что создаём?</h2><p>Выберите формат клиентского проекта. Его можно настроить и опубликовать позже.</p></div><button className="icon-btn" onClick={onClose} aria-label="Закрыть"><X size={18}/></button></div>
+      <label className="create-project-name">Название проекта<input autoFocus value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')create()}} placeholder="Например, Кофейня Aurora" disabled={busy}/></label>
       <div className="create-project-grid">
         <button className={type==='website'?'create-project-option selected':'create-project-option'} disabled={busy} onClick={()=>setType('website')}><span className="create-project-icon"><Globe2 size={22}/></span><b>Сайт</b><small>Публичный сайт клиента</small></button>
         <button className={type==='miniapp'?'create-project-option selected':'create-project-option'} disabled={busy} onClick={()=>setType('miniapp')}><span className="create-project-icon"><Smartphone size={22}/></span><b>Mini App</b><small>Telegram Mini App клиента</small></button>
         <button className={type==='site_miniapp'?'create-project-option selected':'create-project-option'} disabled={busy} onClick={()=>setType('site_miniapp')}><span className="create-project-icon"><Layers3 size={22}/></span><b>Сайт + Mini App</b><small>Оба канала в одном проекте</small></button>
       </div>
-      <div className="setting-actions"><button className="filter" disabled={busy} onClick={onClose}>Отмена</button><button className="primary" disabled={busy} onClick={create}>{busy?'Создаём…':'Продолжить'}</button></div>
+      <div className="setting-actions"><button className="filter" disabled={busy} onClick={onClose}>Отмена</button><button className="primary" disabled={busy||!name.trim()} onClick={create}>{busy?'Создаём…':'Создать проект'}</button></div>
       {busy&&<div className="create-project-busy">Создаём проект…</div>}
     </div>
   </div>
