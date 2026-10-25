@@ -244,8 +244,8 @@ function Root(){
   const isPublic=(path[0]==='published'&&path[1])||(path[0]==='miniapp'&&path[1])
   useEffect(()=>{if(isPublic)return installLanguageObserver()},[isPublic])
   if(invite) return <InviteAcceptScreen token={invite} onAuthenticated={()=>{window.history.replaceState({},'',window.location.pathname);window.location.reload()}}/>
-  if(path[0]==='published'&&path[1]) return <PublicErrorBoundary>{()=> <PublicApp mode="site" slug={path[1]}/>}</PublicErrorBoundary>
-  if(path[0]==='miniapp'&&path[1]) return <PublicErrorBoundary>{()=> <PublicApp mode="miniapp" slug={path[1]}/>}</PublicErrorBoundary>
+  if(path[0]==='published'&&path[1]) return <PublicErrorBoundary><PublicApp mode="site" slug={path[1]}/></PublicErrorBoundary>
+  if(path[0]==='miniapp'&&path[1]) return <PublicErrorBoundary><PublicApp mode="miniapp" slug={path[1]}/></PublicErrorBoundary>
   return <App/>
 }
 
@@ -330,7 +330,8 @@ function MiniApps({projects,onCreate,onOpenProject}) {
 }
 
 function App() {
-  const [auth,setAuth]=useState(null)  const [authLoading,setAuthLoading]=useState(true)
+  const [auth,setAuth]=useState(null)
+  const [authLoading,setAuthLoading]=useState(true)
   const [active, setActive] = useState('Обзор')
   const [mobileOpen, setMobileOpen] = useState(false)
   const [query, setQuery] = useState('')
