@@ -1826,7 +1826,7 @@ app.post('/api/payments', async (req,res) => {
     return res.status(201).json({payment})
   }
   if(orderId){
-    const oq=await pool.query('select o.id,o.project_id,o.total,o.status from orders o join projects p on p.id=o.project_id where o.id::text=$1 and p.studio_id::text=$2::text limit 1',[orderId,req.user.studio_id])
+    const oq=await pool.query('select o.id,o.project_id,o.client_id,o.total,o.status from orders o join projects p on p.id=o.project_id where o.id::text=$1 and p.studio_id::text=$2::text limit 1',[orderId,req.user.studio_id])
     if(!oq.rows[0])return res.status(404).json({error:'Заказ не найден'})
     if(oq.rows[0].project_id!==projectId)return res.status(400).json({error:'Заказ относится к другому проекту'})
     if(req.body?.client_id && oq.rows[0].client_id && String(req.body.client_id)!==String(oq.rows[0].client_id))return res.status(400).json({error:'Клиент платежа не совпадает с клиентом заказа'})
@@ -1880,7 +1880,7 @@ app.patch('/api/payments/:id', async (req,res) => {
   const previous=current.status
   if(status==='paid'){
     if(current.order_id){
-      const order=(await pool.query("select id,total from orders where id=$1 and project_id in (select id from projects where studio_id::text=$2::text) limit 1",[current.order_id,req.user.studio_id])).rows[0]
+      const order=(await pool.query("select id,client_id,total from orders where id=$1 and project_id in (select id from projects where studio_id::text=$2::text) limit 1",[current.order_id,req.user.studio_id])).rows[0]
       if(!order)return res.status(404).json({error:'Заказ не найден'})
       if(current.client_id && order.client_id && String(current.client_id)!==String(order.client_id))return res.status(409).json({error:'Клиент платежа не совпадает с клиентом заказа'})
       if(order.client_id && !current.client_id)return res.status(409).json({error:'У платежа не указан клиент заказа'})
