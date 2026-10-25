@@ -651,6 +651,8 @@ async function applyYookassaOrderSuccess(payment){
   if(!pool){
     const order=memoryOrders.find(x=>String(x.id)===orderId)
     if(!order) return {applied:false,reason:'order_not_found'}
+    if(String(metadata.studio_id||'')!==String(order.studio_id||'')) return {applied:false,reason:'studio_mismatch'}
+    if(String(payment?.amount?.currency||'RUB').toUpperCase()!=='RUB' || Math.abs(Number(payment?.amount?.value||0)-Number(order.total||0))>0.01) return {applied:false,reason:'amount_mismatch'}
     if(order.status==='paid') return {applied:true,duplicate:true,order}
     if(['cancelled','refunded'].includes(String(order.status))) return {applied:false,reason:'order_closed'}
     order.status='paid'
@@ -662,6 +664,7 @@ async function applyYookassaOrderSuccess(payment){
     await client.query('begin')
     const order=(await client.query('select o.* from orders o join projects p on p.id=o.project_id where o.id::text=$1 and p.studio_id::text=$2::text for update',[orderId,String(metadata.studio_id||'')])).rows[0]
     if(!order){await client.query('rollback');return {applied:false,reason:'order_not_found'}}
+    if(String(payment?.amount?.currency||'RUB').toUpperCase()!=='RUB' || Math.abs(Number(payment?.amount?.value||0)-Number(order.total||0))>0.01){await client.query('rollback');return {applied:false,reason:'amount_mismatch'}}
     if(order.status==='paid'){await client.query('commit');return {applied:true,duplicate:true,order}}
     if(['cancelled','refunded'].includes(String(order.status))){await client.query('rollback');return {applied:false,reason:'order_closed'}}
     await client.query("update orders set status='paid' where id=$1",[order.id])
