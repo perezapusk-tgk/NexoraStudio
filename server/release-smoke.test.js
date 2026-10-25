@@ -74,6 +74,7 @@ assert.ok(server.includes("if(bookingId && status==='paid')"),'generic booking p
 assert.ok(server.includes("lead.status='won'"),'memory lead conversion status missing')
 assert.ok(server.includes("update invoices set status='cancelled' where order_id::text=$1::text and status='paid'"),'refund invoice sync missing')
 assert.ok(server.includes("if(invoice && invoice.status!=='cancelled') invoice.status='cancelled'"),'memory refund invoice sync missing')
+assert.ok(server.includes("Завершённое бронирование нельзя изменить — статус определяется подтверждённой оплатой"),'completed booking rollback guard missing')
 assert.ok(server.includes("String('project-create:'+req.user.studio_id)"),'project creation concurrency lock missing')
 assert.ok(server.includes("String('client-create:'+req.user.studio_id)"),'client creation concurrency lock missing')
 assert.ok(server.includes("withMemoryWorkspaceLock('checkout:'+project.studio_id"),'public checkout memory lock missing')
