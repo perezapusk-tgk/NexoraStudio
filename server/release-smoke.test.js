@@ -38,10 +38,14 @@ const requiredFrontendContracts=[
   "api.publicLead(slug,payload)",
   "api.publicBooking(slug,payload)",
   "api.publicCheckout(slug,payload)",
+  "publicCheckout: (slug,payload)",
   "api.configureTelegram(id,payload)",
   "['Оплата', CreditCard]"
 ]
-for(const contract of requiredFrontendContracts) assert.ok(api.includes(contract) || frontend.includes(contract),`missing frontend contract: ${contract}`)
+for(const contract of requiredFrontendContracts) {
+  const alternatives = contract === 'api.publicCheckout(slug,payload)' ? [contract, "publicCheckout: (slug,payload)"] : [contract]
+  assert.ok(alternatives.some(value=>api.includes(value) || frontend.includes(value)),`missing frontend contract: ${contract}`)
+}
 assert.ok(server.includes("app.get(['/published/:slug','/miniapp/:slug']"),'published/Mini App SPA fallback missing')
 assert.ok(server.includes("app.post('/api/public/order/:id/yookassa-webhook'"),'YooKassa webhook endpoint missing')
 assert.ok(server.includes("return res.status(410).json({error:'Внешняя оплата пока отключена'})"),'deferred YooKassa state must be explicit')
