@@ -1321,26 +1321,36 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
       throw error
     }finally{dbClient.release()}
   }
-  // External payments are intentionally deferred to the final billing phase.
-  // The public checkout still creates a real pending order and CRM client now.
-  const publicOrder = {
-    id: order.id,
-    number: order.number,
-    status: order.status,
-    total: Number(order.total),
-    currency: order.currency,
-    items: order.items
+  const publicOrder={id:order.id,number:order.number,status:order.status,total:Number(order.total),currency:order.currency,items:order.items}
+  try{
+    const payment=await createYookassaOrderCheckout({studioId:project.studio_id,projectId:project.id,slug,orderId:order.id,amount:Number(order.total),surface:req.body?.surface})
+    if(pool) await pool.query('update orders set payment_provider=$1,payment_provider_id=$2,payment_checkout_url=$3 where id=$4',['yookassa',payment.id,payment.url,order.id])
+    else {order.payment_provider='yookassa';order.payment_provider_id=payment.id;order.payment_checkout_url=payment.url}
+    return res.status(201).json({order:publicOrder,checkout_url:payment.url,payment_id:payment.id,payment_pending:true})
+  }catch(error){
+    console.error('Public YooKassa checkout error:',error.message)
+    return res.status(502).json({error:error.message||'Не удалось создать оплату заказа',order:publicOrder,payment_pending:true})
   }
-  res.status(201).json({order:publicOrder,checkout_url:null,payment_pending:false})
 })
 
-
-app.post('/api/public/order/:id/yookassa-webhook', async (_req,res)=>{
-  return res.status(410).json({error:'Внешняя оплата пока отключена'})
+app.post('/api/public/order/:id/yookassa-webhook',async(req,res)=>{
+  try{
+    const event=req.body||{}
+    if(event.event!=='payment.succeeded'||!event.object?.id)return res.json({ok:true,ignored:true})
+    const payment=await yookassaRequest('/payments/'+encodeURIComponent(event.object.id))
+    if(payment.status!=='succeeded')return res.status(409).json({error:'Платёж ещё не подтверждён'})
+    return res.json({ok:true,...await applyYookassaOrderSuccess(payment)})
+  }catch(error){console.error('Public YooKassa webhook error:',error.message);return res.status(500).json({error:'Не удалось обработать оплату заказа'})}
 })
 
-app.get('/api/public/order/:id/payment-status', async (_req,res)=>{
-  return res.status(410).json({error:'Внешняя оплата пока отключена'})
+app.get('/api/public/order/:id/payment-status',async(req,res)=>{
+  const orderId=String(req.params.id||'').trim(),slug=String(req.query?.slug||'').trim()
+  if(!orderId||!slug)return res.status(400).json({error:'order_id и slug обязательны'})
+  let order
+  if(!pool){const project=memoryProjects.find(p=>p.slug===slug&&p.status==='published');order=project&&memoryOrders.find(x=>String(x.id)===orderId&&x.project_id===project.id)}
+  else order=(await pool.query("select o.id,o.number,o.status,o.total,o.currency from orders o join projects p on p.id=o.project_id where o.id::text=$1 and p.slug=$2 and p.status='published' limit 1",[orderId,slug])).rows[0]
+  if(!order)return res.status(404).json({error:'Заказ не найден'})
+  res.json({order:{id:order.id,number:order.number,status:order.status,total:Number(order.total),currency:order.currency}})
 })
 
 app.post('/api/public/:slug/events', async (req,res) => {
