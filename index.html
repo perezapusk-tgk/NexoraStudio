@@ -19,11 +19,6 @@
   }
   window.addEventListener('error',function(e){
     if(e&&e.target&&e.target.tagName==='SCRIPT') showError('Не удалось загрузить интерфейс. Проверьте соединение и обновите страницу.');
-    else if(e&&e.message) showError('Ошибка интерфейса: '+e.message);
-  });
-  window.addEventListener('unhandledrejection',function(e){
-    var reason=e&&e.reason;
-    showError('Ошибка запуска: '+(reason&&reason.message?reason.message:String(reason||'неизвестная ошибка')));
   });
   window.setTimeout(function(){
     if(Date.now()-started>7000 && root && root.querySelector('.boot')) showError('Интерфейс не запустился за 7 секунд. Нажмите «Обновить».');
