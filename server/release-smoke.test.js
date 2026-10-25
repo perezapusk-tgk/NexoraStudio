@@ -85,6 +85,7 @@ assert.ok(api.includes("billingCheckout: (plan)"),'frontend billing checkout con
 assert.ok(api.includes("billingConfirm: (transactionId)"),'frontend billing confirm contract missing')
 assert.ok(frontend.includes("api.billingCheckout(plan.id)"),'billing UI checkout action missing')
 assert.ok(frontend.includes('class PublicErrorBoundary'),'public runtime error boundary missing')
+assert.ok(frontend.includes("typeof child==='function'?child(this.state.retry):child"),'PublicErrorBoundary must accept rendered elements and legacy render callbacks')
 assert.ok(frontend.includes('class AppErrorBoundary'),'private app runtime error boundary missing')
 assert.ok(frontend.includes('const [auth,setAuth]=useState(null)\n  const [authLoading,setAuthLoading]=useState(true)'),'App auth state declarations must remain syntactically separated')
 assert.ok(frontend.includes('return <PublicErrorBoundary><PublicApp mode="site"'),'public site must render PublicApp component inside error boundary')
