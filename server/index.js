@@ -1924,6 +1924,7 @@ app.post('/api/payments', async (req,res) => {
     const oq=await pool.query('select o.id,o.project_id,o.client_id,o.total,o.status from orders o join projects p on p.id=o.project_id where o.id::text=$1 and p.studio_id::text=$2::text limit 1',[orderId,req.user.studio_id])
     if(!oq.rows[0])return res.status(404).json({error:'Заказ не найден'})
     if(oq.rows[0].project_id!==projectId)return res.status(400).json({error:'Заказ относится к другому проекту'})
+    if(status==='paid' && ['cancelled','refunded'].includes(String(oq.rows[0].status||'')))return res.status(409).json({error:'Этот заказ уже закрыт и не может быть оплачен'})
     if(req.body?.client_id && oq.rows[0].client_id && String(req.body.client_id)!==String(oq.rows[0].client_id))return res.status(400).json({error:'Клиент платежа не совпадает с клиентом заказа'})
     if(oq.rows[0].client_id && !req.body?.client_id)return res.status(400).json({error:'У платежа не указан клиент заказа'})
     if(!oq.rows[0].client_id && req.body?.client_id)return res.status(400).json({error:'У заказа не указан клиент'})
