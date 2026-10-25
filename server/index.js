@@ -1055,7 +1055,8 @@ app.post('/api/projects/:id/telegram/configure', async (req,res) => {
     const settings = {...(project.settings||{}), miniApp:{...((project.settings||{}).miniApp||{}),enabled:true,configured:true,botUsername:bot.username||'',url:miniAppUrl,buttonText}}
     if (!pool) project.settings=settings
     else await pool.query('update projects set settings=$1,updated_at=now() where id=$2',[JSON.stringify(settings),project.id])
-    return res.json({configured:true,bot:{username:bot.username||'',name:bot.first_name||''},url:miniAppUrl,project})
+    const botUrl = bot.username ? 'https://t.me/' + bot.username : ''
+    return res.json({configured:true,bot:{username:bot.username||'',name:bot.first_name||'',url:botUrl},botUrl,url:miniAppUrl,project})
   } catch (error) {
     return res.status(502).json({error:'Telegram не принял настройку Mini App: '+error.message})
   }
