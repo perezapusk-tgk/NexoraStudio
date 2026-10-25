@@ -70,6 +70,32 @@ function PublicSite({data,slug}){
   const project=data.project,pages=data.pages||[],page=pages[0],blocks=page?.content?.blocks||[],catalog=(data.catalog||[]).filter(x=>x.active!==false),theme={accent:'#111827',background:'#ffffff',text:'#111827',font:'Inter',radius:'14px',...(page?.content?.theme||{})};
   const [modal,setModal]=useState(null),[sent,setSent]=useState(null),[cart,setCart]=useState([]),[openCart,setOpenCart]=useState(false),[form,setForm]=useState({name:'',phone:'',email:''}),[sending,setSending]=useState(false);
   useEffect(()=>{api.publicEvent(slug,{event_type:'page_view',path:window.location.pathname}).catch(()=>{})},[slug]);
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    const payment=params.get('payment');
+    const orderId=params.get('order_id');
+    if(!orderId||!['success','cancel'].includes(payment))return;
+    let alive=true,attempt=0,timer;
+    const clearQuery=()=>{try{const url=new URL(window.location.href);url.searchParams.delete('payment');url.searchParams.delete('order_id');window.history.replaceState({},'',url.pathname+(url.search?url.search:'')+url.hash)}catch{}};
+    const check=async()=>{
+      if(!alive)return;
+      attempt+=1;
+      try{
+        const result=await api.publicOrderPaymentStatus(orderId,slug);
+        const order=result?.order;
+        if(order?.status==='paid'){
+          setSent({number:order.number||order.id,paymentConfirmed:true});
+          clearQuery();
+          return;
+        }
+      }catch{}
+      if(payment==='cancel'){setSent({number:orderId,paymentCancelled:true});clearQuery();return}
+      if(attempt<12)timer=setTimeout(check,1500);
+      else {setSent({number:orderId,paymentPending:true});clearQuery()}
+    };
+    check();
+    return()=>{alive=false;if(timer)clearTimeout(timer)};
+  },[slug]);
   const add=item=>setCart(v=>{const found=v.find(x=>x.id===item.id);return found?v.map(x=>x.id===item.id?{...x,quantity:x.quantity+1}:x):[...v,{...item,quantity:1}]});
   const change=(id,delta)=>setCart(v=>v.map(x=>x.id===id?{...x,quantity:Math.max(0,x.quantity+delta)}:x).filter(x=>x.quantity>0));
   const total=cart.reduce((s,x)=>s+Number(x.price||0)*x.quantity,0);
@@ -82,8 +108,8 @@ function PublicSite({data,slug}){
   </main>
   {cart.length>0&&<div className="public-cart card"><div><b>Корзина</b><span>{cart.reduce((s,x)=>s+x.quantity,0)} позиции · {new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(total)}</span></div><button className="primary" onClick={()=>setOpenCart(true)}>Оформить заказ</button></div>}
   {modal&&<PublicActionModal mode={modal.mode} serviceName={modal.serviceName} slug={slug} onClose={()=>setModal(null)} onSuccess={done}/>} 
-  {sent&&!openCart&&<div className="public-modal-backdrop" onMouseDown={()=>setSent(null)}><div className="public-modal card" onMouseDown={e=>e.stopPropagation()}><div className="public-success">{sent.error?<><h2>Не удалось оформить заказ</h2><p>{sent.error}</p></>:<><CheckCircle2 size={30}/><h2>{sent.number?'Заказ принят':'Заявка отправлена'}</h2><p>{sent.number?<span>Номер заказа: <b>{sent.number}</b><br/><span>Оплата пока не подключена — заказ сохранён и передан в рабочее пространство.</span></span>:<span>Спасибо! Мы получили ваши данные и скоро свяжемся с вами.</span>}</p></>}<button type="button" onClick={()=>setSent(null)}>Готово</button></div></div></div>}
-  {openCart&&<div className="public-modal-backdrop" onMouseDown={()=>setOpenCart(false)}><form className="public-modal card" onSubmit={checkout} onMouseDown={e=>e.stopPropagation()}><button type="button" className="public-close" onClick={()=>setOpenCart(false)}><X size={18}/></button>{sent?<div className="public-success"><CheckCircle2 size={30}/><h2>{sent.paymentConfirmed?'Оплата подтверждена':sent.paymentCancelled?'Оплата отменена':'Заказ оформлен'}</h2><p>{sent.paymentConfirmed?'Платёж успешно подтверждён.':sent.paymentCancelled?'Платёж не завершён.':'Номер заказа: '}<b>{sent.number}</b></p><button type="button" onClick={()=>{setSent(null);setOpenCart(false)}}>Готово</button></div>:<><div className="eyebrow">Оформление заказа</div><h2>Ваш заказ</h2><div className="checkout-lines">{cart.map(x=><div key={x.id}><span>{x.name} × {x.quantity}</span><b>{new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(Number(x.price||0)*x.quantity)}</b><button type="button" onClick={()=>change(x.id,-1)}>−</button><button type="button" onClick={()=>change(x.id,1)}>+</button></div>)}</div><strong className="checkout-total">Итого: {new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(total)}</strong><label>Имя<input required value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))}/></label><label>Телефон<input value={form.phone} onChange={e=>setForm(v=>({...v,phone:e.target.value}))}/></label><label>Email<input type="email" value={form.email} onChange={e=>setForm(v=>({...v,email:e.target.value}))}/></label><button className="primary" disabled={sending||!cart.length}>{sending?'Оформляем…':'Подтвердить заказ'}</button></>}</form></div>}
+  {sent&&!openCart&&<div className="public-modal-backdrop" onMouseDown={()=>setSent(null)}><div className="public-modal card" onMouseDown={e=>e.stopPropagation()}><div className="public-success">{sent.error?<><h2>Не удалось оформить заказ</h2><p>{sent.error}</p></>:<><CheckCircle2 size={30}/><h2>{sent.paymentConfirmed?'Оплата подтверждена':sent.paymentCancelled?'Оплата отменена':sent.number?'Заказ принят':'Заявка отправлена'}</h2><p>{sent.paymentConfirmed?<span>Платёж успешно подтверждён. Заказ № <b>{sent.number}</b> принят в работу.</span>:sent.paymentCancelled?<span>Платёж не завершён. Заказ № <b>{sent.number}</b> можно оплатить повторно.</span>:sent.number?<span>Номер заказа: <b>{sent.number}</b><br/><span>{sent.paymentPending?'Платёж ещё обрабатывается. Обновите страницу через минуту, если статус не изменится.':'Заказ сохранён и передан в рабочее пространство.'}</span></span>:<span>Спасибо! Мы получили ваши данные и скоро свяжемся с вами.</span>}</p></>}<button type="button" onClick={()=>setSent(null)}>Готово</button></div></div></div>}
+  {openCart&&<div className="public-modal-backdrop" onMouseDown={()=>setOpenCart(false)}><form className="public-modal card" onSubmit={checkout} onMouseDown={e=>e.stopPropagation()}><button type="button" className="public-close" onClick={()=>setOpenCart(false)}><X size={18}/></button>{sent?<div className="public-success"><CheckCircle2 size={30}/><h2>{sent.paymentConfirmed?'Оплата подтверждена':sent.paymentCancelled?'Оплата отменена':'Заказ оформлен'}</h2><p>{sent.paymentConfirmed?'Платёж успешно подтверждён.':sent.paymentCancelled?'Платёж не завершён.':'Заказ создан. Номер: '}<b>{sent.number}</b></p><button type="button" onClick={()=>{setSent(null);setOpenCart(false)}}>Готово</button></div>:<><div className="eyebrow">Оформление заказа</div><h2>Ваш заказ</h2><div className="checkout-lines">{cart.map(x=><div key={x.id}><span>{x.name} × {x.quantity}</span><b>{new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(Number(x.price||0)*x.quantity)}</b><button type="button" onClick={()=>change(x.id,-1)}>−</button><button type="button" onClick={()=>change(x.id,1)}>+</button></div>)}</div><strong className="checkout-total">Итого: {new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(total)}</strong><label>Имя<input required value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))}/></label><label>Телефон<input value={form.phone} onChange={e=>setForm(v=>({...v,phone:e.target.value}))}/></label><label>Email<input type="email" value={form.email} onChange={e=>setForm(v=>({...v,email:e.target.value}))}/></label><button className="primary" disabled={sending||!cart.length}>{sending?'Оформляем…':'Подтвердить заказ'}</button></>}</form></div>}
   </div>
 }
 
@@ -93,6 +119,32 @@ function PublicMiniApp({data,slug}){
   const hero=blocks.find(b=>b.type==='hero'), services=blocks.find(b=>b.type==='services');
   const [modal,setModal]=useState(null),[open,setOpen]=useState(false),[sent,setSent]=useState(null),[cart,setCart]=useState([]),[form,setForm]=useState({name:'',phone:'',email:''}),[sending,setSending]=useState(false);
   useEffect(()=>{api.publicEvent(slug,{event_type:'page_view',path:window.location.pathname,metadata:{surface:'miniapp'}}).catch(()=>{})},[slug]);
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    const payment=params.get('payment');
+    const orderId=params.get('order_id');
+    if(!orderId||!['success','cancel'].includes(payment))return;
+    let alive=true,attempt=0,timer;
+    const clearQuery=()=>{try{const url=new URL(window.location.href);url.searchParams.delete('payment');url.searchParams.delete('order_id');window.history.replaceState({},'',url.pathname+(url.search?url.search:'')+url.hash)}catch{}};
+    const check=async()=>{
+      if(!alive)return;
+      attempt+=1;
+      try{
+        const result=await api.publicOrderPaymentStatus(orderId,slug);
+        const order=result?.order;
+        if(order?.status==='paid'){
+          setSent({number:order.number||order.id,paymentConfirmed:true});
+          clearQuery();
+          return;
+        }
+      }catch{}
+      if(payment==='cancel'){setSent({number:orderId,paymentCancelled:true});clearQuery();return}
+      if(attempt<12)timer=setTimeout(check,1500);
+      else {setSent({number:orderId,paymentPending:true});clearQuery()}
+    };
+    check();
+    return()=>{alive=false;if(timer)clearTimeout(timer)};
+  },[slug]);
   useEffect(()=>{
     const webApp=window.Telegram?.WebApp;
     if(!webApp) return;
@@ -117,8 +169,7 @@ function PublicMiniApp({data,slug}){
     }catch{}
     return()=>{
       try{
-        webApp.offEvent?.('themeChanged',applyTelegramTheme);
-        if(webApp.disableClosingConfirmation) webApp.disableClosingConfirmation();
+        webApp.offEvent?.('themeChanged',applyTelegramTheme);        if(webApp.disableClosingConfirmation) webApp.disableClosingConfirmation();
         ['--tg-bg','--tg-text','--tg-hint','--tg-button','--tg-button-text','--tg-secondary-bg'].forEach(k=>root.style.removeProperty(k));
       }catch{}
     };
@@ -149,7 +200,7 @@ function PublicMiniApp({data,slug}){
     {cart.length>0&&<div className="public-cart card"><div><b>Корзина</b><span>{cart.reduce((s,x)=>s+x.quantity,0)} позиции · {new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(total)}</span></div><button className="primary" onClick={()=>setOpen(true)}>Оформить</button></div>}
     {modal&&<PublicActionModal mode={modal.mode} serviceName={modal.serviceName} slug={slug} onClose={()=>setModal(null)} onSuccess={v=>{setSent(v);setModal(null)}}/>}
     {sent&&<div className="public-modal-backdrop" onMouseDown={()=>setSent(null)}><div className="public-modal card" onMouseDown={e=>e.stopPropagation()}><div className="public-success"><CheckCircle2 size={30}/><h2>{sent.number?'Заказ принят':'Заявка отправлена'}</h2><p>{sent.number?'Номер заказа: ':''}<b>{sent.number||'Готово'}</b></p><button onClick={()=>setSent(null)}>Готово</button></div></div></div>}
-    {open&&<div className="public-modal-backdrop" onMouseDown={()=>setOpen(false)}><form className="public-modal card" onSubmit={checkout} onMouseDown={e=>e.stopPropagation()}><button type="button" className="public-close" onClick={()=>setOpen(false)}><X size={18}/></button>{sent?<div className="public-success">{sent.error?<><h2>Не удалось оформить заказ</h2><p>{sent.error}</p></>:<><CheckCircle2 size={30}/><h2>Заказ принят</h2><p>Номер заказа: <b>{sent.number}</b><br/><span>Оплата пока не подключена — заказ сохранён и передан в рабочее пространство.</span></p></>}<button type="button" onClick={()=>{setSent(null);setOpen(false)}}>Готово</button></div>:<><div className="eyebrow">Заказ</div><h2>Оформление</h2><div className="checkout-lines">{cart.map(x=><div key={x.id}><span>{x.name} × {x.quantity}</span><b>{new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(Number(x.price||0)*x.quantity)}</b><button type="button" onClick={()=>change(x.id,-1)}>−</button><button type="button" onClick={()=>change(x.id,1)}>+</button></div>)}</div><strong className="checkout-total">Итого: {new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(total)}</strong><label>Имя<input required value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))}/></label><label>Телефон<input value={form.phone} onChange={e=>setForm(v=>({...v,phone:e.target.value}))}/></label><label>Email<input type="email" value={form.email} onChange={e=>setForm(v=>({...v,email:e.target.value}))}/></label><button className="primary" disabled={sending||!cart.length}>{sending?'Оформляем…':'Подтвердить заказ'}</button></>}</form></div>}
+    {open&&<div className="public-modal-backdrop" onMouseDown={()=>setOpen(false)}><form className="public-modal card" onSubmit={checkout} onMouseDown={e=>e.stopPropagation()}><button type="button" className="public-close" onClick={()=>setOpen(false)}><X size={18}/></button>{sent?<div className="public-success">{sent.error?<><h2>Не удалось оформить заказ</h2><p>{sent.error}</p></>:<><CheckCircle2 size={30}/><h2>{sent.paymentConfirmed?'Оплата подтверждена':sent.paymentCancelled?'Оплата отменена':'Заказ принят'}</h2><p>{sent.paymentConfirmed?'Платёж успешно подтверждён.':sent.paymentCancelled?'Платёж не завершён.':'Номер заказа: '}<b>{sent.number}</b>{sent.paymentPending&&<><br/><span>Платёж ещё обрабатывается. Проверьте статус немного позже.</span></>}</p></>}<button type="button" onClick={()=>{setSent(null);setOpen(false)}}>Готово</button></div>:<><div className="eyebrow">Заказ</div><h2>Оформление</h2><div className="checkout-lines">{cart.map(x=><div key={x.id}><span>{x.name} × {x.quantity}</span><b>{new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(Number(x.price||0)*x.quantity)}</b><button type="button" onClick={()=>change(x.id,-1)}>−</button><button type="button" onClick={()=>change(x.id,1)}>+</button></div>)}</div><strong className="checkout-total">Итого: {new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(total)}</strong><label>Имя<input required value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))}/></label><label>Телефон<input value={form.phone} onChange={e=>setForm(v=>({...v,phone:e.target.value}))}/></label><label>Email<input type="email" value={form.email} onChange={e=>setForm(v=>({...v,email:e.target.value}))}/></label><button className="primary" disabled={sending||!cart.length}>{sending?'Оформляем…':'Подтвердить заказ'}</button></>}</form></div>}
   </div>
 }
 
@@ -237,8 +288,7 @@ function OwnerDashboard(){
 }
 
 function App() {
-  const [auth,setAuth]=useState(null)
-  const [authLoading,setAuthLoading]=useState(true)
+  const [auth,setAuth]=useState(null)  const [authLoading,setAuthLoading]=useState(true)
   const [active, setActive] = useState('Обзор')
   const [mobileOpen, setMobileOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -357,8 +407,7 @@ function App() {
     setSelectedClient(client)
     setSelectedProject(null)
     try { setClientData(await api.client(client.id)) } catch { setClientData({client,leads:[],bookings:[],payments:[],invoices:[]}) }
-  }
-  const openProject = async (project) => {
+  }  const openProject = async (project) => {
     if (!project?.id) return
     setActive('Проекты')
     setSelectedClient(null); setClientData(null)
@@ -477,8 +526,7 @@ function Projects({projects,onCreate,onOpenProject,onDeleteProject,onDuplicatePr
   return <><Header eyebrow="Рабочая область" title="Проекты" description="Все сайты, Mini Apps и клиентские пространства студии." action={<button className="primary" onClick={onCreate}><Plus size={17}/> Новый проект</button>}/>
     <div className="filterbar">{[['all','Все'],['published','Опубликованные'],['working','В работе'],['draft','Черновики']].map(([id,label])=><button key={id} className={filter===id?'filter active':'filter'} onClick={()=>setFilter(id)}>{label} <b>{counts[id]}</b></button>)}</div>
     <section className="card projects-full">{visible.length?<ProjectTable projects={visible} onOpenProject={onOpenProject} onDeleteProject={onDeleteProject} onDuplicateProject={onDuplicateProject} onArchiveProject={onArchiveProject}/>:<div className="empty-editor"><FolderKanban size={24}/><b>Проектов в этом фильтре нет</b><span>Создайте проект или выберите другой фильтр.</span></div>}</section>
-  </>
-}
+  </>}
 
 function InboxPage({leads=[]}) {
   const [items,setItems]=useState(leads),[selected,setSelected]=useState(null)
@@ -597,8 +645,7 @@ function Orders({orders=[],projects=[]}){
   }
   const payOrder=async()=>{
     if(!detail?.order||detail.order.status==='paid')return
-    setBusy(true)
-    try{
+    setBusy(true)    try{
       const r=await api.createPayment({project_id:detail.order.project_id,client_id:detail.order.client_id||null,order_id:detail.order.id,amount:Number(detail.order.total),currency:detail.order.currency||'RUB',status:'paid',description:'Оплата заказа '+detail.order.number})
       setItems(v=>v.map(x=>x.id===detail.order.id?{...x,status:'paid'}:x))
       setDetail(v=>v?{...v,order:{...v.order,status:'paid'},payments:[r.payment,...(v.payments||[])]}:v)
@@ -718,206 +765,3 @@ function SettingsPage(){
       <section className="card settings-form">
         {tab==='profile'&&<div className="setting-block"><h2>Профиль студии</h2><span>Основная информация рабочего пространства.</span><label>Название студии<input value="Nexora Studio" readOnly/></label><label>Рабочий email<input value="studio@nexora.local" readOnly/></label><div className="catalog-form-grid"><label>Язык интерфейса<select value={language} onChange={e=>changeLanguage(e.target.value)}><option value="ru">Русский</option><option value="en">Английский</option></select></label><label>Валюта оплаты<select value={billingCurrency} onChange={e=>changeCurrency(e.target.value)}><option value="RUB">Российский рубль (₽)</option><option value="USD">Доллар США ($)</option></select></label></div></div>}
         {tab==='team'&&<><div className="setting-block"><h2>Команда студии</h2><span>Управляйте ролями и доступами сотрудников.</span><div className="team-list">{team.map(m=><div className="team-row" key={m.id}><div className="user-avatar">{String(m.name||'?').slice(0,1)}</div><div className="team-person"><b>{m.name}</b><span>{m.email}</span></div>{m.role==='owner'?<span className="status success"><i/>Владелец</span>:<><select value={m.role} onChange={e=>role(m.id,e.target.value)}><option value="admin">Администратор</option><option value="member">Участник</option><option value="viewer">Наблюдатель</option></select><button className="filter" onClick={()=>remove(m.id)}>Удалить</button></>}</div>)}</div></div><div className="setting-block"><h2>Пригласить сотрудника</h2><div className="team-add-grid"><input type="email" placeholder="Email сотрудника" value={form.email} onChange={e=>setForm(v=>({...v,email:e.target.value}))}/><select value={form.role} onChange={e=>setForm(v=>({...v,role:e.target.value}))}><option value="admin">Администратор</option><option value="member">Участник</option><option value="viewer">Наблюдатель</option></select><button className="primary" disabled={busy} onClick={add}>{busy?'Создаём…':'Создать приглашение'}</button></div></div><div className="setting-block"><h2>Ожидают приглашения</h2>{invites.length===0?<div className="empty-editor"><b>Нет активных приглашений</b></div>:<div className="team-list">{invites.map(inv=><div className="team-row" key={inv.id}><div className="team-person"><b>{inv.email}</b><span>Истекает {new Date(inv.expires_at).toLocaleDateString('ru-RU')}</span></div><span className="status draft"><i/>Ожидает</span><button className="filter" onClick={()=>revoke(inv.id)}>Отозвать</button></div>)}</div>}</div></>}
-        {tab==='payments'&&<div className="setting-block"><h2>Оплата через ЮKassa</h2><span>Подписка Nexora оплачивается через ЮKassa. Клиентские заказы, счета и платежи управляются отдельно.</span><div className="security-cards"><div><CreditCard size={18}/><b>Провайдер</b><span>Checkout и webhook подключены; тариф активируется после подтверждения платежа.</span></div><div><CircleDollarSign size={18}/><b>RUB</b><span>Рабочая валюта клиентских заказов и внутренних финансовых операций.</span></div></div><div className="pricing-note"><ShieldCheck size={17}/> Для production задайте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY на сервере и настройте webhook.</div></div>}
-        {tab==='security'&&<div className="setting-block"><h2>Безопасность</h2><span>Защищённые сессии и роли доступа.</span><div className="security-cards"><div><ShieldCheck size={18}/><b>Сессии</b><span>Авторизация по токену на 30 дней.</span></div><div><ShieldCheck size={18}/><b>Пароли</b><span>Пароли защищены scrypt.</span></div></div></div>}
-        {tab==='billing'&&<div className="setting-block"><h2>Тариф и оплата</h2><span>Простые цены без завышения.</span><div className="pricing-grid">{plans.map(p=><div className={p.id===(usage?.studio?.plan||'pro')?'pricing-card featured':'pricing-card'} key={p.id}><div className="pricing-head"><div><b>{p.name}</b><span>{p.projectLimit} проектов</span></div></div><div className="pricing-price">{p.price===0?'Бесплатно':'₽'+planPrice(p)}<small>{p.price===0?'':' / мес'}</small></div><ul><li>До {p.clientLimit.toLocaleString('ru-RU')} клиентов</li><li>{p.teamLimit} участников</li><li>Сайт + Telegram Mini App</li></ul><button className={p.id===(usage?.studio?.plan||'pro')?'primary':'filter'} disabled={true} onClick={()=>switchPlan(p.id)}>{p.id===(usage?.studio?.plan||'pro')?'Текущий тариф':'Доступно после подключения оплаты'}</button></div>)}</div><div className="pricing-note"><ShieldCheck size={17}/> Для production задайте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY на сервере и настройте webhook.</div><div className="setting-block compact-billing"><h3>Статус подписки</h3><span>{billingAccount?.status==='active'?'Активна':'Подключение оплаты отложено'}</span></div></div>}
-        {tab==='branding'&&<div className="setting-block"><h2>Брендинг</h2><span>Настройте внешний вид рабочей панели.</span><div className="catalog-form-grid"><label>Шрифт<select value={font} onChange={e=>setFont(e.target.value)}><option>Inter</option><option>system-ui</option><option>Arial</option><option>Georgia</option></select></label><label>Основной цвет<input type="color" value={accent} onChange={e=>setAccent(e.target.value)}/></label></div></div>}{tab==='notifications'&&<div className="setting-block"><h2>Уведомления</h2><span>Настройки уведомлений студии.</span><div className="security-cards"><div><b>Email</b><span>Уведомления о новых заявках и бронированиях.</span></div><div><b>Системные</b><span>Уведомления о платежах и состоянии подписки.</span></div></div></div>}
-      </section>
-    </div>
-  </>
-}
-function CatalogManager({projectId}) {
-  const [items,setItems]=useState([])
-  const [clients,setClients]=useState([])
-  const [loading,setLoading]=useState(true)
-  const [saving,setSaving]=useState(false)
-  const [editing,setEditing]=useState(null)
-  const [form,setForm]=useState({name:'',description:'',price:'',currency:'RUB',image_url:'',active:true})
-  const [orderOpen,setOrderOpen]=useState(false)
-  const [orderItems,setOrderItems]=useState([])
-  const [orderClient,setOrderClient]=useState('')
-  const [orderSaving,setOrderSaving]=useState(false)
-  const load=async()=>{
-    setLoading(true)
-    try{
-      const [catalog,crmClients]=await Promise.all([api.catalog(projectId),api.clients()])
-      setItems(catalog.items||[])
-      setClients(crmClients.clients||[])
-    }finally{setLoading(false)}
-  }
-  useEffect(()=>{load()},[projectId])
-  const reset=()=>{setEditing(null);setForm({name:'',description:'',price:'',currency:'RUB',image_url:'',active:true})}
-  const save=async()=>{
-    if(!form.name.trim()) return
-    setSaving(true)
-    try{
-      if(editing) await api.updateCatalogItem(projectId,editing,form)
-      else await api.createCatalogItem(projectId,form)
-      reset(); await load()
-    }finally{setSaving(false)}
-  }
-  const edit=(item)=>{setEditing(item.id);setForm({name:item.name||'',description:item.description||'',price:item.price??'',currency:item.currency||'RUB',image_url:item.image_url||'',active:item.active!==false})}
-  const remove=async(id)=>{if(!window.confirm('Удалить позицию из каталога?'))return;await api.deleteCatalogItem(projectId,id);setItems(v=>v.filter(x=>x.id!==id));if(editing===id)reset()}
-  const openOrder=(item)=>{
-    setOrderItems([{...item,quantity:1}])
-    setOrderClient('')
-    setOrderOpen(true)
-  }
-  const changeQty=(id,delta)=>setOrderItems(v=>v.map(x=>x.id===id?{...x,quantity:Math.max(1,x.quantity+delta)}:x))
-  const createOrder=async()=>{
-    if(!orderItems.length) return
-    setOrderSaving(true)
-    try{
-      const r=await api.createOrder({project_id:projectId,client_id:orderClient||null,currency:orderItems[0].currency||'RUB',items:orderItems.map(x=>({catalog_id:x.id,quantity:x.quantity}))})
-      setOrderOpen(false)
-      setOrderItems([])
-      window.alert('Заказ '+r.order.number+' создан. Теперь его можно оплатить и выставить счёт в разделе «Заказы».')
-    }catch(err){
-      let message=err.message||'Не удалось создать заказ'
-      try{const parsed=JSON.parse(err.message);message=parsed.error||message}catch{}
-      window.alert(message)
-    }finally{setOrderSaving(false)}
-  }
-  const orderTotal=orderItems.reduce((sum,x)=>sum+Number(x.price||0)*Number(x.quantity||1),0)
-  return <div className="catalog-layout">
-    <section className="card workspace-card">
-      <div className="card-head"><div><h2>Каталог</h2><span>{items.length} позиций · данные доступны сайту и Mini App</span></div><button className="filter" onClick={reset}>Новая позиция</button></div>
-      {loading?<div className="empty-editor"><span>Загружаем каталог…</span></div>:items.length===0?<div className="empty-editor"><Layers3 size={24}/><b>Каталог пока пуст</b><span>Добавьте первую услугу или товар справа.</span></div>:
-      <div className="catalog-list">{items.map(item=><div className="catalog-row" key={item.id}><div className="catalog-thumb">{item.image_url?<img src={item.image_url} alt="" loading="lazy"/>:item.name.slice(0,1)}</div><div className="catalog-main"><b>{item.name}</b><span>{item.description||'Без описания'}</span></div><div className="catalog-price">{item.price!=null?new Intl.NumberFormat('ru-RU',{style:'currency',currency:item.currency||'RUB'}).format(Number(item.price)):'Цена по запросу'}</div><span className={item.active?'status success':'status draft'}><i/>{item.active?'Активна':'Скрыта'}</span><div className="catalog-actions"><button className="filter" onClick={()=>openOrder(item)}>Создать заказ</button><button className="filter" onClick={()=>edit(item)}>Изменить</button><button className="row-more" onClick={()=>remove(item.id)}><X size={16}/></button></div></div>)}</div>}
-    </section>
-    <section className="card workspace-card catalog-form">
-      <div className="eyebrow">{editing?'Редактирование':'Новая позиция'}</div><h3>{editing?'Изменить позицию':'Добавить в каталог'}</h3>
-      <label className="workspace-label">Название<input value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))} placeholder="Например, Стрижка"/></label>
-      <label className="workspace-label">Описание<textarea value={form.description} onChange={e=>setForm(v=>({...v,description:e.target.value}))} placeholder="Короткое описание услуги или товара"/></label><label className="workspace-label">Изображение<input type="url" value={form.image_url} onChange={e=>setForm(v=>({...v,image_url:e.target.value}))} placeholder="https://..."/></label>
-      <div className="catalog-form-grid"><label className="workspace-label">Цена<input type="number" min="0" step="0.01" value={form.price} onChange={e=>setForm(v=>({...v,price:e.target.value}))} placeholder="35"/></label><label className="workspace-label">Валюта<select value={form.currency} onChange={e=>setForm(v=>({...v,currency:e.target.value}))}><option>RUB</option></select></label></div>
-      <label className="catalog-check"><input type="checkbox" checked={form.active} onChange={e=>setForm(v=>({...v,active:e.target.checked}))}/> Показывать клиентам</label>
-      <div className="setting-actions"><button className="filter" onClick={reset}>Очистить</button><button className="primary" onClick={save} disabled={saving}>{saving?'Сохраняем…':editing?'Сохранить':'Добавить'}</button></div>
-    </section>
-    {orderOpen&&<div className="public-modal-backdrop" onMouseDown={()=>setOrderOpen(false)}><section className="card order-creator" onMouseDown={e=>e.stopPropagation()}>
-      <button className="public-close" onClick={()=>setOrderOpen(false)}><X size={18}/></button>
-      <div className="eyebrow">Продажи</div><h2>Создать заказ</h2><p className="order-creator-note">Позиция из каталога попадёт в реестр заказов. После создания можно принять оплату и выписать счёт.</p>
-      <div className="order-creator-lines">{orderItems.map(item=><div className="order-creator-line" key={item.id}><div><b>{item.name}</b><span>{new Intl.NumberFormat('ru-RU',{style:'currency',currency:item.currency||'RUB'}).format(Number(item.price||0))} за шт.</span></div><div className="qty-control"><button type="button" onClick={()=>changeQty(item.id,-1)}>−</button><b>{item.quantity}</b><button type="button" onClick={()=>changeQty(item.id,1)}>+</button></div><strong>{new Intl.NumberFormat('ru-RU',{style:'currency',currency:item.currency||'RUB'}).format(Number(item.price||0)*Number(item.quantity||1))}</strong></div>)}</div>
-      <label className="workspace-label">Клиент<select value={orderClient} onChange={e=>setOrderClient(e.target.value)}><option value="">Без клиента</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}{c.phone?' · '+c.phone:''}</option>)}</select></label>
-      {!clients.length&&<div className="order-creator-empty">В CRM пока нет клиентов. Заказ можно создать без клиента, а клиент будет привязан автоматически при покупке с сайта или Mini App.</div>}
-      <div className="order-creator-total"><span>Итого</span><strong>{new Intl.NumberFormat('ru-RU',{style:'currency',currency:orderItems[0]?.currency||'RUB'}).format(orderTotal)}</strong></div>
-      <div className="setting-actions"><button className="filter" onClick={()=>setOrderOpen(false)}>Отмена</button><button className="primary" disabled={orderSaving||!orderItems.length} onClick={createOrder}>{orderSaving?'Создаём…':'Создать заказ'}</button></div>
-    </section></div>}
-  </div>
-}
-
-function ProjectWorkspace({project,data,view,setView,onBack,onRefresh,onProjectUpdated}) {
-  
-  const current=data?.project||project, pages=data?.pages||[];
-  const [saving,setSaving]=useState(false), [name,setName]=useState(''), [domain,setDomain]=useState('');
-  const [device,setDevice]=useState('desktop');
-  const [tg,setTg]=useState({enabled:false,configured:false,botUsername:'',botUrl:'',buttonText:'Открыть Mini App',url:''});
-  const [telegramBusy,setTelegramBusy]=useState(false), [workspaceNotice,setWorkspaceNotice]=useState('');
-  const [publishedUrl,setPublishedUrl]=useState('');
-  const [domainBusy,setDomainBusy]=useState(false), [domainInfo,setDomainInfo]=useState(null);
-  const [analytics,setAnalytics]=useState(null), [openFaq,setOpenFaq]=useState({});
-  const [pageId,setPageId]=useState(null), [blocks,setBlocks]=useState([]);
-  const [theme,setTheme]=useState({accent:'#111827',background:'#ffffff',text:'#111827',font:'Inter',radius:'14px',button:'solid',maxWidth:'1180px'});
-  const page=pages.find(p=>p.id===pageId)||pages[0];
-  useEffect(()=>{
-    setName(current.name||''); setDomain(current.domain||'');
-    const mini=current.settings?.miniApp||{};
-    setTg({enabled:mini.enabled===true || String(current.project_type||'').includes('miniapp'),configured:mini.configured===true,botUsername:mini.botUsername||'',botUrl:mini.botUrl||'',buttonText:mini.buttonText||'Открыть Mini App',url:mini.url||''});
-    const p=pages.find(x=>x.id===pageId)||pages[0];
-    if(p){setPageId(p.id);setBlocks(p.content?.blocks||[]);setTheme(v=>({...v,...(p.content?.theme||{})}))}
-  },[current.id,current.name,current.domain,pages.length,pageId,JSON.stringify(current.settings||{})]);
-
-  useEffect(()=>{api.projectAnalytics(current.id).then(r=>setAnalytics(r.metrics||null)).catch(()=>setAnalytics(null))},[current.id]);
-
-  const updateBlock=(index,patch)=>setBlocks(v=>v.map((b,i)=>i===index?{...b,...patch}:b));
-  const addItem=(index)=>setBlocks(v=>v.map((b,i)=>i===index?{...b,items:[...(b.items||[]),'Новый элемент']}:b));
-  const updateItem=(index,itemIndex,value)=>setBlocks(v=>v.map((b,i)=>i===index?{...b,items:(b.items||[]).map((x,j)=>j===itemIndex?value:x)}:b));
-  const updateItemImage=(index,itemIndex,value)=>setBlocks(v=>v.map((b,i)=>i===index?{...b,images:(b.images||[]).map((x,j)=>j===itemIndex?value:x)}:b));
-  const removeItem=(index,itemIndex)=>setBlocks(v=>v.map((b,i)=>i===index?{...b,items:(b.items||[]).filter((_,j)=>j!==itemIndex)}:b));
-  const updateBlockStyle=(index,patch)=>setBlocks(v=>v.map((b,i)=>i===index?{...b,style:{...(b.style||{}),...patch}}:b));
-  const blockStyle=(b)=>({background:b.style?.background||'transparent',color:b.style?.color||'inherit',textAlign:b.style?.align||'left',padding:b.style?.padding||'24px',borderRadius:b.style?.radius||theme.radius});
-  const addBlock=(type)=>{
-    const defaults={
-      hero:{type:'hero',headline:'Ваш бизнес. Онлайн.',subheadline:'Понятный цифровой опыт для ваших клиентов.',cta:'Оставить заявку',action:'lead',link:''},
-      services:{type:'services',title:'Услуги',items:['Основная услуга','Популярная услуга','Премиум услуга'],columns:3,action:'booking'},
-      contacts:{type:'contacts',title:'Контакты',text:'Свяжитесь с нами удобным способом.'},
-      gallery:{type:'gallery',title:'Галерея',items:['Фото 1','Фото 2','Фото 3'],images:['','',''],columns:3},
-      testimonials:{type:'testimonials',title:'Отзывы',items:['«Отличный сервис и внимательное отношение.»','«Всё удобно: запись заняла меньше минуты.»'],columns:2},
-      faq:{type:'faq',title:'Частые вопросы',items:['Как записаться? — Оставьте заявку на сайте.','Как оплатить? — Онлайн или при получении.'],openFirst:false},
-      cta:{type:'cta',title:'Готовы начать?',text:'Оставьте заявку — мы свяжемся с вами.',button:'Оставить заявку',action:'lead',link:''}
-    };
-    setBlocks(v=>[...v,defaults[type]]);
-  };
-  const removeBlock=(index)=>setBlocks(v=>v.filter((_,i)=>i!==index));
-  const moveBlock=(index,dir)=>setBlocks(v=>{const n=index+dir;if(n<0||n>=v.length)return v;const a=[...v];[a[index],a[n]]=[a[n],a[index]];return a});
-  const saveEditor=async()=>{
-    if(!page)return;
-    setSaving(true);
-    try{await api.updatePage(current.id,page.id,{content:{blocks,theme}});await onRefresh()}
-    finally{setSaving(false)}
-  };
-  const saveSettings=async()=>{setSaving(true);try{await api.updateProject(current.id,{name,domain,settings:{miniApp:{enabled:tg.enabled,buttonText:tg.buttonText}}});await onRefresh()}finally{setSaving(false)}};
-  const configureTelegram=async()=>{setTelegramBusy(true);setWorkspaceNotice('');try{const result=await api.configureTelegram(current.id,{button_text:tg.buttonText});setTg(v=>({...v,enabled:true,configured:true,botUsername:result.bot?.username||v.botUsername,botUrl:result.botUrl||result.bot?.url||v.botUrl,url:result.url||v.url}));setWorkspaceNotice('Telegram Mini App подключён к боту @'+(result.bot?.username||'bot'));await onRefresh()}catch(error){setWorkspaceNotice(error?.message||'Не удалось подключить Telegram')}finally{setTelegramBusy(false)}};
-  const publish=async()=>{setSaving(true);try{const result=await api.publishProject(current.id);setPublishedUrl(result?.url||'');onProjectUpdated?.(result?.project||{...current,status:'published'});await onRefresh()}catch(e){setWorkspaceNotice(e?.message||'Не удалось опубликовать проект')}finally{setSaving(false)}};
-
-  return <div className="workspace-page">
-    <div className="workspace-head">
-      <button className="filter" onClick={onBack}>← Проекты</button>
-      <div className="workspace-title"><div className="project-logo dark">{current.name?.slice(0,1)}</div><div><b>{current.name}</b><span>{current.project_type||'website'} · {current.status==='published'?'Опубликован':'Черновик'}</span></div></div>
-      <div className="workspace-actions"><button className="filter" onClick={()=>setView('preview')}><ExternalLink size={14}/> Предпросмотр</button><button className="primary" onClick={publish} disabled={saving}><Globe2 size={15}/> Опубликовать</button>{current.status==='published'&&<button className="filter" onClick={async()=>{if(!window.confirm('Снять проект с публикации?'))return;setSaving(true);try{const r=await api.unpublishProject(current.id);onProjectUpdated?.(r.project||{...current,status:'draft'});await onRefresh()}finally{setSaving(false)}}} disabled={saving}>Снять с публикации</button>}</div>
-    </div>
-    {publishedUrl&&<div className="publish-success card"><div><b>Проект опубликован</b><span>{publishedUrl}</span></div><a className="primary" href={publishedUrl} target="_blank" rel="noreferrer"><ExternalLink size={14}/> Открыть сайт</a></div>}{workspaceNotice&&<div className="publish-success card"><div><b>Статус</b><span>{workspaceNotice}</span></div><button className="filter" onClick={()=>setWorkspaceNotice('')}>Закрыть</button></div>}
-
-    <div className="workspace-tabs">{[['overview','Обзор'],['pages','Страницы'],['catalog','Каталог'],['editor','Редактор'],['preview','Предпросмотр'],['settings','Настройки']].map(([id,label])=><button key={id} className={view===id?'selected':''} onClick={()=>setView(id)}>{label}</button>)}</div>
-
-    {view==='overview'&&<div className="workspace-grid">
-      <div className="card workspace-card"><div className="eyebrow">Проект</div><h2>Центр управления клиентским проектом</h2><p>Сайт, Mini App, контент, публикация и настройки клиента управляются из одного рабочего пространства.</p><div className="workspace-stat-grid"><div><b>{pages.length}</b><span>страниц</span></div><div><b>{current.status==='published'?'Опубликован':'Черновик'}</b><span>статус</span></div><div><b>{domain||'Не подключен'}</b><span>домен</span></div><div><b>{analytics?.visits??'—'}</b><span>визиты · 30 дней</span></div></div></div>
-      <div className="card workspace-card"><h3>Следующие шаги</h3><button className="workspace-step" onClick={()=>setView('pages')}><Globe2 size={17}/><span><b>Настроить страницы</b><small>Создать структуру сайта</small></span><ChevronRight size={16}/></button><button className="workspace-step" onClick={()=>setView('editor')}><Palette size={17}/><span><b>Открыть редактор</b><small>Собрать страницу из блоков</small></span><ChevronRight size={16}/></button><button className="workspace-step" onClick={publish}><CheckCircle2 size={17}/><span><b>Опубликовать</b><small>Сделать проект доступным</small></span><ChevronRight size={16}/></button></div>
-    </div>}
-
-    {view==='pages'&&<div className="card workspace-card"><div className="card-head"><div><h2>Страницы</h2><span>Структура сайта</span></div><button className="primary" onClick={async()=>{await api.createPage(current.id,{title:'Новая страница',slug:'new-page'});await onRefresh()}}><Plus size={15}/> Новая страница</button></div>{pages.map(p=><div className="page-row" key={p.id}><div className="page-icon"><Globe2 size={16}/></div><div><b>{p.title}</b><span>/{p.slug}</span></div><span className={p.published?'status success':'status draft'}><i/>{p.published?'Опубликована':'Черновик'}</span><button className="filter" onClick={()=>{setPageId(p.id);setBlocks(p.content?.blocks||[]);setView('editor')}}>Редактировать</button><button className="filter" onClick={async()=>{if(!window.confirm(`Удалить страницу «${p.title}»?`))return;await api.deletePage(current.id,p.id);if(pageId===p.id)setPageId(pages.find(x=>x.id!==p.id)?.id||null);await onRefresh()}}>Удалить</button></div>)}</div>}
-
-    {view==='catalog'&&<CatalogManager projectId={current.id}/>}
-
-     {view==='editor'&&<div className="editor-layout">
-      <aside className="card editor-sidebar">
-        <div className="eyebrow">Редактор</div><h3>{page?.title||'Главная'}</h3><p>Собирайте страницу из готовых блоков.</p>
-        {['hero','services','contacts','gallery','testimonials','faq','cta'].map(type=><button key={type} className="editor-add" onClick={()=>addBlock(type)}><Plus size={14}/>{type==='hero'?'Первый экран':type==='services'?'Услуги / каталог':type==='contacts'?'Контакты':type==='gallery'?'Галерея':type==='testimonials'?'Отзывы':type==='faq'?'FAQ':'CTA-блок'}</button>)}
-        <div className="editor-hint">Блоки можно перемещать, удалять и сохранять.</div>
-      </aside>
-      <section className="card editor-canvas">
-        <div className="editor-toolbar"><div><b>{page?.title||'Главная'}</b><span>{blocks.length} блоков</span></div><div className="editor-device"><button className={device==='desktop'?'selected':''} onClick={()=>setDevice('desktop')}>ПК</button><button className={device==='mobile'?'selected':''} onClick={()=>setDevice('mobile')}>Телефон</button><button className="primary" onClick={saveEditor} disabled={saving}>{saving?'Сохраняем…':'Сохранить'}</button></div></div>
-        <div className="editor-theme card"><div className="eyebrow">Оформление</div><div className="theme-grid"><label>Акцент<input type="color" value={theme.accent} onChange={e=>setTheme(v=>({...v,accent:e.target.value}))}/></label><label>Фон<input type="color" value={theme.background} onChange={e=>setTheme(v=>({...v,background:e.target.value}))}/></label><label>Текст<input type="color" value={theme.text} onChange={e=>setTheme(v=>({...v,text:e.target.value}))}/></label><label>Шрифт<select value={theme.font} onChange={e=>setTheme(v=>({...v,font:e.target.value}))}><option>Inter</option><option>Arial</option><option>Georgia</option></select></label></div></div>
-        <div className="editor-stack">{blocks.length===0&&<div className="empty-editor"><Palette size={24}/><b>Страница пока пустая</b><span>Добавьте первый блок слева.</span></div>}
-          {blocks.map((b,i)=><div className="editable-block" key={i} style={blockStyle(b)}>
-            <div className="block-controls"><span>{i+1}</span><b>{b.type}</b><button onClick={()=>moveBlock(i,-1)} disabled={i===0}>↑</button><button onClick={()=>moveBlock(i,1)} disabled={i===blocks.length-1}>↓</button><button onClick={()=>removeBlock(i)}>Удалить</button></div>
-            <div className="block-form">
-              <label>Заголовок<input value={b.headline||b.title||''} onChange={e=>updateBlock(i,{headline:b.type==='hero'?e.target.value:b.headline,title:b.type==='hero'?b.title:e.target.value})}/></label>
-              {b.type==='hero'&&<label>Подзаголовок<textarea value={b.subheadline||''} onChange={e=>updateBlock(i,{subheadline:e.target.value})}/></label>}
-              {b.type==='cta'&&<label>Текст<textarea value={b.text||''} onChange={e=>updateBlock(i,{text:e.target.value})}/></label>}
-              {(b.type==='services'||b.type==='gallery'||b.type==='testimonials'||b.type==='faq')&&<div className="item-editor">{(b.items||[]).map((item,j)=><div className="item-editor-row" key={j}><input value={item} onChange={e=>updateItem(i,j,e.target.value)}/><button type="button" onClick={()=>removeItem(i,j)}>×</button></div>)}<button type="button" className="filter" onClick={()=>addItem(i)}>+ Добавить элемент</button></div>}
-            </div>
-          </div>)}
-        </div>
-      </section>
-    </div>}
-    {view==='preview'&&<div className="card preview-shell"><div className="preview-top"><b>{current.name}</b><span>{domain||'preview.nexora.site'}</span></div><div className={`public-preview ${device==='mobile'?'preview-mobile':''}`} style={{'--preview-accent':theme.accent,'--preview-bg':theme.background,'--preview-text':theme.text,'--preview-radius':theme.radius,'--preview-font':theme.font}}>{blocks.map((b,i)=><div key={i} className={b.type==='hero'?'preview-hero':'preview-section'}>{b.type==='hero'?<><small>ПРЕДПРОСМОТР</small><h1>{b.headline}</h1><p>{b.subheadline}</p><button onClick={()=>b.link?window.open(b.link,'_blank'):null}>{b.cta}</button></>:b.type==='services'?<><span>{b.title}</span><div className="preview-services" style={{gridTemplateColumns:`repeat(${b.columns||1},minmax(0,1fr))`}}>{(b.items||[]).map((x,j)=><div className="preview-card" key={j}>{(b.images||[])[j]&&<img src={b.images[j]} alt="" loading="lazy"/>}<b>{x}</b></div>)}</div></>:b.type==='cta'?<><h2>{b.title}</h2><p>{b.text}</p><button>{b.button}</button></>:<><h2>{b.title}</h2><div className="preview-services">{(b.items||[]).map(x=><b key={x}>{x}</b>)}</div></>}</div>)}{!blocks.length&&<div className="empty-editor"><b>Нет блоков</b><span>Добавьте блоки в редакторе.</span></div>}</div></div>}
-
-    {view==='settings'&&<div className="workspace-settings">
-      <div className="card workspace-card"><div className="eyebrow">Настройки проекта</div><h2>Основные параметры</h2><label className="workspace-label">Название проекта<input value={name} onChange={e=>setName(e.target.value)}/></label><label className="workspace-label">Домен<input placeholder="client.ru" value={domain} onChange={e=>{setDomain(e.target.value);setDomainInfo(null)}}/></label>
-        <div className="domain-actions"><button className="filter" disabled={domainBusy||!domain.trim()} onClick={async()=>{setDomainBusy(true);try{setDomainInfo(await api.checkDomain(current.id,domain))}catch(e){setDomainInfo({error:e.message||'Не удалось проверить домен'})}finally{setDomainBusy(false)}}}>{domainBusy?'Проверяем…':'Проверить домен'}</button><button className="primary" disabled={domainBusy||!domain.trim()} onClick={async()=>{setDomainBusy(true);try{const r=await api.connectDomain(current.id,domain);setDomain(r.domain.domain||r.domain||domain);setDomainInfo({connected:true})}catch(e){setDomainInfo({error:e.message||'Не удалось подключить домен'})}finally{setDomainBusy(false)}}}>Подключить</button></div>
-        {domainInfo&&<div className="domain-info">{domainInfo.error?<span className="status error"><i/>{domainInfo.error}</span>:domainInfo.dns?<><span className="status success"><i/>Домен свободен</span><small>Добавьте DNS: <b>{domainInfo.dns.type}</b> · {domainInfo.dns.host} → <b>{domainInfo.dns.value}</b></small></>:<span className="status success"><i/>Домен подключён</span>}</div>}
-        <div className="setting-actions"><button className="primary" onClick={saveSettings} disabled={saving}>{saving?'Сохраняем…':'Сохранить'}</button></div></div>
-      <div className="card workspace-card telegram-settings"><div className="eyebrow">Telegram</div><div className="setting-title-row"><div><h2>Mini App</h2><p>Открывается прямо из меню Telegram-бота и использует каталог, заявки и бронирования проекта.</p></div><label className="toggle"><input type="checkbox" checked={tg.enabled} onChange={e=>setTg(v=>({...v,enabled:e.target.checked}))}/><span></span></label></div>
-        <div className="telegram-status"><span className={tg.configured?'status success':'status draft'}><i/>{tg.configured?'Подключён':'Не подключён'}</span>{tg.botUsername&&<b>@{tg.botUsername}</b>}</div>{tg.botUrl&&<a className="workspace-label" href={tg.botUrl} target="_blank" rel="noreferrer">Открыть бота в Telegram ↗</a>}
-        <label className="workspace-label">Текст кнопки в Telegram<input maxLength="64" value={tg.buttonText} onChange={e=>setTg(v=>({...v,buttonText:e.target.value}))}/></label>
-        {tg.url&&<label className="workspace-label">URL Mini App<input readOnly value={tg.url}/></label>}
-        <div className="setting-actions"><button className="filter" onClick={saveSettings} disabled={saving}>Сохранить настройки</button><button className="primary" onClick={configureTelegram} disabled={telegramBusy || !tg.enabled}>{telegramBusy?'Подключаем…':'Подключить к Telegram'}</button></div>
-        <small className="settings-note">Токен бота хранится только на сервере. Если TELEGRAM_BOT_TOKEN ещё не задан, подключение вернёт понятную ошибку.</small>
-      </div>
-    </div>}
-  </div>
-}
-
-function CreateProject({onClose,onCreate}){return <div className="modal-backdrop" onMouseDown={onClose}><div className="modal card" onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="eyebrow">Новый проект</span><h2>Что создаём?</h2></div><button className="icon-btn" onClick={onClose}><X size={18}/></button></div><div className="create-options"><button onClick={() => onCreate("site")}><div><Globe2 size={20}/></div><b>Сайт</b><span>Запустить сайт из шаблона</span><ChevronRight size={17}/></button><button onClick={() => onCreate("miniapp")}><div><Smartphone size={20}/></div><b>Telegram Mini App</b><span>Каталог, заявки и бронирования</span><ChevronRight size={17}/></button><button onClick={() => onCreate("site_miniapp")}><div><Layers3 size={20}/></div><b>Сайт + Mini App</b><span>Полный клиентский проект</span><ChevronRight size={17}/></button></div></div></div>}
- 
-createRoot(document.getElementById('root')).render(<AppErrorBoundary><Root /></AppErrorBoundary>)
