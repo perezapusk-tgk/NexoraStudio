@@ -1897,6 +1897,7 @@ app.post('/api/payments', async (req,res) => {
       const order=memoryOrders.find(x=>x.id===orderId&&x.studio_id===req.user.studio_id)
       if(!order)return res.status(404).json({error:'Заказ не найден'})
       if(order.project_id!==projectId)return res.status(400).json({error:'Заказ относится к другому проекту'})
+      if(status==='paid' && ['cancelled','refunded'].includes(String(order.status||'')))return res.status(409).json({error:'Этот заказ уже закрыт и не может быть оплачен'})
       if(req.body?.client_id && order.client_id && String(req.body.client_id)!==String(order.client_id))return res.status(400).json({error:'Клиент платежа не совпадает с клиентом заказа'})
       if(order.client_id && !req.body?.client_id)return res.status(400).json({error:'У платежа не указан клиент заказа'})
       if(!order.client_id && req.body?.client_id)return res.status(400).json({error:'У заказа не указан клиент'})
