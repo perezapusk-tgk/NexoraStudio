@@ -46,6 +46,8 @@ export const api = {
   billingPlans: () => request('/billing/plans'),
   billingAccount: () => request('/billing/account'),
   updateBillingSettings: (currency) => request('/billing/settings',{method:'PATCH',body:JSON.stringify({currency})}),
+  billingCheckout: (plan) => request('/billing/checkout',{method:'POST',body:JSON.stringify({plan})}),
+  billingConfirm: (transactionId) => request('/billing/confirm',{method:'POST',body:JSON.stringify({transaction_id:transactionId})}),
 
   team: () => request('/team'),
   addTeamMember: (payload) => request('/team',{method:'POST',body:JSON.stringify(payload)}),
