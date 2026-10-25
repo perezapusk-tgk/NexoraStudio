@@ -1876,6 +1876,8 @@ app.post('/api/payments', async (req,res) => {
     if(!pool){
       const booking=memoryBookings.find(x=>x.id===bookingId&&x.studio_id===req.user.studio_id&&x.project_id===projectId)
       if(!booking)return res.status(404).json({error:'Бронирование не найдено'})
+      if(booking.client_id && req.body?.client_id && String(booking.client_id)!==String(req.body.client_id))return res.status(409).json({error:'Клиент платежа не совпадает с клиентом бронирования'})
+      if(booking.client_id && !req.body?.client_id)return res.status(409).json({error:'У платежа не указан клиент бронирования'})
     }else{
       const booking=(await pool.query('select b.id,b.client_id from bookings b join projects p on p.id=b.project_id where b.id::text=$1::text and b.project_id::text=$2::text and p.studio_id::text=$3::text limit 1',[bookingId,projectId,req.user.studio_id])).rows[0]
       if(!booking)return res.status(404).json({error:'Бронирование не найдено'})
@@ -1891,7 +1893,8 @@ app.post('/api/payments', async (req,res) => {
       if(!order)return res.status(404).json({error:'Заказ не найден'})
       if(order.project_id!==projectId)return res.status(400).json({error:'Заказ относится к другому проекту'})
       if(req.body?.client_id && order.client_id && String(req.body.client_id)!==String(order.client_id))return res.status(400).json({error:'Клиент платежа не совпадает с клиентом заказа'})
-      if(order.client_id && !req.body?.client_id){} else if(!order.client_id && req.body?.client_id)return res.status(400).json({error:'У заказа не указан клиент'})
+      if(order.client_id && !req.body?.client_id)return res.status(400).json({error:'У платежа не указан клиент заказа'})
+      if(!order.client_id && req.body?.client_id)return res.status(400).json({error:'У заказа не указан клиент'})
       if(Math.abs(Number(order.total||0)-amount)>0.01)return res.status(400).json({error:'Сумма платежа не совпадает с заказом'})
       if(status==='paid' && memoryPayments.some(x=>x.order_id===orderId&&x.status==='paid'))return res.status(409).json({error:'Заказ уже оплачен'})
     }
@@ -1903,6 +1906,11 @@ app.post('/api/payments', async (req,res) => {
       const invoice=memoryInvoices.find(x=>x.order_id===orderId&&x.studio_id===req.user.studio_id)
       if(invoice && invoice.status!=='cancelled') invoice.status='paid'
       memoryEvents.push({studio_id:req.user.studio_id,slug:memoryProjects.find(x=>x.id===projectId)?.slug,event_type:'payment',path:'/payment',value:amount,created_at:new Date().toISOString()})
+    }
+    if(bookingId && status==='paid'){
+      const booking=memoryBookings.find(x=>x.id===bookingId&&x.studio_id===req.user.studio_id)
+      if(booking) booking.status='completed'
+      memoryEvents.push({studio_id:req.user.studio_id,slug:memoryProjects.find(x=>x.id===projectId)?.slug,event_type:'booking',path:'/booking',value:amount,created_at:new Date().toISOString()})
     }
     return res.status(201).json({payment})
   }
@@ -1929,6 +1937,10 @@ app.post('/api/payments', async (req,res) => {
     await pool.query("update orders set status='paid' where id::text=$1 and project_id in (select id from projects where studio_id::text=$2::text)",[orderId,req.user.studio_id])
     await pool.query("update invoices set status='paid' where order_id::text=$1::text and status<>'cancelled'",[orderId])
     await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[projectId,'payment','/payment',amount,JSON.stringify({order_id:orderId,payment_id:q.rows[0].id})])
+  }
+  if(bookingId && status==='paid'){
+    await pool.query("update bookings set status='completed' where id::text=$1::text and project_id in (select id from projects where studio_id::text=$2::text)",[bookingId,req.user.studio_id])
+    await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[projectId,'booking','/booking',amount,JSON.stringify({booking_id:bookingId,payment_id:q.rows[0].id})])
   }
   res.status(201).json({payment:q.rows[0]})
 })
