@@ -1723,21 +1723,29 @@ app.patch('/api/orders/:id', async (req,res) => {
   const status=String(req.body?.status||'').trim()
   if(!['pending','paid','cancelled','refunded'].includes(status)) return res.status(400).json({error:'Недопустимый статус заказа'})
   if(!pool){const x=memoryOrders.find(v=>v.id===req.params.id&&v.studio_id===req.user.studio_id);if(!x)return res.status(404).json({error:'Заказ не найден'});if(x.status==='paid'&&status!=='paid')return res.status(409).json({error:'Оплаченный заказ нельзя перевести в другой статус — изменяйте связанный платёж'});if(x.status==='refunded'&&status!=='refunded')return res.status(409).json({error:'Возвращённый заказ нельзя изменить'});if(status==='paid'){const paid=memoryPayments.some(p=>p.studio_id===req.user.studio_id&&p.order_id===x.id&&p.status==='paid');if(!paid)return res.status(409).json({error:'Нельзя пометить заказ оплаченным без подтверждённого платежа'})}x.status=status;return res.json({order:x})}
-  const currentOrder=await pool.query("select o.status from orders o join projects p on p.id=o.project_id where o.id::text=$1::text and p.studio_id::text=$2::text limit 1",[req.params.id,req.user.studio_id])
-  if(!currentOrder.rows[0]) return res.status(404).json({error:'Заказ не найден'})
-  if(currentOrder.rows[0].status==='paid'&&status!=='paid') return res.status(409).json({error:'Оплаченный заказ нельзя перевести в другой статус — изменяйте связанный платёж'})
-  if(currentOrder.rows[0].status==='refunded'&&status!=='refunded') return res.status(409).json({error:'Возвращённый заказ нельзя изменить'})
-  if(status==='paid'){
-    const paid=await pool.query("select id from payments where order_id::text=$1::text and status='paid' limit 1",[req.params.id])
-    if(!paid.rows[0]) return res.status(409).json({error:'Нельзя пометить заказ оплаченным без подтверждённого платежа'})
-  }
-  if(status==='refunded'){
-    const refunded=await pool.query("select id from payments where order_id::text=$1::text and status='refunded' limit 1",[req.params.id])
-    if(!refunded.rows[0]) return res.status(409).json({error:'Нельзя пометить заказ возвращённым без подтверждённого возврата'})
-  }
-  const q=await pool.query('update orders o set status=$1 from projects p where o.id::text=$2::text and o.project_id::text=p.id::text and p.studio_id::text=$3::text returning o.*',[status,req.params.id,req.user.studio_id])
-  if(!q.rows[0])return res.status(404).json({error:'Заказ не найден'})
-  res.json({order:q.rows[0]})
+  const client=await pool.connect()
+  try{
+    await client.query('begin')
+    const currentOrder=(await client.query("select o.* from orders o join projects p on p.id=o.project_id where o.id::text=$1::text and p.studio_id::text=$2::text for update",[req.params.id,req.user.studio_id])).rows[0]
+    if(!currentOrder){await client.query('rollback');return res.status(404).json({error:'Заказ не найден'})}
+    if(currentOrder.status==='paid'&&status!=='paid') return await (async()=>{await client.query('rollback');return res.status(409).json({error:'Оплаченный заказ нельзя перевести в другой статус — изменяйте связанный платёж'})})()
+    if(currentOrder.status==='refunded'&&status!=='refunded') return await (async()=>{await client.query('rollback');return res.status(409).json({error:'Возвращённый заказ нельзя изменить'})})()
+    if(status==='paid'){
+      const paid=await client.query("select id from payments where order_id::text=$1::text and status='paid' limit 1",[req.params.id])
+      if(!paid.rows[0]){await client.query('rollback');return res.status(409).json({error:'Нельзя пометить заказ оплаченным без подтверждённого платежа'})}
+    }
+    if(status==='refunded'){
+      const refunded=await client.query("select id from payments where order_id::text=$1::text and status='refunded' limit 1",[req.params.id])
+      if(!refunded.rows[0]){await client.query('rollback');return res.status(409).json({error:'Нельзя пометить заказ возвращённым без подтверждённого возврата'})}
+    }
+    const q=await client.query('update orders set status=$1 where id::text=$2::text returning *',[status,req.params.id])
+    await client.query('commit')
+    if(!q.rows[0])return res.status(404).json({error:'Заказ не найден'})
+    res.json({order:q.rows[0]})
+  }catch(error){
+    try{await client.query('rollback')}catch{}
+    throw error
+  }finally{client.release()}
 })
 app.post('/api/orders/:id/invoice', async (req,res) => {
   const id=req.params.id
