@@ -1826,8 +1826,25 @@ app.post('/api/invoices', async (req,res) => {
 app.patch('/api/invoices/:id', async (req,res) => {
   const status=String(req.body?.status||'').trim()
   if(!['draft','sent','paid','overdue','cancelled'].includes(status))return res.status(400).json({error:'Недопустимый статус счёта'})
-  if(!pool){const x=memoryInvoices.find(v=>v.id===req.params.id&&v.studio_id===req.user.studio_id);if(!x)return res.status(404).json({error:'Счёт не найден'});x.status=status;return res.json({invoice:x})}
-  const q=await pool.query('update invoices i set status=$1 from projects p where i.id::text=$2 and i.project_id::text=p.id::text and p.studio_id::text=$3::text returning i.*',[status,req.params.id,req.user.studio_id])
+  if(!pool){
+    const x=memoryInvoices.find(v=>v.id===req.params.id&&v.studio_id===req.user.studio_id)
+    if(!x)return res.status(404).json({error:'Счёт не найден'})
+    if(x.status==='paid' && status!=='paid')return res.status(409).json({error:'Оплаченный счёт нельзя изменить — статус определяется подтверждённым платежом'})
+    if(status==='paid' && x.order_id){
+      const paid=memoryPayments.some(p=>p.order_id===x.order_id&&p.status==='paid'&&p.studio_id===req.user.studio_id)
+      if(!paid)return res.status(409).json({error:'Счёт по заказу нельзя отметить оплаченным без подтверждённого платежа'})
+    }
+    x.status=status
+    return res.json({invoice:x})
+  }
+  const current=(await pool.query('select i.* from invoices i join projects p on p.id=i.project_id where i.id::text=$1 and p.studio_id::text=$2::text limit 1',[req.params.id,req.user.studio_id])).rows[0]
+  if(!current)return res.status(404).json({error:'Счёт не найден'})
+  if(current.status==='paid' && status!=='paid')return res.status(409).json({error:'Оплаченный счёт нельзя изменить — статус определяется подтверждённым платежом'})
+  if(status==='paid' && current.order_id){
+    const paid=(await pool.query("select id from payments where order_id::text=$1::text and status='paid' limit 1",[current.order_id])).rows[0]
+    if(!paid)return res.status(409).json({error:'Счёт по заказу нельзя отметить оплаченным без подтверждённого платежа'})
+  }
+  const q=await pool.query('update invoices set status=$1 where id::text=$2::text returning *',[status,req.params.id])
   if(!q.rows[0])return res.status(404).json({error:'Счёт не найден'})
   res.json({invoice:q.rows[0]})
 })
