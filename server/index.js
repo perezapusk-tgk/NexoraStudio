@@ -1522,7 +1522,10 @@ app.post('/api/leads/:id/convert', async (req,res) => {
     const lead=memoryLeads.find(x=>x.id===id&&x.studio_id===req.user.studio_id)
     if(!lead)return res.status(404).json({error:'Заявка не найдена'})
     const existing=memoryClients.find(x=>x.studio_id===req.user.studio_id&&((lead.phone&&x.phone===lead.phone)||(lead.email&&x.email===lead.email)))
-    if(existing)return res.json({client:existing,existing:true})
+    if(existing){
+      lead.status='won'
+      return res.json({client:existing,existing:true})
+    }
     if(!await requireClientCapacity(req.user.studio_id,res))return
     const client={id:crypto.randomUUID(),studio_id:req.user.studio_id,name:lead.name,email:lead.email||'',phone:lead.phone||'',created_at:new Date().toISOString(),source_lead_id:id}
     lead.status='won'
