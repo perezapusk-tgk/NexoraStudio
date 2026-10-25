@@ -66,6 +66,7 @@ assert.ok(server.includes("String('booking-payment:'+id)"),'booking payment lock
 assert.ok(server.includes("booking_id::text=$1::text and status='paid'"),'booking duplicate paid guard missing')
 assert.ok(server.includes("update invoices set status='paid' where order_id::text=$1::text"),'paid order invoice sync missing')
 assert.ok(server.includes("Счёт по заказу нельзя отметить оплаченным без подтверждённого платежа"),'invoice payment integrity guard missing')
+assert.ok(server.includes("Оплаченный счёт создаётся только после подтверждённого платежа"),'paid invoice creation guard missing')
 assert.ok(server.includes("String('project-create:'+req.user.studio_id)"),'project creation concurrency lock missing')
 assert.ok(server.includes("String('client-create:'+req.user.studio_id)"),'client creation concurrency lock missing')
 assert.ok(server.includes("withMemoryWorkspaceLock('checkout:'+project.studio_id"),'public checkout memory lock missing')
