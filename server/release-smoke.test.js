@@ -91,6 +91,10 @@ assert.ok(api.includes("if(error?.name==='AbortError') throw new Error('Серв
 assert.ok(server.includes("app.get(['/published/:slug','/miniapp/:slug']"),'public deep-link shell fallback missing')
 assert.ok(frontend.includes('const safe={project:v?.project||{name:\'Nexora\'}'),'public response normalization missing')
 assert.ok(frontend.includes('const isPublic='),'public route isolation missing')
+assert.ok(frontend.includes('function Sites({projects,onCreate,onOpenProject})'),'Sites section component must exist')
+assert.ok(frontend.includes('function MiniApps({projects,onCreate,onOpenProject})'),'Mini Apps section component must exist')
+assert.ok(frontend.includes("active === 'Сайты' && <Sites"),'Sites navigation must render its component')
+assert.ok(frontend.includes("active === 'Mini Apps' && <MiniApps"),'Mini Apps navigation must render its component')
 
 for(const route of requiredRoutes) assert.ok(server.includes(route),`missing route: ${route}`)
 assert.ok(server.includes("if(role==='admin' && req.user.role!=='owner')"),'admin role escalation guard missing')
