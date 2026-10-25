@@ -1832,6 +1832,7 @@ app.post('/api/payments', async (req,res) => {
     }
   }
   if(!['pending','paid','refunded','failed'].includes(status)) return res.status(400).json({error:'Недопустимый статус платежа'})
+  if(status==='refunded') return res.status(409).json({error:'Возврат создаётся только через существующий оплаченный платёж'})
   if(!pool){
     if(orderId){
       const order=memoryOrders.find(x=>x.id===orderId&&x.studio_id===req.user.studio_id)
