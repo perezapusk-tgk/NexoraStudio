@@ -1419,6 +1419,7 @@ app.patch('/api/bookings/:id', async (req,res) => {
   if(!pool){
     const booking=memoryBookings.find(x=>x.id===req.params.id&&x.studio_id===req.user.studio_id)
     if(!booking)return res.status(404).json({error:'Бронирование не найдено'})
+    if(booking.status==='completed' && hasStatus && status!=='completed')return res.status(409).json({error:'Завершённое бронирование нельзя изменить — статус определяется подтверждённой оплатой'})
     const nextStart=startsAt!==undefined?new Date(startsAt):new Date(booking.starts_at)
     const nextEnd=endsAt!==undefined?new Date(endsAt):new Date(booking.ends_at||new Date(nextStart.getTime()+3600000))
     if(startsAt!==undefined||endsAt!==undefined){
@@ -1435,6 +1436,7 @@ app.patch('/api/bookings/:id', async (req,res) => {
   }
   const current=(await pool.query('select b.* from bookings b join projects p on p.id=b.project_id where b.id::text=$1::text and p.studio_id::text=$2::text limit 1',[req.params.id,req.user.studio_id])).rows[0]
   if(!current)return res.status(404).json({error:'Бронирование не найдено'})
+  if(current.status==='completed' && hasStatus && status!=='completed')return res.status(409).json({error:'Завершённое бронирование нельзя изменить — статус определяется подтверждённой оплатой'})
   const nextStart=startsAt!==undefined?startsAt:current.starts_at
   const nextEnd=endsAt!==undefined?endsAt:(current.ends_at||new Date(new Date(nextStart).getTime()+3600000).toISOString())
   if(startsAt!==undefined||endsAt!==undefined){
