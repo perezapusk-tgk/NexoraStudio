@@ -48,7 +48,8 @@ class PublicErrorBoundary extends React.Component {
   retry=()=>this.setState(v=>({error:null,retry:v.retry+1}))
   render(){
     if(this.state.error) return <div className="public-error"><div className="public-error-icon"><Globe2 size={28}/></div><b>Не удалось открыть проект</b><span>Публичная страница столкнулась с временной ошибкой. Попробуйте повторить загрузку.</span><button className="primary" onClick={this.retry}>Повторить</button><button className="filter" onClick={()=>location.reload()}>Обновить страницу</button><a href="/">На главную Nexora</a></div>
-    return <>{this.props.children(this.state.retry)}</>
+    const child=this.props.children
+    return <>{typeof child==='function'?child(this.state.retry):child}</>
   }
 }
 function PublicApp({mode,slug}){
