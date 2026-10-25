@@ -511,9 +511,18 @@ function App() {
         revenue: '₽0',
         updated: 'только что'
       }
-      setProjectData(v => [mapped, ...v])
+      setProjectData(v => [mapped, ...v.filter(x => x.id !== mapped.id)])
       setShowCreate(false)
-      await openProject(mapped)
+      try {
+        const fresh = await api.project(mapped.id)
+        setWorkspaceData(fresh)
+        setSelectedProject(fresh?.project || mapped)
+      } catch {
+        setWorkspaceData({project:mapped,pages:[]})
+        setSelectedProject(mapped)
+      }
+      setActive('Проекты')
+      setProjectView('overview')
     } catch (err) {
       let message = err?.message || 'Не удалось создать проект.'
       try { message = JSON.parse(message)?.error || message } catch {}
@@ -586,8 +595,8 @@ function App() {
         </header>
 
         <div className="content">
-          {active === 'Обзор' && !selectedProject && <Dashboard projects={filteredProjects} onCreate={() => setShowCreate(true)} onNavigate={go} onOpenProject={openProject} metrics={crm.analytics} onDeleteProject={deleteProject} onDuplicateProject={duplicateProject} onArchiveProject={archiveProject}/>}
-          {active === 'Проекты' && !selectedProject && <Projects projects={filteredProjects} onCreate={() => setShowCreate(true)} onOpenProject={openProject} onDeleteProject={deleteProject} onDuplicateProject={duplicateProject} onArchiveProject={archiveProject}/>}
+          {active === 'Обзор' && !selectedProject && <Dashboard projects={filteredProjects} onCreate={(type='website') => { setCreateType(type); setShowCreate(true) }} onNavigate={go} onOpenProject={openProject} metrics={crm.analytics} onDeleteProject={deleteProject} onDuplicateProject={duplicateProject} onArchiveProject={archiveProject}/>}
+          {active === 'Проекты' && !selectedProject && <Projects projects={filteredProjects} onCreate={(type='website') => { setCreateType(type); setShowCreate(true) }} onOpenProject={openProject} onDeleteProject={deleteProject} onDuplicateProject={duplicateProject} onArchiveProject={archiveProject}/>}
           {active === 'Заявки' && <InboxPage leads={crm.leads} />}
           {active === 'Клиенты' && !selectedClient && <Clients clients={crm.clients} onOpenClient={openClient} />}
           {active === 'Клиенты' && selectedClient && <ClientWorkspace data={clientData} projects={projectData} onRefresh={async () => { if (selectedClient?.id) setClientData(await api.client(selectedClient.id)); const [cl,ord,inv]=await Promise.all([api.clients(),api.orders(),api.invoices()]); setCrm(v=>({...v,clients:cl.clients||[],invoices:inv.invoices||[]})); setOrders(ord.orders||[]) }} onBack={() => { setSelectedClient(null); setClientData(null) }} />}
@@ -651,7 +660,7 @@ function Dashboard({ projects, onCreate, onNavigate, onOpenProject, onDuplicateP
       <Activity onNavigate={onNavigate} />
     </div>
     <div className="quick"><div className="section-title"><div><h2>Быстрый старт</h2><span>Частые действия студии</span></div></div><div className="quick-grid">
-      <Quick icon={Globe2} title="Создать сайт" text="Запустить проект из шаблона" onClick={onCreate}/><Quick icon={Smartphone} title="Создать Mini App" text="Каталог и заявки в Telegram" onClick={onCreate}/><Quick icon={Users} title="Добавить клиента" text="Создать карточку клиента" onClick={() => onNavigate('Клиенты')}/><Quick icon={BarChart3} title="Открыть аналитику" text="Посмотреть показатели" onClick={() => onNavigate('Аналитика')}/>
+      <Quick icon={Globe2} title="Создать сайт" text="Запустить проект из шаблона" onClick={()=>onCreate('website')}/><Quick icon={Smartphone} title="Создать Mini App" text="Каталог и заявки в Telegram" onClick={()=>onCreate('miniapp')}/><Quick icon={Users} title="Добавить клиента" text="Создать карточку клиента" onClick={() => onNavigate('Клиенты')}/><Quick icon={BarChart3} title="Открыть аналитику" text="Посмотреть показатели" onClick={() => onNavigate('Аналитика')}/>
     </div></div>
   </>
 }
