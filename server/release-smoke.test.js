@@ -67,6 +67,9 @@ assert.ok(server.includes("provider_payment_id=$1"),'billing provider payment id
 assert.ok(api.includes("billingCheckout: (plan)"),'frontend billing checkout contract missing')
 assert.ok(api.includes("billingConfirm: (transactionId)"),'frontend billing confirm contract missing')
 assert.ok(frontend.includes("api.billingCheckout(plan.id)"),'billing UI checkout action missing')
+assert.ok(frontend.includes('class PublicErrorBoundary'),'public runtime error boundary missing')
+assert.ok(frontend.includes('const safe={project:v?.project||{name:\'Nexora\'}'),'public response normalization missing')
+assert.ok(frontend.includes('const isPublic='),'public route isolation missing')
 
 for(const route of requiredRoutes) assert.ok(server.includes(route),`missing route: ${route}`)
 assert.ok(server.includes("if(role==='admin' && req.user.role!=='owner')"),'admin role escalation guard missing')
