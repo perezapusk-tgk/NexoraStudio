@@ -1470,11 +1470,32 @@ app.post('/api/bookings/:id/payment', async (req,res) => {
   const projectId=booking.project_id||null
   if(!projectId)return res.status(400).json({error:'У бронирования не указан проект'})
   const description='Оплата бронирования'+(booking.service_name?' · '+booking.service_name:'')
-  if(!pool){const payment={id:crypto.randomUUID(),project_id:projectId,client_id:booking.client_id||null,booking_id:id,order_id:null,amount,currency,status:'paid',description,created_at:new Date().toISOString()};memoryPayments.unshift(payment);booking.status='completed';memoryEvents.push({slug:booking.project_slug,event_type:'payment',path:'/booking',value:amount,created_at:new Date().toISOString()});return res.status(201).json({payment,booking})}
-  const q=await pool.query('insert into payments(project_id,client_id,booking_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7) returning *',[projectId,booking.client_id||null,id,amount,currency,'paid',description])
-  await pool.query("update bookings set status='completed' where id::text=$1::text",[id])
-  await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[projectId,'payment','/booking',amount,JSON.stringify({booking_id:id})])
-  res.status(201).json({payment:q.rows[0],booking:{...booking,status:'completed'}})
+  if(!pool){
+    const existing=memoryPayments.find(x=>x.studio_id===req.user.studio_id&&x.booking_id===id&&x.status==='paid')
+    if(existing)return res.status(409).json({error:'Для этой записи уже есть оплаченный платёж',payment:existing,booking:{...booking,status:'completed'}})
+    const payment={id:crypto.randomUUID(),studio_id:req.user.studio_id,project_id:projectId,client_id:booking.client_id||null,booking_id:id,order_id:null,amount,currency,status:'paid',description,created_at:new Date().toISOString()}
+    memoryPayments.unshift(payment);booking.status='completed';memoryEvents.push({slug:booking.project_slug,event_type:'payment',path:'/booking',value:amount,created_at:new Date().toISOString()});return res.status(201).json({payment,booking})
+  }
+  const client=await pool.connect()
+  try{
+    await client.query('begin')
+    await client.query('select pg_advisory_xact_lock(hashtext($1))',[String('booking-payment:'+id)])
+    const existing=await client.query("select * from payments where booking_id::text=$1::text and status='paid' limit 1",[id])
+    if(existing.rows[0]){
+      await client.query('commit')
+      return res.status(409).json({error:'Для этой записи уже есть оплаченный платёж',payment:existing.rows[0],booking:{...booking,status:'completed'}})
+    }
+    const q=await client.query('insert into payments(project_id,client_id,booking_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7) returning *',[projectId,booking.client_id||null,id,amount,currency,'paid',description])
+    await client.query("update bookings set status='completed' where id::text=$1::text",[id])
+    await client.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[projectId,'payment','/booking',amount,JSON.stringify({booking_id:id})])
+    await client.query('commit')
+    return res.status(201).json({payment:q.rows[0],booking:{...booking,status:'completed'}})
+  }catch(error){
+    try{await client.query('rollback')}catch{}
+    throw error
+  }finally{
+    client.release()
+  }
 })
 
 
