@@ -1837,7 +1837,13 @@ app.post('/api/payments', async (req,res) => {
     const dup=await pool.query("select id from payments where order_id::text=$1::text and status='paid' limit 1",[orderId])
     if(status==='paid' && dup.rows[0])return res.status(409).json({error:'Заказ уже оплачен'})
   }
-  const q=await pool.query('insert into payments(project_id,client_id,booking_id,order_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,bookingId,orderId,amount,currency,status,description||null])
+  let q
+  try {
+    q=await pool.query('insert into payments(project_id,client_id,booking_id,order_id,amount,currency,status,description) values($1,$2,$3,$4,$5,$6,$7,$8) returning *',[projectId,req.body?.client_id||null,bookingId,orderId,amount,currency,status,description||null])
+  } catch(error) {
+    if(error?.code==='23505' && orderId && status==='paid') return res.status(409).json({error:'Заказ уже оплачен'})
+    throw error
+  }
   if(orderId && status==='paid'){
     await pool.query("update orders set status='paid' where id::text=$1 and project_id in (select id from projects where studio_id::text=$2::text)",[orderId,req.user.studio_id])
     await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[projectId,'payment','/payment',amount,JSON.stringify({order_id:orderId,payment_id:q.rows[0].id})])
@@ -1889,7 +1895,13 @@ app.patch('/api/payments/:id', async (req,res) => {
       if(duplicate)return res.status(409).json({error:'Для заказа уже есть оплаченный платёж'})
     }
   }
-  const q=await pool.query("update payments p set status=$1 from projects pr where p.id::text=$2 and p.project_id::text=pr.id::text and pr.studio_id::text=$3::text returning p.*",[status,req.params.id,req.user.studio_id])
+  let q
+  try {
+    q=await pool.query("update payments p set status=$1 from projects pr where p.id::text=$2 and p.project_id::text=pr.id::text and pr.studio_id::text=$3::text returning p.*",[status,req.params.id,req.user.studio_id])
+  } catch(error) {
+    if(error?.code==='23505' && status==='paid' && current.order_id) return res.status(409).json({error:'Для заказа уже есть оплаченный платёж'})
+    throw error
+  }
   if(!q.rows[0])return res.status(404).json({error:'Платёж не найден'})
   if(q.rows[0].order_id) await pool.query("update orders set status=$1 where id=$2 and project_id in (select id from projects where studio_id::text=$3::text)",[status==='paid'?'paid':status==='refunded'?'refunded':'pending',q.rows[0].order_id,req.user.studio_id])
   if(previous!==status && status==='paid'){
