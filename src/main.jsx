@@ -493,8 +493,7 @@ function App() {
 
   const duplicateProject = async (project) => { if(!project?.id)return; try { const r=await api.duplicateProject(project.id); setProjectData(v=>[{...r.project,type:project.type,status:'Черновик',color:'dark',leads:0,bookings:0,revenue:'₽0',updated:'только что'},...v]); } catch(err){ let m=err?.message||'Не удалось дублировать проект'; try{m=JSON.parse(m)?.error||m}catch{} window.alert(m) } }
   const archiveProject = async (project) => { if(!project?.id || !window.confirm(`Архивировать проект «${project.name}»?`))return; try { const r=await api.archiveProject(project.id); setProjectData(v=>v.map(x=>x.id===project.id?{...x,status:'Архив'}:x)); } catch(err){ window.alert(err?.message||'Не удалось архивировать проект') } }
-  const createProject = async (projectType, templateId = '') => {
-    const name = window.prompt('Название проекта')
+  const createProject = async (projectType, name, templateId = '') => {
     if (!name?.trim()) return
     try {
       const created = await api.createProject({ name: name.trim(), projectType, templateId })
