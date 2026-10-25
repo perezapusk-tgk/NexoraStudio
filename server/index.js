@@ -1877,6 +1877,8 @@ app.post('/api/payments', async (req,res) => {
     if(orderId && status==='paid'){
       const order=memoryOrders.find(x=>x.id===orderId)
       if(order) order.status='paid'
+      const invoice=memoryInvoices.find(x=>x.order_id===orderId&&x.studio_id===req.user.studio_id)
+      if(invoice && invoice.status!=='cancelled') invoice.status='paid'
       memoryEvents.push({studio_id:req.user.studio_id,slug:memoryProjects.find(x=>x.id===projectId)?.slug,event_type:'payment',path:'/payment',value:amount,created_at:new Date().toISOString()})
     }
     return res.status(201).json({payment})
@@ -1902,6 +1904,7 @@ app.post('/api/payments', async (req,res) => {
   }
   if(orderId && status==='paid'){
     await pool.query("update orders set status='paid' where id::text=$1 and project_id in (select id from projects where studio_id::text=$2::text)",[orderId,req.user.studio_id])
+    await pool.query("update invoices set status='paid' where order_id::text=$1::text and status<>'cancelled'",[orderId])
     await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[projectId,'payment','/payment',amount,JSON.stringify({order_id:orderId,payment_id:q.rows[0].id})])
   }
   res.status(201).json({payment:q.rows[0]})
