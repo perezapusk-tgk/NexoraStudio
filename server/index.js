@@ -260,6 +260,7 @@ async function withMemoryBookingLock(key, fn){
 }
 const memoryPayments = [...demoPayments()]
 const memoryInvoices = [...demoInvoices()]
+const memoryBillingTransactions = []
 const memoryOrders = []
 const memoryEvents = []
 memoryProjects.forEach(x=>x.studio_id=demoStudio.id)
@@ -610,7 +611,7 @@ async function yookassaRequest(pathname,method='GET',body=null,idempotenceKey=nu
 function billingAppUrl(){
   return String(process.env.APP_URL||process.env.FRONTEND_URL||process.env.RENDER_EXTERNAL_URL||'http://localhost:5173').replace(/\/$/,'')
 }
-async function createYookassaCheckout({studioId,plan,amount}){
+async function createYookassaCheckout({studioId,plan,amount,transactionId}){
   const shopId=String(process.env.YOOKASSA_SHOP_ID||'').trim()
   const secret=String(process.env.YOOKASSA_SECRET_KEY||'').trim()
   if(!shopId||!secret) throw new Error('YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY не настроены')
@@ -620,20 +621,93 @@ async function createYookassaCheckout({studioId,plan,amount}){
     capture:true,
     confirmation:{type:'redirect',return_url:billingAppUrl()+'/?billing=success&provider=yookassa'},
     description:'Nexora Studio '+planConfig(plan).name+' — 30 дней',
-    metadata:{studio_id:studioId,plan}
+    metadata:{studio_id:studioId,plan,transaction_id:transactionId}
   })})
   const data=await r.json()
   if(!r.ok) throw new Error(data?.description||'ЮKassa не смогла создать оплату')
   return {id:data.id,url:data?.confirmation?.confirmation_url}
 }
-app.post('/api/billing/checkout', async (_req,res)=>{
-  return res.status(410).json({error:'Внешняя оплата пока отключена. Подключение платёжного провайдера будет выполнено на финальном этапе.'})
+async function applyYookassaSuccess(payment){
+  const transactionId=String(payment?.metadata?.transaction_id||'').trim()
+  const studioId=String(payment?.metadata?.studio_id||'').trim()
+  const plan=String(payment?.metadata?.plan||'').trim().toLowerCase()
+  if(!transactionId||!studioId||!PLAN_CONFIG[plan]||plan==='free') return {applied:false,reason:'invalid_metadata'}
+  const paidAt=new Date().toISOString()
+  if(!pool){
+    const tx=memoryBillingTransactions.find(x=>x.id===transactionId)
+    if(!tx) return {applied:false,reason:'transaction_not_found'}
+    if(tx.status==='paid') return {applied:true,duplicate:true}
+    tx.status='paid';tx.provider='yookassa';tx.provider_payment_id=String(payment.id||'');tx.paid_at=paidAt
+    const studio=memoryStudios.find(x=>x.id===studioId)
+    if(studio){studio.plan=plan;studio.projectLimit=PLAN_CONFIG[plan].projectLimit;studio.project_limit=PLAN_CONFIG[plan].projectLimit;studio.subscription_status='active';studio.billing_provider='yookassa';studio.subscription_started_at=paidAt;studio.subscription_renews_at=new Date(Date.now()+30*86400000).toISOString()}
+    return {applied:true}
+  }
+  const client=await pool.connect()
+  try{
+    await client.query('begin')
+    const tx=(await client.query('select * from billing_transactions where id::text=$1 and studio_id::text=$2 for update',[transactionId,studioId])).rows[0]
+    if(!tx){await client.query('rollback');return {applied:false,reason:'transaction_not_found'}}
+    if(tx.status==='paid'){await client.query('commit');return {applied:true,duplicate:true}}
+    await client.query("update billing_transactions set status='paid',provider='yookassa',provider_payment_id=$1,paid_at=now() where id=$2",[String(payment.id||''),tx.id])
+    await client.query("update studios set plan=$1,project_limit=$2,subscription_status='active',billing_provider='yookassa',subscription_started_at=now(),subscription_renews_at=now()+interval '30 days',updated_at=now() where id::text=$3",[plan,PLAN_CONFIG[plan].projectLimit,studioId])
+    await client.query('commit')
+    return {applied:true}
+  }catch(error){try{await client.query('rollback')}catch{};throw error}finally{client.release()}
+}
+app.post('/api/billing/checkout', async (req,res)=>{
+  if(!requireRole(req,res,['owner','admin'])) return
+  const plan=String(req.body?.plan||'').trim().toLowerCase()
+  const cfg=PLAN_CONFIG[plan]
+  if(!cfg) return res.status(400).json({error:'Неизвестный тариф'})
+  if(plan==='free'){
+    if(pool) await pool.query("update studios set plan='free',project_limit=$1,subscription_status='active',billing_provider=null,subscription_renews_at=null,updated_at=now() where id::text=$2",[cfg.projectLimit,req.user.studio_id])
+    else {const studio=memoryStudios.find(x=>x.id===req.user.studio_id)||demoStudio;studio.plan='free';studio.projectLimit=cfg.projectLimit;studio.project_limit=cfg.projectLimit;studio.subscription_status='active';studio.billing_provider=null;studio.subscription_renews_at=null}
+    return res.json({free:true,plan:cfg})
+  }
+  const amount=billingAmount(plan,'RUB')
+  if(!Number.isFinite(amount)||amount<=0) return res.status(400).json({error:'Некорректная стоимость тарифа'})
+  const transactionId=crypto.randomUUID()
+  try{
+    if(!pool) memoryBillingTransactions.push({id:transactionId,studio_id:req.user.studio_id,plan,amount,currency:'RUB',status:'pending',provider:'yookassa',external_id:null,provider_payment_id:null,checkout_url:null,created_at:new Date().toISOString(),paid_at:null})
+    else await pool.query("insert into billing_transactions(id,studio_id,plan,amount,currency,status,provider) values($1,$2,$3,$4,'RUB','pending','yookassa')",[transactionId,req.user.studio_id,plan,amount])
+    const payment=await createYookassaCheckout({studioId:req.user.studio_id,plan,amount,transactionId})
+    if(!payment?.id||!payment?.url) throw new Error('ЮKassa не вернула ссылку на оплату')
+    if(pool) await pool.query('update billing_transactions set external_id=$1,provider_payment_id=$1,checkout_url=$2 where id=$3',[payment.id,payment.url,transactionId])
+    else {const tx=memoryBillingTransactions.find(x=>x.id===transactionId);if(tx){tx.external_id=payment.id;tx.provider_payment_id=payment.id;tx.checkout_url=payment.url}}
+    return res.status(201).json({transaction_id:transactionId,payment_id:payment.id,checkout_url:payment.url,plan:cfg})
+  }catch(error){
+    if(pool) await pool.query("update billing_transactions set status='failed' where id=$1",[transactionId]).catch(()=>{})
+    else {const tx=memoryBillingTransactions.find(x=>x.id===transactionId);if(tx)tx.status='failed'}
+    console.error('Billing checkout error:',error.message)
+    return res.status(502).json({error:error.message||'Не удалось создать оплату'})
+  }
 })
-app.post('/api/billing/yookassa/webhook', async (_req,res)=>{
-  return res.status(410).json({error:'Внешняя оплата пока отключена.'})
+app.post('/api/billing/yookassa/webhook', async (req,res)=>{
+  try{
+    const event=req.body||{}
+    if(event.event!=='payment.succeeded' || !event.object?.id) return res.json({ok:true,ignored:true})
+    const payment=await yookassaRequest('/payments/'+encodeURIComponent(event.object.id))
+    if(payment.status!=='succeeded') return res.status(409).json({error:'Платёж ещё не подтверждён'})
+    const result=await applyYookassaSuccess(payment)
+    return res.json({ok:true,...result})
+  }catch(error){
+    console.error('YooKassa webhook error:',error.message)
+    return res.status(500).json({error:'Не удалось обработать webhook'})
+  }
 })
-app.post('/api/billing/confirm', async (_req,res)=>{
-  return res.status(410).json({error:'Внешняя оплата пока отключена.'})
+app.post('/api/billing/confirm', async (req,res)=>{
+  if(!requireRole(req,res,['owner','admin'])) return
+  const transactionId=String(req.body?.transaction_id||'').trim()
+  if(!transactionId) return res.status(400).json({error:'transaction_id обязателен'})
+  let paymentId=''
+  if(pool) paymentId=String((await pool.query('select provider_payment_id from billing_transactions where id::text=$1 and studio_id::text=$2',[transactionId,req.user.studio_id])).rows[0]?.provider_payment_id||'')
+  else paymentId=String(memoryBillingTransactions.find(x=>x.id===transactionId&&x.studio_id===req.user.studio_id)?.provider_payment_id||'')
+  if(!paymentId) return res.status(404).json({error:'Платёж не найден'})
+  try{
+    const payment=await yookassaRequest('/payments/'+encodeURIComponent(paymentId))
+    if(payment.status==='succeeded') await applyYookassaSuccess(payment)
+    return res.json({status:payment.status,transaction_id:transactionId,paid:payment.status==='succeeded'})
+  }catch(error){return res.status(502).json({error:error.message||'Не удалось проверить платёж'})}
 })
 app.get('/api/studio/usage', async (req,res) => {
   if(!pool){
