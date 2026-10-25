@@ -538,7 +538,8 @@ function App() {
     setSelectedClient(client)
     setSelectedProject(null)
     try { setClientData(await api.client(client.id)) } catch { setClientData({client,leads:[],bookings:[],payments:[],invoices:[]}) }
-  }  const openProject = async (project) => {
+  }
+  const openProject = async (project) => {
     if (!project?.id) return
     setActive('Проекты')
     setSelectedClient(null); setClientData(null)
