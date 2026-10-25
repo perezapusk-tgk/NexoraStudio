@@ -42,9 +42,18 @@ const activities = [
   ['Получен платёж', 'Barber House · ₽5 900', '3 ч назад', 'payment'],
 ]
 
+class PublicErrorBoundary extends React.Component {
+  constructor(props){super(props);this.state={error:null,retry:0}}
+  static getDerivedStateFromError(error){return {error}}
+  retry=()=>this.setState(v=>({error:null,retry:v.retry+1}))
+  render(){
+    if(this.state.error) return <div className="public-error"><div className="public-error-icon"><Globe2 size={28}/></div><b>Не удалось открыть проект</b><span>Публичная страница столкнулась с временной ошибкой. Попробуйте повторить загрузку.</span><button className="primary" onClick={this.retry}>Повторить</button><button className="filter" onClick={()=>location.reload()}>Обновить страницу</button><a href="/">На главную Nexora</a></div>
+    return <>{this.props.children(this.state.retry)}</>
+  }
+}
 function PublicApp({mode,slug}){
   const [data,setData]=useState(null),[error,setError]=useState(''),[retry,setRetry]=useState(0)
-  useEffect(()=>{let alive=true;setData(null);setError('');api.publicProject(slug).then(v=>alive&&setData(v)).catch(e=>alive&&setError(e?.message||'Проект не найден')).finally(()=>{});return()=>{alive=false}},[slug,retry])
+  useEffect(()=>{let alive=true;setData(null);setError('');api.publicProject(slug).then(v=>{if(!alive)return;const safe={project:v?.project||{name:'Nexora'},pages:Array.isArray(v?.pages)?v.pages:[],catalog:Array.isArray(v?.catalog)?v.catalog:[]};setData(safe)}).catch(e=>alive&&setError(e?.message||'Проект не найден'));return()=>{alive=false}},[slug,retry])
   if(error) return <div className="public-error"><div className="public-error-icon"><Globe2 size={28}/></div><b>Не удалось открыть проект</b><span>Проект временно недоступен. Попробуйте повторить загрузку.</span><button className="primary" onClick={()=>setRetry(v=>v+1)}>Повторить</button><a href="/">На главную Nexora</a></div>
   if(!data) return <div className="public-loading"><div className="public-loading-card"><div className="brand-mark">N</div><b>Загрузка проекта…</b><span>Подготавливаем {mode==='miniapp'?'Mini App':'сайт'}</span></div></div>
   return mode==='miniapp'?<PublicMiniApp data={data} slug={slug}/>:<PublicSite data={data} slug={slug}/>
@@ -179,12 +188,13 @@ class AppErrorBoundary extends React.Component {
 }
 
 function Root(){
-  useEffect(()=>installLanguageObserver(),[]);
   const path=window.location.pathname.split('/').filter(Boolean)
   const invite=new URLSearchParams(window.location.search).get('invite')
+  const isPublic=(path[0]==='published'&&path[1])||(path[0]==='miniapp'&&path[1])
+  useEffect(()=>{if(isPublic)return installLanguageObserver()},[isPublic])
   if(invite) return <InviteAcceptScreen token={invite} onAuthenticated={()=>{window.history.replaceState({},'',window.location.pathname);window.location.reload()}}/>
-  if(path[0]==='published'&&path[1]) return <PublicApp mode="site" slug={path[1]}/>
-  if(path[0]==='miniapp'&&path[1]) return <PublicApp mode="miniapp" slug={path[1]}/>
+  if(path[0]==='published'&&path[1]) return <PublicErrorBoundary>{()=> <PublicApp mode="site" slug={path[1]}/>}</PublicErrorBoundary>
+  if(path[0]==='miniapp'&&path[1]) return <PublicErrorBoundary>{()=> <PublicApp mode="miniapp" slug={path[1]}/>}</PublicErrorBoundary>
   return <App/>
 }
 
