@@ -1100,7 +1100,7 @@ app.post('/api/public/:slug/bookings', async (req,res) => {
     await client.query('begin')
     const pr=await client.query("select id,studio_id from projects where slug=$1 and status='published' limit 1",[slug])
     if(!pr.rows[0]){await client.query('rollback');return res.status(404).json({error:'Публичный проект не найден'})}
-    await client.query('select pg_advisory_xact_lock(hashtext($1))',[String(pr.rows[0].id)+':'+startsDate.toISOString()])
+    await client.query('select pg_advisory_xact_lock(hashtext($1))',[String('public-booking:'+pr.rows[0].id)])
     const conflict=await client.query("select id from bookings where project_id::text=$1::text and status<>'cancelled' and starts_at < $3::timestamptz and coalesce(ends_at,starts_at + interval '1 hour') > $2::timestamptz limit 1",[pr.rows[0].id,startsAt,endsAt])
     if(conflict.rows[0]){await client.query('rollback');return res.status(409).json({error:'На это время уже есть запись'})}
     const existingClient=await client.query('select id from clients where studio_id::text=$1::text and phone=$2 limit 1',[pr.rows[0].studio_id,phone])
