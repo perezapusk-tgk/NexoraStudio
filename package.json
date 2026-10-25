@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node server/release-smoke.test.js && vite build",
     "preview": "vite preview",
     "api": "node server/migrate.js && node server/index.js",
     "start": "node server/index.js",
