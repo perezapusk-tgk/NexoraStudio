@@ -22,8 +22,8 @@ Nexora Studio — SaaS Operating System for digital studios and agencies.
 - Аналитика проекта и студии.
 - Подключение домена с DNS CNAME-проверкой.
 - Telegram Mini App через Bot API.
-- Архитектура ЮKassa подготовлена для финального этапа; Stripe из продукта исключён.
-- Внешний checkout и webhook ЮKassa намеренно отключены до финальной production-настройки.
+- ЮKassa подключена для биллинга тарифов: checkout, подтверждение платежа и webhook с идемпотентной активацией тарифа.
+- Stripe из продукта исключён.
 - Ограничения тарифов по проектам, клиентам и участникам.
 - Автоматический запуск PostgreSQL migrations перед API.
 
@@ -45,7 +45,7 @@ Nexora Studio — SaaS Operating System for digital studios and agencies.
 - `YOOKASSA_SECRET_KEY` — секретный ключ ЮKassa, нужен на финальном этапе.
 - `TELEGRAM_BOT_TOKEN` — токен Telegram-бота для подключения Mini App.
 
-Для ручного тестирования тарифов можно использовать `BILLING_MODE=manual`. До финального этапа внешние платежи отключены; после production-проверки ЮKassa реальные платежи должны проходить через неё.
+Для локального запуска без ключей ЮKassa биллинг остаётся недоступным, а остальные функции работают в demo/memory режиме. В production для платных тарифов нужны ключи ЮKassa и webhook.
 
 ## Миграции
 
@@ -56,7 +56,7 @@ Nexora Studio — SaaS Operating System for digital studios and agencies.
 1. Задать production `DATABASE_URL`.
 2. Задать `APP_URL` на HTTPS-домен приложения.
 3. Задать `YOOKASSA_SHOP_ID` и `YOOKASSA_SECRET_KEY`.
-4. На финальном этапе в кабинете ЮKassa настроить webhook на `/api/billing/yookassa/webhook`.
+4. В кабинете ЮKassa настроить webhook на `/api/billing/yookassa/webhook` для события `payment.succeeded`.
 5. Для Telegram задать `TELEGRAM_BOT_TOKEN`.
 6. Опубликовать проект и проверить публичный URL.
 7. Для собственного домена направить CNAME на `<slug>.nexora.site` и пройти проверку домена.
