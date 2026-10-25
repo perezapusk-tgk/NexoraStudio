@@ -1969,6 +1969,8 @@ app.patch('/api/payments/:id', async (req,res) => {
     } else if(status==='refunded' && p.order_id){
       const o=memoryOrders.find(x=>x.id===p.order_id&&x.studio_id===req.user.studio_id)
       if(o)o.status='refunded'
+      const invoice=memoryInvoices.find(x=>x.order_id===p.order_id&&x.studio_id===req.user.studio_id)
+      if(invoice && invoice.status!=='cancelled') invoice.status='cancelled'
     }
     p.status=status
     if(p.project_id && previous!==status && status==='paid'){
@@ -2009,6 +2011,7 @@ app.patch('/api/payments/:id', async (req,res) => {
   if(!q.rows[0])return res.status(404).json({error:'Платёж не найден'})
   if(q.rows[0].order_id && (status==='paid' || status==='refunded')) await pool.query("update orders set status=$1 where id=$2 and project_id in (select id from projects where studio_id::text=$3::text)",[status,q.rows[0].order_id,req.user.studio_id])
   if(q.rows[0].order_id && status==='paid') await pool.query("update invoices set status='paid' where order_id::text=$1::text and status<>'cancelled'",[q.rows[0].order_id])
+  if(q.rows[0].order_id && status==='refunded') await pool.query("update invoices set status='cancelled' where order_id::text=$1::text and status='paid'",[q.rows[0].order_id])
   if(q.rows[0].booking_id && status==='paid') await pool.query("update bookings set status='completed' where id::text=$1::text and project_id in (select id from projects where studio_id::text=$2::text)",[q.rows[0].booking_id,req.user.studio_id])
   if(previous!==status && status==='paid'){
     await pool.query('insert into analytics_events(project_id,event_type,path,value,metadata) values($1,$2,$3,$4,$5)',[q.rows[0].project_id,'payment','/payment',Number(q.rows[0].amount||0),JSON.stringify({payment_id:q.rows[0].id})])
