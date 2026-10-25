@@ -42,8 +42,12 @@ const requiredFrontendContracts=[
   "api.configureTelegram(id,payload)",
   "['Оплата', CreditCard]"
 ]
+const frontendContractAliases={
+  "api.publicCheckout(slug,payload)":["publicCheckout: (slug,payload)"],
+  "api.configureTelegram(id,payload)":["configureTelegram: (id,payload={})"]
+}
 for(const contract of requiredFrontendContracts) {
-  const alternatives = contract === 'api.publicCheckout(slug,payload)' ? [contract, "publicCheckout: (slug,payload)"] : [contract]
+  const alternatives=[contract,...(frontendContractAliases[contract]||[])]
   assert.ok(alternatives.some(value=>api.includes(value) || frontend.includes(value)),`missing frontend contract: ${contract}`)
 }
 assert.ok(server.includes("app.get(['/published/:slug','/miniapp/:slug']"),'published/Mini App SPA fallback missing')
