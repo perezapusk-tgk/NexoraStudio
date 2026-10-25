@@ -287,6 +287,48 @@ function OwnerDashboard(){
   </div>
 }
 
+function ProjectTypeCard({project,onOpenProject,surface}) {
+  const isMini=surface==='miniapp'
+  const title=isMini?'Mini App':'Сайт'
+  const url=project.slug ? (isMini?'/miniapp/':'/published/')+encodeURIComponent(project.slug) : ''
+  return <article className="card project-type-card">
+    <div className="project-type-preview">
+      <div className="project-type-icon">{isMini?<Smartphone size={22}/>:<Globe2 size={22}/>}</div>
+      <span>{title}</span>
+    </div>
+    <div className="project-type-info">
+      <div>
+        <h3>{project.name}</h3>
+        <span>{project.status}{project.slug?' · /'+project.slug:''}</span>
+      </div>
+      <div className="project-type-actions">
+        <button className="filter" onClick={()=>onOpenProject?.(project)}>Открыть</button>
+        {url&&<button className="filter" onClick={()=>window.open(url,'_blank','noopener,noreferrer')}>Предпросмотр <ExternalLink size={14}/></button>}
+      </div>
+    </div>
+  </article>
+}
+
+function Sites({projects,onCreate,onOpenProject}) {
+  const items=(projects||[]).filter(p=>p.type==='Сайт'||p.type==='Сайт + Mini App')
+  return <>
+    <Header eyebrow="Клиентские проекты" title="Сайты" description="Создавайте, редактируйте и публикуйте сайты клиентов." action={<button className="primary" onClick={onCreate}><Plus size={17}/> Новый сайт</button>}/>
+    {items.length===0
+      ? <div className="card empty-editor"><Globe2 size={26}/><b>Сайтов пока нет</b><span>Создайте первый сайт из шаблона и откройте его рабочее пространство.</span><button className="primary" onClick={onCreate}><Plus size={16}/> Создать сайт</button></div>
+      : <div className="project-type-grid">{items.map(p=><ProjectTypeCard key={p.id||p.name} project={p} surface="site" onOpenProject={onOpenProject}/>)}</div>}
+  </>
+}
+
+function MiniApps({projects,onCreate,onOpenProject}) {
+  const items=(projects||[]).filter(p=>p.type==='Mini App'||p.type==='Сайт + Mini App')
+  return <>
+    <Header eyebrow="Telegram" title="Mini Apps" description="Управляйте клиентскими Telegram Mini Apps, каталогом и публичными страницами." action={<button className="primary" onClick={onCreate}><Plus size={17}/> Новый Mini App</button>}/>
+    {items.length===0
+      ? <div className="card empty-editor"><Smartphone size={26}/><b>Mini Apps пока нет</b><span>Создайте первый Mini App и настройте его в рабочем пространстве проекта.</span><button className="primary" onClick={onCreate}><Plus size={16}/> Создать Mini App</button></div>
+      : <div className="project-type-grid">{items.map(p=><ProjectTypeCard key={p.id||p.name} project={p} surface="miniapp" onOpenProject={onOpenProject}/>)}</div>}
+  </>
+}
+
 function App() {
   const [auth,setAuth]=useState(null)  const [authLoading,setAuthLoading]=useState(true)
   const [active, setActive] = useState('Обзор')
