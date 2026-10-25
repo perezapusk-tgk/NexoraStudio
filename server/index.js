@@ -1332,6 +1332,22 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
   }
 })
 
+app.post('/api/public/yookassa/webhook',async(req,res)=>{
+  try{
+    const event=req.body||{}
+    if(event.event!=='payment.succeeded'||!event.object?.id)return res.json({ok:true,ignored:true})
+    const payment=await yookassaRequest('/payments/'+encodeURIComponent(event.object.id))
+    if(payment.status!=='succeeded')return res.status(409).json({error:'Платёж ещё не подтверждён'})
+    const orderId=String(payment?.metadata?.order_id||'').trim()
+    if(!orderId)return res.status(400).json({error:'В платеже отсутствует order_id'})
+    if(String(payment?.metadata?.type||'')!=='public_order')return res.status(403).json({error:'Платёж не относится к публичному заказу'})
+    return res.json({ok:true,...await applyYookassaOrderSuccess(payment)})
+  }catch(error){
+    console.error('Public YooKassa global webhook error:',error.message)
+    return res.status(500).json({error:'Не удалось обработать оплату заказа'})
+  }
+})
+
 app.post('/api/public/order/:id/yookassa-webhook',async(req,res)=>{
   try{
     const orderId=String(req.params.id||'').trim()
