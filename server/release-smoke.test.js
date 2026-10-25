@@ -71,6 +71,8 @@ assert.ok(server.includes("const allowedEventTypes=new Set(['page_view'])"),'pub
 assert.ok(server.includes("status:'pending'"),'public checkout must create pending orders')
 assert.ok(!server.includes('stripe.com'),'Stripe must not be used')
 assert.ok(!api.includes('stripe'),'Stripe must not be used in frontend API client')
+assert.ok(!server.toLowerCase().includes('paymaster'),'PayMaster must not be active')
+assert.ok(!api.toLowerCase().includes('paymaster'),'PayMaster must not be active in frontend API client')
 assert.match(pkg.scripts.build,/release-smoke\.test\.js.*vite build/,'build script must run release smoke checks before Vite')
 assert.equal(pkg.scripts.start,'node server/index.js','production start must run migrations inside server startup')
 console.log('Nexora release smoke: OK')
