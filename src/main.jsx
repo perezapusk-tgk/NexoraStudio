@@ -297,8 +297,7 @@ function App() {
     } catch (err) {
       let message = err?.message || 'Не удалось удалить проект.'
       try { message = JSON.parse(message)?.error || message } catch {}
-      window.alert(message)
-    }
+      window.alert(message)    }
   }
 
   const duplicateProject = async (project) => { if(!project?.id)return; try { const r=await api.duplicateProject(project.id); setProjectData(v=>[{...r.project,type:project.type,status:'Черновик',color:'dark',leads:0,bookings:0,revenue:'₽0',updated:'только что'},...v]); } catch(err){ let m=err?.message||'Не удалось дублировать проект'; try{m=JSON.parse(m)?.error||m}catch{} window.alert(m) } }
@@ -432,7 +431,7 @@ function Dashboard({ projects, onCreate, onNavigate, onOpenProject, metrics }) {
       <Metric title="Активные проекты" value={String(metrics?.projects ?? projects.length)} change="в рабочем пространстве" icon={FolderKanban}/>
       <Metric title="Новые заявки" value={String(metrics?.leads ?? 0)} change="за последние 30 дней" icon={Inbox}/>
       <Metric title="Бронирования" value={String(metrics?.bookings ?? 0)} change="за последние 30 дней" icon={CalendarDays}/>
-      <Metric title="Продажи" value={metrics?.revenue!=null?new Intl.NumberFormat('ru-RU',{style:'currency',currency:metrics?.currency||'RUB',maximumFractionDigits:0}).format(Number(metrics.revenue||0)):'—'} change="+24%" icon={CircleDollarSign}/>
+      <Metric title="Продажи" value={metrics?.revenue!=null?new Intl.NumberFormat('ru-RU',{style:'currency',currency:metrics?.currency||'RUB',maximumFractionDigits:0}).format(Number(metrics.revenue||0)):'—'} change="за последние 30 дней" icon={CircleDollarSign}/>
     </div>
     <div className="grid-main">
       <section className="card projects-card">
@@ -597,8 +596,7 @@ function Orders({orders=[],projects=[]}){
     finally{setBusy(false)}
   }
   return <><Header eyebrow="Продажи" title="Заказы" description="Полный цикл: каталог → заказ → клиент → счёт → оплата."/>
-    <div className="metrics compact">
-      <Metric title="Заказы" value={String(items.length)} change="всего" icon={ShoppingCart}/>
+    <div className="metrics compact">      <Metric title="Заказы" value={String(items.length)} change="всего" icon={ShoppingCart}/>
       <Metric title="Оплачено" value={money(items.filter(x=>x.status==='paid').reduce((s,x)=>s+Number(x.total||0),0))} change="выручка" icon={CircleDollarSign}/>
       <Metric title="Новые" value={String(items.filter(x=>x.status==='pending').length)} change="ожидают оплаты" icon={Clock3}/>
       <Metric title="Средний чек" value={money(items.length?items.reduce((s,x)=>s+Number(x.total||0),0)/items.length:0)} change="по заказам" icon={Receipt}/>
