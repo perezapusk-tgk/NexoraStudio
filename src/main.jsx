@@ -383,6 +383,7 @@ function App() {
           <button className="user user-logout" onClick={async()=>{await api.authLogout();setAuth(null)}}><div className="user-avatar">{initials||"NS"}</div><div><b>{userName}</b><span>{auth.user?.role||"owner"}</span></div><LogOut size={17}/></button>
         </div>
       </aside>
+      {mobileOpen && <button type="button" aria-label="Закрыть меню" className="sidebar-backdrop" onClick={() => setMobileOpen(false)} />}
 
       <main className="main">
         <header className="topbar">
@@ -446,8 +447,8 @@ function Dashboard({ projects, onCreate, onNavigate, onOpenProject, metrics }) {
   </>
 }
 
-function Metric({title,value,change,icon:Icon}) {
-  return <div className="metric card"><div className="metric-top"><span>{title}</span><div className="metric-icon"><Icon size={17}/></div></div><div className="metric-value">{value}</div><div className="metric-foot"><b>{change}</b><span>к прошлому месяцу</span></div></div>
+function Metric({title,value,change,detail,icon:Icon}) {
+  return <div className="metric card"><div className="metric-top"><span>{title}</span><div className="metric-icon"><Icon size={17}/></div></div><div className="metric-value">{value}</div><div className="metric-foot"><b>{change}</b>{detail!==''&&<span>{detail||'к прошлому месяцу'}</span>}</div></div>
 }
 
 function ProjectTable({projects,onOpenProject,onDeleteProject,onDuplicateProject,onArchiveProject}) {
