@@ -52,6 +52,7 @@ for(const contract of requiredFrontendContracts) {
 }
 assert.ok(server.includes("app.get(['/published/:slug','/miniapp/:slug']"),'published/Mini App SPA fallback missing')
 assert.ok(server.includes("app.post('/api/public/order/:id/yookassa-webhook'"),'YooKassa webhook endpoint missing')
+assert.ok(!frontend.includes('mini-public-bottom'),'Mini App must not expose bottom quick navigation')
 assert.ok(server.includes("return res.status(410).json({error:'Внешняя оплата пока отключена'})"),'deferred YooKassa state must be explicit')
 
 for(const route of requiredRoutes) assert.ok(server.includes(route),`missing route: ${route}`)
