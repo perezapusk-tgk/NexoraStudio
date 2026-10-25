@@ -390,7 +390,7 @@ function App() {
           <div className="crumb"><span>{studioName}</span><ChevronRight size={15}/><b>{active}</b></div>
           <div className="top-actions">
             <div className="search"><Search size={17}/><input placeholder="Поиск..." value={query} onChange={e => setQuery(e.target.value)}/><kbd>⌘ K</kbd></div>
-            <button className="icon-btn"><Bell size={18}/><i/></button>
+            <button type="button" className="icon-btn" title="Открыть заявки" aria-label="Открыть заявки" onClick={() => go('Заявки')}><Bell size={18}/><i/></button>
             <div className="top-avatar" title={userName}>{initials||"NS"}</div>
           </div>
         </header>
@@ -438,7 +438,7 @@ function Dashboard({ projects, onCreate, onNavigate, onOpenProject, metrics }) {
         <div className="card-head"><div><h2>Последние проекты</h2><span>Обновления по клиентским пространствам</span></div><button className="text-btn" onClick={() => onNavigate('Проекты')}>Все проекты <ArrowUpRight size={15}/></button></div>
         <ProjectTable projects={projects.slice(0, 4)} onOpenProject={onOpenProject}/>
       </section>
-      <Activity />
+      <Activity onNavigate={onNavigate} />
     </div>
     <div className="quick"><div className="section-title"><div><h2>Быстрый старт</h2><span>Частые действия студии</span></div></div><div className="quick-grid">
       <Quick icon={Globe2} title="Создать сайт" text="Запустить проект из шаблона" onClick={onCreate}/><Quick icon={Smartphone} title="Создать Mini App" text="Каталог и заявки в Telegram" onClick={onCreate}/><Quick icon={Users} title="Добавить клиента" text="Создать карточку клиента" onClick={() => onNavigate('Клиенты')}/><Quick icon={BarChart3} title="Открыть аналитику" text="Посмотреть показатели" onClick={() => onNavigate('Аналитика')}/>
@@ -454,8 +454,8 @@ function ProjectTable({projects,onOpenProject,onDeleteProject,onDuplicateProject
   return <div className="table">{projects.map((p,i)=><div className="project-row project-row-button" key={p.id||p.name} onClick={() => onOpenProject?.(p)}><div className={`project-logo ${p.color}`}>{p.name.slice(0,1)}</div><div className="project-name"><b>{p.name}</b><span>{p.type}</span></div><span className={`status ${p.status === 'Опубликован' ? 'success' : p.status === 'В работе' ? 'working' : 'draft'}`}><i/>{p.status}</span><div className="project-stat"><b>{p.leads}</b><span>заявок</span></div><div className="project-stat"><b>{p.revenue}</b><span>выручка</span></div><span className="updated">{p.updated}</span><button type="button" className="filter project-open-button" onClick={e=>{e.stopPropagation();onOpenProject?.(p)}}>Открыть рабочее пространство</button><button type="button" className="filter" onClick={e=>{e.stopPropagation();onDuplicateProject?.(p)}}>Дублировать</button><button type="button" className="filter" onClick={e=>{e.stopPropagation();onArchiveProject?.(p)}}>Архив</button></div>)}</div>
 }
 
-function Activity() {
-  return <section className="card activity"><div className="card-head"><div><h2>Активность</h2><span>Последние события</span></div><button className="icon-btn"><MoreHorizontal size={17}/></button></div><div className="activity-list">{activities.map(([title,sub,time,type])=><div className="activity-item" key={title+time}><div className={`activity-icon ${type}`}>{type === 'lead' ? <Inbox size={15}/> : type === 'booking' ? <CalendarDays size={15}/> : type === 'site' ? <Globe2 size={15}/> : <CreditCard size={15}/>}</div><div><b>{title}</b><span>{sub}</span></div><time>{time}</time></div>)}</div></section>
+function Activity({onNavigate}) {
+  return <section className="card activity"><div className="card-head"><div><h2>Активность</h2><span>Последние события</span></div><button type="button" className="icon-btn" title="Открыть аналитику" aria-label="Открыть аналитику" onClick={() => onNavigate?.('Аналитика')}><MoreHorizontal size={17}/></button></div><div className="activity-list">{activities.map(([title,sub,time,type])=><div className="activity-item" key={title+time}><div className={`activity-icon ${type}`}>{type === 'lead' ? <Inbox size={15}/> : type === 'booking' ? <CalendarDays size={15}/> : type === 'site' ? <Globe2 size={15}/> : <CreditCard size={15}/>}</div><div><b>{title}</b><span>{sub}</span></div><time>{time}</time></div>)}</div></section>
 }
 
 function Quick({icon:Icon,title,text,onClick}) { return <button className="quick-card card" onClick={onClick}><div className="quick-icon"><Icon size={19}/></div><div><b>{title}</b><span>{text}</span></div><ChevronRight size={17}/></button> }
@@ -465,7 +465,7 @@ function Projects({projects,onCreate,onOpenProject,onDeleteProject,onDuplicatePr
   const activeProjects=projects.filter(x=>x.status!=='Архив'&&x.status!=='archived'); const counts={all:activeProjects.length,published:activeProjects.filter(x=>x.status==='Опубликован').length,working:activeProjects.filter(x=>x.status==='В работе').length,draft:activeProjects.filter(x=>x.status==='Черновик').length}
   const visible=filter==='all'?activeProjects:activeProjects.filter(x=>filter==='published'?x.status==='Опубликован':filter==='working'?x.status==='В работе':x.status==='Черновик')
   return <><Header eyebrow="Рабочая область" title="Проекты" description="Все сайты, Mini Apps и клиентские пространства студии." action={<button className="primary" onClick={onCreate}><Plus size={17}/> Новый проект</button>}/>
-    <div className="filterbar">{[['all','Все'],['published','Опубликованные'],['working','В работе'],['draft','Черновики']].map(([id,label])=><button key={id} className={filter===id?'filter active':'filter'} onClick={()=>setFilter(id)}>{label} <b>{counts[id]}</b></button>)}<button className="filter"><Filter size={15}/> Фильтры</button></div>
+    <div className="filterbar">{[['all','Все'],['published','Опубликованные'],['working','В работе'],['draft','Черновики']].map(([id,label])=><button key={id} className={filter===id?'filter active':'filter'} onClick={()=>setFilter(id)}>{label} <b>{counts[id]}</b></button>)}</div>
     <section className="card projects-full">{visible.length?<ProjectTable projects={visible} onOpenProject={onOpenProject} onDeleteProject={onDeleteProject} onDuplicateProject={onDuplicateProject} onArchiveProject={onArchiveProject}/>:<div className="empty-editor"><FolderKanban size={24}/><b>Проектов в этом фильтре нет</b><span>Создайте проект или выберите другой фильтр.</span></div>}</section>
   </>
 }
