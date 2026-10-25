@@ -633,7 +633,7 @@ async function createYookassaOrderCheckout({studioId,projectId,slug,orderId,amou
   if(!shopId||!secret) throw new Error('YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY не настроены')
   const safeSurface=surface==='miniapp'?'miniapp':'site'
   const returnPath=safeSurface==='miniapp'?'/miniapp/':'/published/'
-  const r=await fetch('https://api.yookassa.ru/v3/payments',{method:'POST',headers:{Authorization:'Basic '+Buffer.from(shopId+':'+secret).toString('base64'),'Content-Type':'application/json','Idempotence-Key':crypto.randomUUID()},body:JSON.stringify({
+  const r=await fetch('https://api.yookassa.ru/v3/payments',{method:'POST',headers:{Authorization:'Basic '+Buffer.from(shopId+':'+secret).toString('base64'),'Content-Type':'application/json','Idempotence-Key':'nexora-public-order-'+String(orderId)},body:JSON.stringify({
     amount:{value:Number(amount).toFixed(2),currency:'RUB'},capture:true,
     confirmation:{type:'redirect',return_url:billingAppUrl()+returnPath+encodeURIComponent(slug)+'?payment=success&order_id='+encodeURIComponent(String(orderId))},
     description:'Заказ '+String(orderId).slice(0,18),
@@ -1334,10 +1334,12 @@ app.post('/api/public/:slug/checkout', async (req,res) => {
 
 app.post('/api/public/order/:id/yookassa-webhook',async(req,res)=>{
   try{
+    const orderId=String(req.params.id||'').trim()
     const event=req.body||{}
     if(event.event!=='payment.succeeded'||!event.object?.id)return res.json({ok:true,ignored:true})
     const payment=await yookassaRequest('/payments/'+encodeURIComponent(event.object.id))
     if(payment.status!=='succeeded')return res.status(409).json({error:'Платёж ещё не подтверждён'})
+    if(String(payment?.metadata?.order_id||'')!==orderId)return res.status(403).json({error:'Платёж не относится к этому заказу'})
     return res.json({ok:true,...await applyYookassaOrderSuccess(payment)})
   }catch(error){console.error('Public YooKassa webhook error:',error.message);return res.status(500).json({error:'Не удалось обработать оплату заказа'})}
 })
