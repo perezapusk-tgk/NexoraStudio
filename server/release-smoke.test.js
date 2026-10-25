@@ -71,6 +71,7 @@ assert.ok(server.includes("await client.query('begin')") && server.includes("del
 assert.ok(server.includes('code:\'PLAN_LIMIT\''),'plan limit error contract missing')
 assert.ok(server.includes("const allowedEventTypes=new Set(['page_view'])"),'public analytics event allowlist missing')
 assert.ok(server.includes("status:'pending'"),'public checkout must create pending orders')
+assert.ok(server.includes("if(status==='refunded') return res.status(409).json({error:'Возврат создаётся только через существующий оплаченный платёж'})"),'refunds must use an existing payment transition')
 assert.ok(!server.includes('stripe.com'),'Stripe must not be used')
 assert.ok(!api.includes('stripe'),'Stripe must not be used in frontend API client')
 assert.ok(!server.toLowerCase().includes('paymaster'),'PayMaster must not be active')
