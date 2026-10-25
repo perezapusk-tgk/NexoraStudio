@@ -373,3 +373,20 @@ button,input,select,textarea{transition:border-color .16s ease,background-color 
 button,.btn,.primary{min-height:40px}
 @media (max-width:720px){button,.btn,.primary{min-height:44px}input,textarea,select{min-height:44px}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+
+/* UX polish: mobile navigation + project rows */
+.project-row-button{cursor:pointer}
+.project-row-button:focus-within{box-shadow:inset 0 0 0 2px rgba(99,91,255,.16)}
+.project-row-button .project-open-button{font-weight:600}
+.top-avatar{display:grid;place-items:center;flex:0 0 auto;font-weight:700}
+@media(max-width:760px){
+  .sidebar{position:fixed;inset:0 auto 0 0;width:min(286px,86vw);height:100dvh;z-index:60;transform:translateX(-105%);transition:transform .2s ease;overflow:auto;background:var(--surface,#fff);border-right:1px solid var(--border,#e5e7eb)}
+  .sidebar.open{transform:translateX(0);box-shadow:18px 0 50px rgba(15,23,42,.16)}
+  .main{margin-left:0}
+  .topbar{z-index:40}
+  .content{padding-top:18px}
+  .project-row-button{grid-template-columns:auto 1fr auto;gap:10px}
+  .project-row-button .status,.project-row-button .project-stat,.project-row-button .updated,.project-row-button>.filter:not(.project-open-button){display:none}
+  .project-row-button .project-open-button{grid-column:1 / -1;width:100%;justify-content:center}
+}
