@@ -44,6 +44,7 @@ const requiredFrontendContracts=[
   "['Оплата', CreditCard]"
 ]
 const frontendContractAliases={
+  "api.publicProject(slug)":["api.publicProject(slug,preview)"],
   "api.publicCheckout(slug,payload)":["publicCheckout: (slug,payload)"],
   "api.configureTelegram(id,payload)":["configureTelegram: (id,payload={})"]
 }
