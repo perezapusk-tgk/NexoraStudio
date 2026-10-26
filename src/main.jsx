@@ -438,6 +438,7 @@ function App() {
   const [query, setQuery] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [createType, setCreateType] = useState('website')
+  const [createClient, setCreateClient] = useState(null)
   const [projectData, setProjectData] = useState([])
   const [apiState, setApiState] = useState('loading')
   const [crm, setCrm] = useState({ leads: [], clients: [], bookings: [], payments: [], invoices: [], analytics: null })
