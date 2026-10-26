@@ -901,7 +901,7 @@ app.post('/api/projects', async (req, res) => {
   while(memoryProjects.some(x=>x.slug.toLowerCase()===slug.toLowerCase())) slug=slugBase+'-'+suffix++
   const project={id:crypto.randomUUID(),studio_id:req.user.studio_id,name,slug,project_type:projectType,status:'draft',domain:null,settings:{miniApp:{enabled:projectType.includes('miniapp')},...(clientId?{clientId}:{} )}}
   memoryProjects.unshift(project)
-  memoryPages.set(project.id,[{id:crypto.randomUUID(),title:'Главная',slug:'home',published:false,content:{blocks:template.blocks}}])
+  memoryPages.set(project.id,[{id:crypto.randomUUID(),title:'Главная',slug:'home',published:false,content:{blocks:template.blocks,theme:template.theme,templateId:template.id,siteType:template.id}}])
   memoryCatalog.set(project.id,template.catalog.map(item=>({id:crypto.randomUUID(),project_id:project.id,...item})))
   return res.status(201).json({project})
 }
