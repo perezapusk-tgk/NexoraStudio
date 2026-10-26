@@ -1053,6 +1053,34 @@ app.delete('/api/projects/:id/pages/:pageId',async(req,res)=>{
 app.get('/api/public/:slug', async (req,res) => {
   const slug = String(req.params.slug || '').trim()
   const preview = String(req.query?.preview || '') === '1'
+  // Demo sites are intentionally public and do not depend on a database row.
+  // This keeps the template showcase usable even when production Postgres contains only real customer projects.
+  const demo = demoProjects().find(p => p.slug === slug)
+  if (demo) {
+    const templateMap = { 'barber-house':'barber', 'nordic-beauty':'beauty', 'urban-fitness':'fitness', 'mokka-coffee':'cafe' }
+    const template = templateDefinition(templateMap[slug] || 'services')
+    const page = {
+      id: 'demo-page-' + demo.id,
+      title: 'Главная',
+      slug: 'home',
+      published: true,
+      content: {
+        blocks: template.blocks,
+        theme: { accent:'#111827', background:'#ffffff', text:'#111827', font:'Inter', radius:'14px' }
+      }
+    }
+    const catalog = (template.catalog || []).map((item,i)=>({
+      id:'demo-cat-'+demo.id+'-'+i,
+      project_id:demo.id,
+      ...item,
+      active:true
+    }))
+    return res.json({
+      project:{id:demo.id,name:demo.name,slug:demo.slug,project_type:demo.project_type,status:'published',domain:null,settings:{}},
+      pages:[page],
+      catalog
+    })
+  }
   let previewStudioId = null
   if (preview) {
     let authorized = false
