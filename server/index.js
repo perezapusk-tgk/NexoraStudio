@@ -2314,4 +2314,11 @@ if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   process.once('SIGINT',()=>shutdown('SIGINT'))
 }
 
+// Vercel uses the same PostgreSQL database but does not run the long-lived startup block above.
+// When the owner bootstrap variables are configured, initialize the owner account during the
+// serverless module load as well. This is intentionally limited to the explicit admin variables.
+if (process.env.NODE_ENV !== 'test' && process.env.VERCEL && process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
+  await bootstrapOwnerAccount()
+}
+
 export default app
