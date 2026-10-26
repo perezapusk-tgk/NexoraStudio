@@ -2248,6 +2248,7 @@ async function bootstrapOwnerAccount(){
     const existing=(await client.query('select id,studio_id,role from users where lower(email)=lower($1) limit 1',[email])).rows[0]
     if(existing){
       await client.query("update users set name=$1,role='superadmin',password_hash=$2 where id=$3",[name,hashPassword(password),existing.id])
+      await client.query("update studios set plan='owner',project_limit=2147483647,updated_at=now() where id=$1",[existing.studio_id])
       await client.query('commit')
       console.log('Nexora owner account verified:',email)
       return
