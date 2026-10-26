@@ -695,3 +695,14 @@ button,.btn,.primary{min-height:40px}
   .site-template-beauty .site-gallery-grid,
   .site-template-services .site-gallery-grid{grid-template-columns:1fr}
 }
+
+.template-rich{overflow:hidden}
+.template-rich .template-preview{min-height:260px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end;gap:12px;padding:24px;color:#fff}
+.template-rich .template-preview>span{font-size:24px;font-weight:800;letter-spacing:-.03em}
+.template-rich .template-lines{width:72%;display:grid;gap:7px}
+.template-rich .template-lines i{display:block;height:5px;border-radius:99px;background:rgba(255,255,255,.72)}
+.template-rich .template-lines i:nth-child(2){width:68%}
+.template-rich .template-lines i:nth-child(3){width:46%}
+.template-rich .template-info{padding:18px 20px}
+.template-rich .template-info h3{margin-bottom:5px}
+.template-rich .template-info span{display:block;line-height:1.45}
