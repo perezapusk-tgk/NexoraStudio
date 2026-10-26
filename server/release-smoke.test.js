@@ -54,6 +54,7 @@ for(const contract of requiredFrontendContracts) {
 }
 assert.ok(server.includes("app.get(['/published/:slug','/miniapp/:slug']"),'published/Mini App SPA fallback missing')
 assert.ok(fs.existsSync(path.join(root,'api','public','[...path].js')),'Vercel public API catch-all route missing')
+assert.ok(api.includes("encodeURIComponent(String(slug||''))"),'public slug must be URL encoded')
 assert.ok(server.includes("app.post('/api/public/order/:id/yookassa-webhook'"),'YooKassa webhook endpoint missing')
 assert.ok(server.includes("app.post('/api/public/yookassa/webhook'"),'global YooKassa webhook endpoint missing')
 assert.ok(server.includes("payment?.metadata?.type||'')!=='public_order'"),'global YooKassa public-order type binding missing')
