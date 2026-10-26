@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/published/:slug", "destination": "/index.html" },
+    { "source": "/miniapp/:slug", "destination": "/index.html" }
+  ]
+}
