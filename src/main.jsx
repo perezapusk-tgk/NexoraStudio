@@ -104,7 +104,7 @@ function PublicSite({data,slug}){
   const serviceItems=serviceBlock.items||[];
   const galleryItems=(gallery.items||[]).map((name,i)=>({name,image:gallery.images?.[i]}));
   const productSection=siteType==='shop'||siteType==='cafe';
-  const sectionStyle=b=>({textAlign:b?.align||'left',paddingBlock:b?.spacing==='compact'?'56px':b?.spacing==='spacious'?'112px':undefined,background:b?.backgroundColor||undefined,color:b?.textColor||undefined,borderRadius:b?.radius?String(b.radius)+'px':undefined});
+  const sectionStyle=b=>({textAlign:b?.align||'left',paddingBlock:b?.spacing==='compact'?'56px':b?.spacing==='spacious'?'112px':undefined,background:b?.backgroundColor||undefined,color:b?.textColor||undefined,borderRadius:b?.radius?String(b.radius)+'px':undefined,'--editor-heading-size':b?.headingSize==='small'?'34px':b?.headingSize==='medium'?'46px':b?.headingSize==='xl'?'76px':'58px','--editor-font-style':b?.fontPreset==='editorial'?'Georgia,serif':b?.fontPreset==='bold'?'Arial Black,Arial,sans-serif':b?.fontPreset==='modern'?'Inter,Arial,sans-serif':undefined,'--editor-button-style':b?.buttonStyle||'solid'});
   const heroStyle={...(heroImage?{backgroundImage:'linear-gradient(90deg,rgba(8,8,8,.78),rgba(8,8,8,.34) 62%,rgba(8,8,8,.08)),url("'+heroImage+'")'}:{}),textAlign:hero.align||'left',minHeight:hero.heroHeight==='compact'?'560px':hero.heroHeight==='full'?'calc(100vh - 76px)':'680px'};
   return <div className={`public-commercial site-template-${siteType}`} style={{'--public-accent':theme.accent,'--public-bg':theme.background,'--public-text':theme.text,'--public-radius':theme.radius,'--public-font':theme.font}}>
     <header className="site-header">
