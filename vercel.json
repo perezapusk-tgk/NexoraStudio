@@ -1,10 +1,6 @@
 {
   "rewrites": [
     {
-      "source": "/api/projects/:path*",
-      "destination": "/api/project-router?__path=projects/:path*"
-    },
-    {
       "source": "/published/:slug",
       "destination": "/index.html"
     },
