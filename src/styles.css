@@ -789,3 +789,12 @@ button,.btn,.primary{min-height:40px}
 .editor-live-preview .site-service-card{border-radius:var(--editor-card-radius,var(--public-radius))}
 .editor-live-preview .site-service-card button{font-weight:700}
 
+
+
+/* Commercial editor: clear visual hierarchy */
+.editor-live-preview .site-hero .editor-configurable-cta,
+.editor-live-preview .site-section .editor-configurable-cta{border-radius:var(--public-radius);font-weight:700}
+.editor-live-preview .site-hero .editor-configurable-cta{padding:14px 22px}
+.editor-live-preview .site-service-card{overflow:hidden}
+.editor-live-preview .site-service-card img{object-fit:cover;object-position:var(--editor-image-position,center)}
+.editor-live-preview .site-gallery img{object-fit:cover;object-position:var(--editor-image-position,center)}
