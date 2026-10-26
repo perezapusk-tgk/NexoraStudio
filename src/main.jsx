@@ -376,6 +376,7 @@ function SectionInspector({block,index,patch,onMove,onDelete}){
         <label>Заголовок<input value={block.title||''} onChange={e=>set('title',e.target.value)}/></label>
         <label>Текст<textarea rows="6" value={block.text||''} onChange={e=>set('text',e.target.value)}/></label>
       </>}
+      {block.type!=='hero'&&<label>Изображение секции<input value={block.image||''} onChange={e=>set('image',e.target.value)} placeholder="https://..."/></label>}
       {block.type==='cta'&&<>
         <label>Заголовок<input value={block.title||''} onChange={e=>set('title',e.target.value)}/></label>
         <label>Текст<textarea rows="5" value={block.text||''} onChange={e=>set('text',e.target.value)}/></label>
