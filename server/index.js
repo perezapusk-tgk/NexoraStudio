@@ -894,6 +894,7 @@ app.post('/api/projects', async (req, res) => {
   const name = String(req.body?.name || '').trim()
   const projectType = String(req.body?.projectType || 'website').trim()
   const templateId = String(req.body?.templateId || '').trim()
+  const clientId = String(req.body?.clientId || '').trim()
   if (!name) return res.status(400).json({ error: 'Название проекта обязательно' })
   if (name.length>160) return res.status(400).json({ error: 'Название проекта слишком длинное' })
   if (!['website','miniapp','site_miniapp'].includes(projectType)) return res.status(400).json({ error: 'Недопустимый тип проекта' })
@@ -908,7 +909,7 @@ app.post('/api/projects', async (req, res) => {
   let slug=slugBase
   let suffix=2
   while(memoryProjects.some(x=>x.slug.toLowerCase()===slug.toLowerCase())) slug=slugBase+'-'+suffix++
-  const project={id:crypto.randomUUID(),studio_id:req.user.studio_id,name,slug,project_type:projectType,status:'draft',domain:null,settings:{miniApp:{enabled:projectType.includes('miniapp')}}}
+  const project={id:crypto.randomUUID(),studio_id:req.user.studio_id,name,slug,project_type:projectType,status:'draft',domain:null,settings:{miniApp:{enabled:projectType.includes('miniapp')},...(clientId?{clientId}:{} )}}
   memoryProjects.unshift(project)
   memoryPages.set(project.id,[{id:crypto.randomUUID(),title:'Главная',slug:'home',published:false,content:{blocks:template.blocks}}])
   memoryCatalog.set(project.id,template.catalog.map(item=>({id:crypto.randomUUID(),project_id:project.id,...item})))
@@ -926,7 +927,7 @@ app.post('/api/projects', async (req, res) => {
     let suffix = 2
     while ((await client.query('select 1 from projects where lower(slug)=lower($1)',[slug])).rows[0]) slug = slugBase + '-' + suffix++
     const template=templateDefinition(templateId)
-    const { rows } = await client.query('insert into projects (studio_id,name,slug,project_type,status,settings) values ($1,$2,$3,$4,$5,$6) returning *',[req.user.studio_id,name,slug,projectType,'draft',JSON.stringify({miniApp:{enabled:projectType.includes('miniapp')}})])
+    const { rows } = await client.query('insert into projects (studio_id,name,slug,project_type,status,settings) values ($1,$2,$3,$4,$5,$6) returning *',[req.user.studio_id,name,slug,projectType,'draft',JSON.stringify({miniApp:{enabled:projectType.includes('miniapp')},...(clientId?{clientId}:{} )})])
     await client.query('insert into pages(project_id,title,slug,content) values($1,$2,$3,$4)',[rows[0].id,'Главная','home',JSON.stringify({blocks:template.blocks})])
     for(const item of template.catalog) await client.query('insert into catalog_items(project_id,name,description,price,currency,active) values($1,$2,$3,$4,$5,$6)',[rows[0].id,item.name,item.description,item.price,item.currency,true])
     await client.query('commit')
@@ -1802,14 +1803,14 @@ app.get('/api/clients', async (req, res) => {
       const leads=memoryLeads.filter(x=>x.studio_id===client.studio_id&&((phone&&x.phone===phone)||(email&&x.email===email)))
       const bookings=memoryBookings.filter(x=>x.studio_id===client.studio_id&&(x.client_id===client.id||(phone&&x.customer_phone===phone)))
       const orders=memoryOrders.filter(x=>x.studio_id===client.studio_id&&x.client_id===client.id)
-      const projects=new Set([...orders.map(x=>x.project_id),...bookings.map(x=>x.project_id)].filter(Boolean))
+      const linkedProjects=memoryProjects.filter(p=>p.studio_id===client.studio_id&&String(p.settings?.clientId||'')===String(client.id)); const projects=new Set([...linkedProjects.map(x=>x.id),...orders.map(x=>x.project_id),...bookings.map(x=>x.project_id)].filter(Boolean))
       const dates=[...leads,...bookings,...orders].map(x=>new Date(x.created_at||x.starts_at||0).getTime()).filter(Boolean)
       return {...client,project_count:projects.size,contact_count:leads.length+bookings.length+orders.length,last_activity:dates.length?new Date(Math.max(...dates)).toISOString():client.created_at}
     })
     return res.json({clients:rows})
   }
   const sql="select c.id,c.name,c.email,c.phone,c.created_at,"+
-    "(select count(distinct x.project_id)::int from (select l.project_id from leads l join projects lp on lp.id=l.project_id where lp.studio_id=c.studio_id and (l.phone=c.phone or l.email=c.email) union all select b.project_id from bookings b join projects bp on bp.id=b.project_id where bp.studio_id=c.studio_id and (b.client_id::text=c.id::text or b.customer_phone=c.phone) union all select o.project_id from orders o join projects op on op.id=o.project_id where op.studio_id=c.studio_id and o.client_id::text=c.id::text) x) as project_count,"+
+    "(select count(distinct x.project_id)::int from (select l.project_id from leads l join projects lp on lp.id=l.project_id where lp.studio_id=c.studio_id and (l.phone=c.phone or l.email=c.email) union all select b.project_id from bookings b join projects bp on bp.id=b.project_id where bp.studio_id=c.studio_id and (b.client_id::text=c.id::text or b.customer_phone=c.phone) union all select o.project_id from orders o join projects op on op.id=o.project_id where op.studio_id=c.studio_id and o.client_id::text=c.id::text union all select p.id as project_id from projects p where p.studio_id=c.studio_id and p.settings->>'clientId'=c.id::text) x) as project_count,"+
     "((select count(*) from leads l join projects lp on lp.id=l.project_id where lp.studio_id=c.studio_id and (l.phone=c.phone or l.email=c.email))+(select count(*) from bookings b join projects bp on bp.id=b.project_id where bp.studio_id=c.studio_id and (b.client_id::text=c.id::text or b.customer_phone=c.phone))+(select count(*) from orders o join projects op on op.id=o.project_id where op.studio_id=c.studio_id and o.client_id::text=c.id::text))::int as contact_count,"+
     "greatest(c.created_at,(select max(o.created_at) from orders o join projects op on op.id=o.project_id where op.studio_id=c.studio_id and o.client_id::text=c.id::text),(select max(p.created_at) from payments p join orders po on po.id=p.order_id join projects pp on pp.id=po.project_id where pp.studio_id=c.studio_id and p.client_id::text=c.id::text),(select max(b.starts_at) from bookings b join projects bp on bp.id=b.project_id where bp.studio_id=c.studio_id and (b.client_id::text=c.id::text or b.customer_phone=c.phone))) as last_activity "+
     "from clients c where c.studio_id::text=$1::text order by last_activity desc nulls last limit 500"
