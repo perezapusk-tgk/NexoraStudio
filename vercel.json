@@ -1,11 +1,23 @@
 {
   "rewrites": [
     {
-      "source": "/published/:slug",
+      "source": "/published/:slug*",
       "destination": "/index.html"
     },
     {
-      "source": "/miniapp/:slug",
+      "source": "/miniapp/:slug*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/catalog/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/projects/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/dashboard/:path*",
       "destination": "/index.html"
     },
     {
