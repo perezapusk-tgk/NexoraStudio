@@ -365,6 +365,7 @@ function SectionInspector({block,index,patch,onMove,onDelete}){
         <label>Подзаголовок<textarea rows="3" value={block.subheadline||''} onChange={e=>set('subheadline',e.target.value)}/></label>
         <label>Текст кнопки<input value={block.cta||''} onChange={e=>set('cta',e.target.value)}/></label>
         <label>Фоновое изображение<input value={block.image||''} onChange={e=>set('image',e.target.value)} placeholder="https://..."/></label>
+        <label>Высота Hero<select value={block.heroHeight||'large'} onChange={e=>set('heroHeight',e.target.value)}><option value="compact">Компактный</option><option value="large">Большой</option><option value="full">На экран</option></select></label>
       </>}
       {['services','gallery','testimonials','faq'].includes(block.type)&&<>
         <label>Заголовок<input value={block.title||''} onChange={e=>set('title',e.target.value)}/></label>
@@ -380,6 +381,8 @@ function SectionInspector({block,index,patch,onMove,onDelete}){
         <label>Текст<textarea rows="5" value={block.text||''} onChange={e=>set('text',e.target.value)}/></label>
         <label>Кнопка<input value={block.button||''} onChange={e=>set('button',e.target.value)}/></label>
       </>}
+      <label>Стиль текста<select value={block.align||'left'} onChange={e=>set('align',e.target.value)}><option value="left">Слева</option><option value="center">По центру</option><option value="right">Справа</option></select></label>
+      <label>Внутренний отступ<select value={block.spacing||'normal'} onChange={e=>set('spacing',e.target.value)}><option value="compact">Компактный</option><option value="normal">Обычный</option><option value="spacious">Большой</option></select></label>
     </div>
     <div className="editor-inspector-actions">
       <button className="filter" onClick={()=>onMove(-1)} disabled={index===0}>↑ Выше</button>
