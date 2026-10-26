@@ -210,9 +210,9 @@ function templateDefinition(id=''){
 function slugify(value){const translit={'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'c','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'}; const normalized=String(value||'project').toLowerCase().trim().split('').map(ch=>translit[ch]??ch).join(''); return normalized.replace(/[^a-z0-9]+/gi,'-').replace(/^-+|-+$/g,'')||'project'}
 function demoProjects(){return [
   {id:'demo-barber',studio_id:demoStudio.id,name:'Barber House',slug:'barber-house',project_type:'website',status:'published',domain:null},
-  {id:'demo-beauty',studio_id:demoStudio.id,name:'Nordic Beauty',slug:'nordic-beauty',project_type:'website',status:'draft',domain:null},
+  {id:'demo-beauty',studio_id:demoStudio.id,name:'Nordic Beauty',slug:'nordic-beauty',project_type:'website',status:'published',domain:null},
   {id:'demo-fitness',studio_id:demoStudio.id,name:'Urban Fitness',slug:'urban-fitness',project_type:'miniapp',status:'published',domain:null},
-  {id:'demo-cafe',studio_id:demoStudio.id,name:'Mokka Coffee',slug:'mokka-coffee',project_type:'website',status:'draft',domain:null}
+  {id:'demo-cafe',studio_id:demoStudio.id,name:'Mokka Coffee',slug:'mokka-coffee',project_type:'website',status:'published',domain:null}
 ]}
 function demoCatalog(projectId){return TEMPLATE_DEFINITIONS.services.catalog.map((x,i)=>({id:'demo-cat-'+projectId+'-'+i,project_id:projectId,...x,active:true}))}
 function demoLeads(){return [{id:'lead-1',project_id:'demo-barber',project_slug:'barber-house',name:'Иван',phone:'+7 900 000-00-01',email:'ivan@example.com',message:'Хочу записаться',status:'new',created_at:new Date().toISOString()}]}
