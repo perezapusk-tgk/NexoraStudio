@@ -37,7 +37,7 @@ app.use((req,res,next)=>{
 })
 // Render terminates the proxy layer; trust the first proxy so Express resolves req.ip safely.
 app.set('trust proxy', 1)
-app.use(cors({origin:(origin,callback)=>{if(!origin)return callback(null,true);try{const url=new URL(origin);const host=url.hostname.toLowerCase();const appHost=new URL(billingAppUrl()).hostname.toLowerCase();if(host===appHost||host==='localhost'||host==='127.0.0.1'||host.endsWith('.nexora.site'))return callback(null,true)}catch{}return callback(new Error('Origin not allowed'))},credentials:true}))
+app.use(cors({origin:(origin,callback)=>{if(!origin)return callback(null,true);try{const url=new URL(origin);const host=url.hostname.toLowerCase();const appHost=new URL(billingAppUrl()).hostname.toLowerCase();if(host===appHost||host==='localhost'||host==='127.0.0.1'||host.endsWith('.nexora.site')||host.endsWith('.vercel.app'))return callback(null,true)}catch{}return callback(new Error('Origin not allowed'))},credentials:true}))
 app.use(express.json({limit:'1mb',verify:(req,_res,buf)=>{req.rawBody=Buffer.from(buf)}}))
 
 const distDir = path.resolve(process.cwd(), 'dist')
@@ -2279,7 +2279,7 @@ async function runStartupMigrations(){
   }finally{client.release()}
 }
 
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   if (process.env.NODE_ENV === 'production' && !process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL is required in production')
   }
@@ -2301,3 +2301,5 @@ if (process.env.NODE_ENV !== 'test') {
   process.once('SIGTERM',()=>shutdown('SIGTERM'))
   process.once('SIGINT',()=>shutdown('SIGINT'))
 }
+
+export default app
