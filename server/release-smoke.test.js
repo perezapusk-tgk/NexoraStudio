@@ -53,6 +53,7 @@ for(const contract of requiredFrontendContracts) {
   assert.ok(alternatives.some(value=>api.includes(value) || frontend.includes(value)),`missing frontend contract: ${contract}`)
 }
 assert.ok(server.includes("app.get(['/published/:slug','/miniapp/:slug']"),'published/Mini App SPA fallback missing')
+assert.ok(fs.existsSync(path.join(root,'api','public','[...path].js')),'Vercel public API catch-all route missing')
 assert.ok(server.includes("app.post('/api/public/order/:id/yookassa-webhook'"),'YooKassa webhook endpoint missing')
 assert.ok(server.includes("app.post('/api/public/yookassa/webhook'"),'global YooKassa webhook endpoint missing')
 assert.ok(server.includes("payment?.metadata?.type||'')!=='public_order'"),'global YooKassa public-order type binding missing')
