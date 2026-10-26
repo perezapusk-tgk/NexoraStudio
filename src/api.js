@@ -110,3 +110,5 @@ export const api = {
   templates: () => request('/templates'),
   adminOverview: () => request('/admin/overview'),
 }
+
+// API is served same-origin on Vercel in production.
