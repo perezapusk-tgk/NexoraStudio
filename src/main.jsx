@@ -72,7 +72,9 @@ function PublicSite({data,slug}){
   const project=data.project,pages=data.pages||[],page=pages[0],blocks=page?.content?.blocks||[],catalog=(data.catalog||[]).filter(x=>x.active!==false);
   const theme={accent:'#111827',background:'#fff',text:'#111827',font:'Inter',radius:'18px',...(page?.content?.theme||{})};
   const [modal,setModal]=useState(null),[sent,setSent]=useState(null),[cart,setCart]=useState([]),[cartOpen,setCartOpen]=useState(false),[menuOpen,setMenuOpen]=useState(false),[activeCategory,setActiveCategory]=useState('Все'),[selected,setSelected]=useState(null),[form,setForm]=useState({name:'',phone:'',email:''}),[sending,setSending]=useState(false);
-  const siteType=project?.slug?.includes('barber')?'barber':project?.slug?.includes('beauty')?'beauty':project?.slug?.includes('fitness')?'fitness':project?.slug?.includes('cafe')?'cafe':project?.slug?.includes('shop')?'shop':'services';
+  const storedSiteType=page?.content?.siteType||page?.content?.templateId||'';
+  const slugSiteType=project?.slug?.includes('barber')?'barber':project?.slug?.includes('beauty')?'beauty':project?.slug?.includes('fitness')?'fitness':project?.slug?.includes('cafe')?'cafe':project?.slug?.includes('shop')?'shop':'services';
+  const siteType=['barber','beauty','fitness','cafe','shop','services'].includes(storedSiteType)?storedSiteType:slugSiteType;
   const labels={
     barber:{eyebrow:'BARBER HOUSE',title:'Стиль, который говорит за вас.',sub:'Премиальный барбершоп с характером. Стрижки, борода и уход — в одном месте.',cta:'Записаться',nav:['Услуги','Работы','Отзывы','Контакты']},
     beauty:{eyebrow:'NORDIC BEAUTY',title:'Красота без лишнего.',sub:'Эстетичное пространство для ухода, восстановления и вашего нового образа.',cta:'Записаться',nav:['Услуги','Работы','О нас','Контакты']},
