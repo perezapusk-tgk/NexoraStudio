@@ -55,7 +55,7 @@ class PublicErrorBoundary extends React.Component {
 }
 function PublicApp({mode,slug}){
   const [data,setData]=useState(null),[error,setError]=useState(''),[retry,setRetry]=useState(0)
-  useEffect(()=>{let alive=true;setData(null);setError('');api.publicProject(slug).then(v=>{if(!alive)return;const safe={project:v?.project||{name:'Nexora'},pages:Array.isArray(v?.pages)?v.pages:[],catalog:Array.isArray(v?.catalog)?v.catalog:[]};setData(safe)}).catch(e=>alive&&setError(e?.message||'Проект не найден'));return()=>{alive=false}},[slug,retry])
+  useEffect(()=>{let alive=true;setData(null);setError('');const preview=new URLSearchParams(window.location.search).get('preview')==='1';api.publicProject(slug,preview).then(v=>{if(!alive)return;const safe={project:v?.project||{name:'Nexora'},pages:Array.isArray(v?.pages)?v.pages:[],catalog:Array.isArray(v?.catalog)?v.catalog:[]};setData(safe)}).catch(e=>alive&&setError(e?.message||'Проект не найден'));return()=>{alive=false}},[slug,retry])
   if(error) return <div className="public-error"><div className="public-error-icon"><Globe2 size={28}/></div><b>Не удалось открыть проект</b><span>Проект временно недоступен. Попробуйте повторить загрузку.</span><button className="primary" onClick={()=>setRetry(v=>v+1)}>Повторить</button><a href="/">На главную Nexora</a></div>
   if(!data) return <div className="public-loading"><div className="public-loading-card"><div className="brand-mark">N</div><b>Загрузка проекта…</b><span>Подготавливаем {mode==='miniapp'?'Mini App':'сайт'}</span></div></div>
   return mode==='miniapp'?<PublicMiniApp data={data} slug={slug}/>:<PublicSite data={data} slug={slug}/>
@@ -306,7 +306,7 @@ function ProjectTypeCard({project,onOpenProject,surface}) {
       </div>
       <div className="project-type-actions">
         <button className="filter" onClick={()=>onOpenProject?.(project)}>Открыть</button>
-        {url&&<button className="filter" onClick={()=>window.open(url,'_blank','noopener,noreferrer')}>Предпросмотр <ExternalLink size={14}/></button>}
+        {url&&<button className="filter" onClick={()=>window.open(url+(project.status==='Опубликован'?'':'?preview=1'),'_blank','noopener,noreferrer')}>Предпросмотр <ExternalLink size={14}/></button>}
       </div>
     </div>
   </article>
@@ -397,7 +397,7 @@ function ProjectWorkspace({project,data,view,setView,onProjectUpdated,onBack,onR
     try{const r=await api.configureTelegram(current.id,{token:telegramToken.trim()});setTelegram(r);setNotice(r.botUrl?'Telegram подключён: '+r.botUrl:'Telegram подключён')}
     catch(e){setError(e.message||'Не удалось подключить Telegram')}finally{setBusy('')}
   }
-  const publicUrl=location.origin+'/'+(current.project_type==='miniapp'?'miniapp':'published')+'/'+encodeURIComponent(current.slug||'')
+  const publicUrl=location.origin+'/'+(current.project_type==='miniapp'?'miniapp':'published')+'/'+encodeURIComponent(current.slug||'')+(current.status==='published'?'':'?preview=1')
   const tabs=[['overview','Обзор'],['pages','Страницы'],['catalog','Каталог'],['telegram','Telegram'],['settings','Настройки']]
   return <div className="project-workspace">
     <div className="page-head">
