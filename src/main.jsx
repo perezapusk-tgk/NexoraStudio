@@ -104,7 +104,7 @@ function PublicSite({data,slug}){
   const serviceItems=serviceBlock.items||[];
   const galleryItems=(gallery.items||[]).map((name,i)=>({name,image:gallery.images?.[i]}));
   const productSection=siteType==='shop'||siteType==='cafe';
-  const sectionStyle=b=>({textAlign:b?.align||'left',paddingBlock:b?.spacing==='compact'?'56px':b?.spacing==='spacious'?'112px':undefined});
+  const sectionStyle=b=>({textAlign:b?.align||'left',paddingBlock:b?.spacing==='compact'?'56px':b?.spacing==='spacious'?'112px':undefined,background:b?.backgroundColor||undefined,color:b?.textColor||undefined,borderRadius:b?.radius?String(b.radius)+'px':undefined});
   const heroStyle={...(heroImage?{backgroundImage:'linear-gradient(90deg,rgba(8,8,8,.78),rgba(8,8,8,.34) 62%,rgba(8,8,8,.08)),url("'+heroImage+'")'}:{}),textAlign:hero.align||'left',minHeight:hero.heroHeight==='compact'?'560px':hero.heroHeight==='full'?'calc(100vh - 76px)':'680px'};
   return <div className={`public-commercial site-template-${siteType}`} style={{'--public-accent':theme.accent,'--public-bg':theme.background,'--public-text':theme.text,'--public-radius':theme.radius,'--public-font':theme.font}}>
     <header className="site-header">
@@ -384,7 +384,9 @@ function SectionInspector({block,index,patch,onMove,onDelete}){
         <label>Текст<textarea rows="5" value={block.text||''} onChange={e=>set('text',e.target.value)}/></label>
         <label>Кнопка<input value={block.button||''} onChange={e=>set('button',e.target.value)}/></label>
       </>}
-      <label>Стиль текста<select value={block.align||'left'} onChange={e=>set('align',e.target.value)}><option value="left">Слева</option><option value="center">По центру</option><option value="right">Справа</option></select></label>
+            <label>Стиль текста<select value={block.align||'left'} onChange={e=>set('align',e.target.value)}><option value="left">Слева</option><option value="center">По центру</option><option value="right">Справа</option></select></label>
+      <div className="editor-color-row"><label>Фон<input type="color" value={block.backgroundColor||'#ffffff'} onChange={e=>set('backgroundColor',e.target.value)}/></label><label>Текст<input type="color" value={block.textColor||'#111827'} onChange={e=>set('textColor',e.target.value)}/></label></div>
+      <label>Скругление<select value={block.radius||18} onChange={e=>set('radius',Number(e.target.value)||0)}><option value="0">Без скругления</option><option value="12">12 px</option><option value="18">18 px</option><option value="28">28 px</option></select></label>
       <label>Внутренний отступ<select value={block.spacing||'normal'} onChange={e=>set('spacing',e.target.value)}><option value="compact">Компактный</option><option value="normal">Обычный</option><option value="spacious">Большой</option></select></label>
     </div>
     <div className="editor-inspector-actions">
