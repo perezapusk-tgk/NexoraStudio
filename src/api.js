@@ -79,7 +79,7 @@ export const api = {
   connectDomain: (id,domain) => request('/projects/' + id + '/domain/connect',{method:'POST',body:JSON.stringify({domain})}),
   disconnectDomain: (id) => request('/projects/' + id + '/domain/disconnect',{method:'POST'}),
   configureTelegram: (id,payload={}) => request('/projects/' + id + '/telegram/configure',{method:'POST',body:JSON.stringify(payload)}),
-  publicProject: (slug) => request('/public/' + slug),
+  publicProject: (slug, preview=false) => request('/public/' + slug + (preview ? '?preview=1' : '')),
   publicLead: (slug,payload) => request('/public/' + slug + '/leads',{method:'POST',body:JSON.stringify(payload)}),
   publicBooking: (slug,payload) => request('/public/' + slug + '/bookings',{method:'POST',body:JSON.stringify(payload)}),
   publicCheckout: (slug,payload) => request('/public/' + slug + '/checkout',{method:'POST',body:JSON.stringify(payload)}),
