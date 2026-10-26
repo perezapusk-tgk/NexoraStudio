@@ -1,6 +1,16 @@
 {
   "rewrites": [
-    { "source": "/published/:slug", "destination": "/index.html" },
-    { "source": "/miniapp/:slug", "destination": "/index.html" }
+    {
+      "source": "/api/projects/:path*",
+      "destination": "/api/project-router?__path=projects/:path*"
+    },
+    {
+      "source": "/published/:slug",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/miniapp/:slug",
+      "destination": "/index.html"
+    }
   ]
 }
