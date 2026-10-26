@@ -137,8 +137,9 @@ assert.ok(server.includes('code:\'PLAN_LIMIT\''),'plan limit error contract miss
 assert.ok(server.includes("const allowedEventTypes=new Set(['page_view'])"),'public analytics event allowlist missing')
 assert.ok(server.includes("status:'pending'"),'public checkout must create pending orders')
 assert.ok(server.includes("upper(coalesce(currency,'RUB'))='RUB'"),'public catalog must expose only checkout-compatible RUB items')
-assert.ok(server.includes("upper(coalesce(currency,'RUB')) <> 'RUB'"),'legacy non-RUB catalog migration guard missing')
-assert.ok(fs.existsSync(path.join(root,'server','migrations','012_catalog_currency_guard.sql')),'catalog currency guard migration missing')
+const catalogCurrencyMigration=fs.existsSync(path.join(root,'server','migrations','012_catalog_currency_guard.sql'))
+  ? fs.readFileSync(path.join(root,'server','migrations','012_catalog_currency_guard.sql'),'utf8') : ''
+assert.ok(catalogCurrencyMigration.includes("upper(coalesce(currency,'RUB')) <> 'RUB'"),'legacy non-RUB catalog migration guard missing')
 assert.ok(server.includes("if(status==='refunded') return res.status(409).json({error:'Возврат создаётся только через существующий оплаченный платёж'})"),'refunds must use an existing payment transition')
 assert.ok(server.includes("if(q.rows[0].order_id && (status==='paid' || status==='refunded'))"),'non-final payment updates must not rewrite order status')
 assert.ok(server.includes("['cancelled','refunded'].includes(String(oq.rows[0].status||''))"),'closed orders must reject new paid payments')
