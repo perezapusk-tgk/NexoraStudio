@@ -147,7 +147,7 @@ app.use(express.static(distDir, {
   }
 }))
 
-const PLAN_CONFIG = { free:{name:'Free',price:0,rubPrice:0,projectLimit:1,teamLimit:1,clientLimit:100}, starter:{name:'Starter',price:9,rubPrice:900,projectLimit:10,teamLimit:3,clientLimit:1000}, pro:{name:'Pro',price:19,rubPrice:1900,projectLimit:50,teamLimit:5,clientLimit:10000}, agency:{name:'Agency',price:39,rubPrice:3900,projectLimit:200,teamLimit:15,clientLimit:50000} }
+const PLAN_CONFIG = { free:{name:'Free',price:0,rubPrice:0,projectLimit:1,teamLimit:1,clientLimit:100}, starter:{name:'Starter',price:9,rubPrice:900,projectLimit:10,teamLimit:3,clientLimit:1000}, pro:{name:'Pro',price:19,rubPrice:1900,projectLimit:50,teamLimit:5,clientLimit:10000}, agency:{name:'Agency',price:39,rubPrice:3900,projectLimit:200,teamLimit:15,clientLimit:50000}, owner:{name:'Без ограничений',price:0,rubPrice:0,projectLimit:2147483647,teamLimit:2147483647,clientLimit:2147483647} }
 const planConfig=plan=>PLAN_CONFIG[String(plan||'starter').toLowerCase()]||PLAN_CONFIG.starter
 async function clientLimitState(studioId){
   const studioIdText=String(studioId||'')
@@ -2254,7 +2254,7 @@ async function bootstrapOwnerAccount(){
     }
     let studio=(await client.query("select id,name,owner_name,plan,project_limit from studios where name='Nexora Owner' order by created_at asc limit 1")).rows[0]
     if(!studio){
-      studio=(await client.query("insert into studios(name,owner_name,plan,project_limit) values($1,$2,'pro',200) returning id,name,owner_name,plan,project_limit",['Nexora Owner',name])).rows[0]
+      studio=(await client.query("insert into studios(name,owner_name,plan,project_limit) values($1,$2,'owner',2147483647) returning id,name,owner_name,plan,project_limit",['Nexora Owner',name])).rows[0]
     }
     await client.query("insert into users(studio_id,name,email,role,password_hash) values($1,$2,$3,'superadmin',$4)",[studio.id,name,email,hashPassword(password)])
     await client.query('commit')
