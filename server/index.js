@@ -1056,7 +1056,7 @@ app.get('/api/public/:slug', async (req,res) => {
       published: true,
       content: {
         blocks: template.blocks,
-        theme: { accent:'#111827', background:'#ffffff', text:'#111827', font:'Inter', radius:'14px' }
+        theme: template.theme || { accent:'#111827', background:'#ffffff', text:'#111827', font:'Inter', radius:'14px' }
       }
     }
     const catalog = (template.catalog || []).map((item,i)=>({
