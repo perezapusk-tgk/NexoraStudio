@@ -838,3 +838,5 @@ button,.btn,.primary{min-height:40px}
   .editor-live-preview .site-gallery-grid.composition-split,
   .editor-live-preview .site-review-grid.composition-featured{grid-template-columns:1fr}
 }
+
+.editor-header-settings{margin:12px 0 16px;padding:16px}.editor-header-settings .card-head{margin-bottom:12px}.editor-header-settings .card-head span{display:block;font-size:11px;opacity:.58;margin-top:4px}.editor-header-settings input[type=checkbox]{width:18px;height:18px;margin-top:7px}.editor-header-settings .catalog-form-grid{align-items:end}
