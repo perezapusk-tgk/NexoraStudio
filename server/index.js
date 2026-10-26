@@ -1051,8 +1051,15 @@ app.delete('/api/projects/:id/pages/:pageId',async(req,res)=>{
 
 app.get('/api/public/:slug', async (req,res) => {
   const slug = String(req.params.slug || '').trim()
+  const preview = String(req.query?.preview || '') === '1'
+  let previewStudioId = null
+  if (preview) {
+    let authorized = false
+    await requireAuth(req,res,()=>{ authorized = true; previewStudioId = req.user?.studio_id })
+    if (!authorized) return
+  }
   if (!pool) {
-    const project = memoryProjects.find(p => p.slug === slug && p.status === 'published')
+    const project = memoryProjects.find(p => p.slug === slug && (p.status === 'published' || (preview && p.studio_id === previewStudioId)))
     if (!project) return res.status(404).json({error:'Публичный проект не найден'})
     const publicProject = {
       id: project.id,
@@ -1082,7 +1089,9 @@ app.get('/api/public/:slug', async (req,res) => {
     }))
     return res.json({project:publicProject,pages:(memoryPages.get(project.id)||[]).filter(x=>x.published),catalog:publicCatalog})
   }
-  const q = await pool.query('select * from projects where slug=$1 and status=\'published\' limit 1',[slug])
+  const q = preview
+    ? await pool.query('select * from projects where slug=$1 and studio_id::text=$2::text limit 1',[slug,previewStudioId])
+    : await pool.query("select * from projects where slug=$1 and status='published' limit 1",[slug])
   if (!q.rows[0]) return res.status(404).json({error:'Публичный проект не найден'})
   const project = q.rows[0]
   // Public API must never expose the full project row/settings because those fields
@@ -1103,7 +1112,9 @@ app.get('/api/public/:slug', async (req,res) => {
       } : undefined
     }
   }
-  const pages = await pool.query('select id,title,slug,content,published from pages where project_id::text=$1::text and published=true order by created_at',[project.id])
+  const pages = preview
+    ? await pool.query('select id,title,slug,content,published from pages where project_id::text=$1::text order by created_at',[project.id])
+    : await pool.query('select id,title,slug,content,published from pages where project_id::text=$1::text and published=true order by created_at',[project.id])
   const catalog = await pool.query('select id,name,description,price,currency,image_url,active from catalog_items where project_id::text=$1::text and active=true order by created_at desc',[project.id])
   res.json({project:publicProject,pages:pages.rows,catalog:catalog.rows})
 })
