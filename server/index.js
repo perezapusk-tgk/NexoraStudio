@@ -1077,7 +1077,7 @@ app.get('/api/public/:slug', async (req,res) => {
         } : undefined
       }
     }
-    const publicCatalog = (memoryCatalog.get(project.id)||[]).filter(item => item.active !== false).map(item => ({
+    const publicCatalog = (memoryCatalog.get(project.id)||[]).filter(item => item.active !== false && String(item.currency || 'RUB').toUpperCase() === 'RUB').map(item => ({
       id: item.id,
       project_id: item.project_id,
       name: item.name,
@@ -1115,7 +1115,7 @@ app.get('/api/public/:slug', async (req,res) => {
   const pages = preview
     ? await pool.query('select id,title,slug,content,published from pages where project_id::text=$1::text order by created_at',[project.id])
     : await pool.query('select id,title,slug,content,published from pages where project_id::text=$1::text and published=true order by created_at',[project.id])
-  const catalog = await pool.query('select id,name,description,price,currency,image_url,active from catalog_items where project_id::text=$1::text and active=true order by created_at desc',[project.id])
+  const catalog = await pool.query("select id,name,description,price,currency,image_url,active from catalog_items where project_id::text=$1::text and active=true and upper(coalesce(currency,'RUB'))='RUB' order by created_at desc",[project.id])
   res.json({project:publicProject,pages:pages.rows,catalog:catalog.rows})
 })
 
