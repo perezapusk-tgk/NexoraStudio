@@ -779,3 +779,7 @@ button,.btn,.primary{min-height:40px}
 .editor-preview-frame.editor-preview-mobile .public-commercial{width:390px;max-width:390px;min-height:100%;border-radius:22px;overflow:hidden;box-shadow:0 12px 36px rgba(0,0,0,.12)}
 
 .editor-color-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.editor-color-row label{display:flex;flex-direction:column;gap:5px}.editor-color-row input[type=color]{width:100%;height:34px;padding:2px;cursor:pointer}
+
+.editor-live-preview .site-section h2{font-size:var(--editor-heading-size,inherit);font-family:var(--editor-font-style,inherit)}
+.editor-live-preview .site-section{overflow:hidden}
+.editor-live-preview .site-section .site-cta,.editor-live-preview .site-section button.site-cta{border-radius:var(--public-radius);transition:transform .2s ease,box-shadow .2s ease}.editor-live-preview .site-section button.site-cta:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(0,0,0,.12)}
