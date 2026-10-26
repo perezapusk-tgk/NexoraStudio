@@ -16,28 +16,35 @@ async function request(path, options = {}) {
     response = await fetch(API_BASE + path, { ...options, headers, signal: controller.signal })
   } catch (error) {
     if(error?.name==='AbortError') throw new Error('Сервер не отвечает. Попробуйте обновить страницу.')
-    throw error
+    throw new Error('Не удалось связаться с сервером. Проверьте интернет-соединение и попробуйте ещё раз.')
   } finally {
     clearTimeout(timeout)
   }
   if (!response.ok) {
     if(response.status===401) setAuthToken('')
     let message=''
+    let data=null
     try{
-      const data=await response.json()
+      const text=await response.text()
+      try{data=text?JSON.parse(text):null}catch{}
       message=data?.error || data?.message || (data?.code ? String(data.code) : '')
-      if(!message) message=JSON.stringify(data)
-    }catch{
-      message=await response.text()
-    }
-    throw new Error(message || ('Ошибка запроса ('+response.status+')'))
+      if(!message && text) message=text.replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').trim().slice(0,300)
+    }catch{}
+    const error=new Error(message || ('Ошибка запроса ('+response.status+')'))
+    error.status=response.status
+    error.data=data
+    throw error
   }
-  return response.json()
+  const text=await response.text()
+  if(!text) return {}
+  try{return JSON.parse(text)}catch{
+    throw new Error('Сервер вернул некорректный ответ.')
+  }
 }
 
 export const api = {
-  authRegister: async (payload) => { const r=await request('/auth/register',{method:'POST',body:JSON.stringify(payload)}); setAuthToken(r.token); return r },
-  authLogin: async (payload) => { const r=await request('/auth/login',{method:'POST',body:JSON.stringify(payload)}); setAuthToken(r.token); return r },
+  authRegister: async (payload) => { const r=await request('/auth/register',{method:'POST',body:JSON.stringify(payload)}); if(!r?.token) throw new Error('Аккаунт создан, но сервер не вернул токен авторизации.'); setAuthToken(r.token); return r },
+  authLogin: async (payload) => { const r=await request('/auth/login',{method:'POST',body:JSON.stringify(payload)}); if(!r?.token) throw new Error('Вход выполнен, но сервер не вернул токен авторизации.'); setAuthToken(r.token); return r },
   authMe: () => request('/auth/me'),
   authLogout: async () => { try{return await request('/auth/logout',{method:'POST'})} finally{setAuthToken('')} },
   health: () => request('/health'),
@@ -48,7 +55,6 @@ export const api = {
   updateBillingSettings: (currency) => request('/billing/settings',{method:'PATCH',body:JSON.stringify({currency})}),
   billingCheckout: (plan) => request('/billing/checkout',{method:'POST',body:JSON.stringify({plan})}),
   billingConfirm: (transactionId) => request('/billing/confirm',{method:'POST',body:JSON.stringify({transaction_id:transactionId})}),
-
   team: () => request('/team'),
   addTeamMember: (payload) => request('/team',{method:'POST',body:JSON.stringify(payload)}),
   updateTeamRole: (id,role) => request('/team/'+id,{method:'PATCH',body:JSON.stringify({role})}),
@@ -110,5 +116,3 @@ export const api = {
   templates: () => request('/templates'),
   adminOverview: () => request('/admin/overview'),
 }
-
-// API is served same-origin on Vercel in production.
