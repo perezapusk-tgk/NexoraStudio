@@ -102,7 +102,7 @@ function PublicSite({data,slug}){
   const serviceItems=serviceBlock.items||[];
   const galleryItems=(gallery.items||[]).map((name,i)=>({name,image:gallery.images?.[i]}));
   const productSection=siteType==='shop'||siteType==='cafe';
-  return <div className="public-commercial" style={{'--public-accent':theme.accent,'--public-bg':theme.background,'--public-text':theme.text,'--public-radius':theme.radius,'--public-font':theme.font}}>
+  return <div className={`public-commercial site-template-${siteType}`} style={{'--public-accent':theme.accent,'--public-bg':theme.background,'--public-text':theme.text,'--public-radius':theme.radius,'--public-font':theme.font}}>
     <header className="site-header">
       <div className="site-header-inner"><button className="site-logo" onClick={()=>scrollTo('top')}><span className="site-logo-mark">{String(project.name||'N').slice(0,1)}</span><span>{project.name}</span></button>
       <nav className={menuOpen?'site-nav open':'site-nav'}>{labels.nav.map((n,i)=><button key={n} onClick={()=>scrollTo(['services','gallery','reviews','contact'][i]||'top')}>{n}</button>)}<button className="site-nav-mobile-cta" onClick={()=>action({action:'booking'})}>{labels.cta}</button></nav>
