@@ -762,3 +762,6 @@ button,.btn,.primary{min-height:40px}
   .site-template-fitness .site-gallery-grid figure.featured{grid-column:span 1}
   .site-template-cafe .site-hero,.site-template-shop .site-hero,.site-template-services .site-hero{min-height:620px}
 }
+
+
+.editor-template-hint{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 16px;margin:0 0 18px;border:1px solid rgba(0,0,0,.08);border-radius:14px;background:rgba(0,0,0,.025)}.editor-template-hint span{font-size:12px;opacity:.62;max-width:620px;line-height:1.45}@media(max-width:700px){.editor-template-hint{display:block}.editor-template-hint span{display:block;margin-top:6px}}
