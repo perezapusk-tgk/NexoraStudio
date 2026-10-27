@@ -1023,4 +1023,25 @@ function SettingsPage(){
 
 const rootElement=document.getElementById('root')
 if(!rootElement) throw new Error('Nexora root element not found')
-createRoot(rootElement).render(<AppErrorBoundary><Root/></AppErrorBoundary>)
+createRoot(rootElement).render(<AppErrorBoundary><Root/></AppErrorBoundary>)  useEffect(()=>{
+    let alive=true;
+    setData(null);setError('');
+    const qs=new URLSearchParams(window.location.search);
+    const preview=qs.get('preview')==='1';
+    const demo=qs.get('demo')==='1';
+    if(demo){
+      const type=slug.replace(/^demo-/,'');
+      const names={shop:'Mono Store',services:'North Studio'};
+      const demoItems=type==='shop'
+        ? [{name:'Новая коллекция',description:'Избранные вещи на каждый день'},{name:'Аксессуары',description:'Детали, которые дополняют образ'},{name:'Лимитированная серия',description:'Небольшой тираж, особый характер'}]
+        : [{name:'Стратегия',description:'Позиционирование и план роста бизнеса'},{name:'Дизайн и разработка',description:'Сайт и цифровой продукт под задачи компании'},{name:'Запуск и поддержка',description:'Запуск, аналитика и дальнейшее развитие'}];
+      setData({project:{name:names[type]||'Nexora',slug:type},pages:[{content:{siteType:type,templateId:type,blocks:[{type:'hero'},{type:'services',items:demoItems},{type:'gallery',items:demoItems.map(x=>x.name)}]}}],catalog:[]});
+      return ()=>{alive=false};
+    }
+    api.publicProject(slug,preview).then(v=>{
+      if(!alive)return;
+      const safe={project:v?.project||{name:'Nexora'},pages:Array.isArray(v?.pages)?v.pages:[],catalog:Array.isArray(v?.catalog)?v.catalog:[]};
+      setData(safe);
+    }).catch(e=>alive&&setError(e?.message||'Проект не найден'));
+    return ()=>{alive=false};
+  },[slug,retry])
