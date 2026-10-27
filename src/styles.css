@@ -967,3 +967,5 @@ button,.btn,.primary{min-height:40px}
   .public-product-actions{display:grid;grid-template-columns:1fr 1fr}
   .public-product-actions .text-action{width:100%}
 }
+
+.template-preview-notice{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 20px 0;padding:12px 14px;border:1px solid rgba(17,24,39,.1);border-radius:14px;background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.06);font-size:13px}.template-preview-notice .icon-btn{flex:0 0 auto}.catalog-image-input{grid-column:1/-1}.catalog-form-grid{grid-template-columns:1.1fr .55fr 1.4fr auto auto}.catalog-form-grid .catalog-image-input{min-width:0}@media(max-width:760px){.catalog-form-grid{grid-template-columns:1fr}.catalog-image-input{grid-column:auto}.template-preview-notice{margin:10px 12px 0}}
