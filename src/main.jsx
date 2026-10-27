@@ -102,7 +102,7 @@ function PublicSite({data,slug}){
   const checkout=async e=>{e.preventDefault();if(!cart.length)return;setSending(true);try{const r=await api.publicCheckout(slug,{name:form.name,phone:form.phone,email:form.email,surface:'site',items:cart.map(x=>({catalog_id:x.id,quantity:x.quantity}))});if(r?.checkout_url){window.location.assign(r.checkout_url);return}setSent({number:r?.order?.number||r?.order?.id||'—',paymentPending:true});setCart([]);setCartOpen(false)}catch(err){setSent({error:'Не удалось оформить заказ. Проверьте данные и попробуйте ещё раз.'})}finally{setSending(false)}};
   const done=v=>{setSent(v);setModal(null)};
   const heroImage=hero.image||gallery.images?.[0];
-  const serviceItems=serviceBlock.items||[];
+  const serviceItems=(serviceBlock.items||[]).map((item,i)=>typeof item==='string'?{name:item}:({...item,name:item?.name||item?.title||`Услуга ${i+1}`}));
   const galleryItems=(gallery.items||[]).map((name,i)=>({name,image:gallery.images?.[i]}));
   const productSection=siteType==='shop'||siteType==='cafe';
   const compositionClass=b=>b?.layout&&['grid','featured','split'].includes(b.layout)?` composition-${b.layout}`:'';
@@ -121,7 +121,7 @@ function PublicSite({data,slug}){
       </section>
       <section className="site-trust"><div><b>{siteType==='fitness'?'500+':'10+'}</b><span>{siteType==='fitness'?'клиентов':'лет опыта'}</span></div><div><b>{siteType==='shop'?'24/7':'100%'}</b><span>{siteType==='shop'?'приём заказов':'внимание к деталям'}</span></div><div><b>{siteType==='cafe'?'4.9':'5.0'}</b><span>средняя оценка</span></div><div><b>{siteType==='barber'?'30 мин':'1 команда'}</b><span>{siteType==='barber'?'среднее время записи':'одна точка контакта'}</span></div></section>
       <section id="services" className="site-section site-services" style={sectionStyle(serviceBlock)}><div className="site-section-heading"><div><span className="site-eyebrow">01 / {productSection?'FEATURED':'EXPERTISE'}</span><h2>{serviceBlock.title|| (siteType==='fitness'?'Программы под вашу цель':siteType==='cafe'?'Наше меню':siteType==='shop'?'Подборка сезона':'Услуги, которые работают')}</h2></div><p>{siteType==='services'?'Не просто выполняем задачи — строим понятный путь от идеи до результата.':'Выбирайте нужный формат и получайте понятный результат без лишнего.'}</p></div>
-        <div className={`site-service-grid${compositionClass(serviceBlock)}`}>{serviceItems.slice(0,6).map((x,i)=><article className="site-service-card" key={i} style={{borderRadius:serviceBlock.radius?String(serviceBlock.radius)+'px':undefined}}><span>0{i+1}</span><h3>{x}</h3><p>{siteType==='fitness'?'Программа с тренером, нагрузкой и прогрессом.':siteType==='cafe'?'Свежие продукты, понятный состав и любимый вкус.':siteType==='services'?'Структурированный процесс и команда специалистов.':'Персональный подход, аккуратная работа и внимание к деталям.'}</p><button className={buttonClass(serviceBlock)} onClick={()=>action(serviceBlock,x)}>{serviceBlock.action==='booking'?'Записаться':'Подробнее'} <ArrowUpRight size={16}/></button></article>)}</div>
+        <div className={`site-service-grid${compositionClass(serviceBlock)}`}>{serviceItems.slice(0,6).map((x,i)=><article className="site-service-card" key={i} style={{borderRadius:serviceBlock.radius?String(serviceBlock.radius)+'px':undefined}}>{x.image&&<img src={x.image} alt="" loading="lazy"/>}<span>0{i+1}</span><h3>{x.name}</h3><p>{x.description|| (siteType==='fitness'?'Программа с тренером, нагрузкой и прогрессом.':siteType==='cafe'?'Свежие продукты, понятный состав и любимый вкус.':siteType==='services'?'Структурированный процесс и команда специалистов.':'Персональный подход, аккуратная работа и внимание к деталям.')}</p><button className={buttonClass({...serviceBlock,buttonStyle:x.buttonStyle||serviceBlock.buttonStyle})} onClick={()=>action({...serviceBlock,action:x.action||serviceBlock.action,link:x.link},x.name)}>{x.cta|| (serviceBlock.action==='booking'?'Записаться':'Подробнее')} <ArrowUpRight size={16}/></button></article>)}</div>
       </section>
       {productSection&&<section id="catalog" className="site-section site-catalog"><div className="site-section-heading"><div><span className="site-eyebrow">02 / CATALOG</span><h2>{siteType==='cafe'?'Меню':'Каталог товаров'}</h2></div><p>Фото, цена и понятное действие — без лишних переходов.</p></div><div className="catalog-tabs">{categories.map(c=><button className={activeCategory===c?'active':''} key={c} onClick={()=>setActiveCategory(c)}>{c}</button>)}</div><div className="site-product-grid">{filtered.map(x=><article className="site-product" key={x.id} onClick={()=>setSelected(x)}>{(x.image_url||x.image)?<img src={x.image_url||x.image} alt="" loading="lazy"/>:<div className="site-product-placeholder">{String(x.name||'N').slice(0,1)}</div>}<div className="site-product-info"><span>{x.category||'Избранное'}</span><h3>{x.name}</h3><p>{x.description||'Описание товара'}</p><div className="site-product-bottom"><strong>{x.price!=null?money(x.price):'По запросу'}</strong><button onClick={e=>{e.stopPropagation();add(x)}}>{siteType==='shop'?'В корзину':'Добавить'} <ShoppingCart size={15}/></button></div></div></article>)}</div></section>}
       <section id="gallery" className="site-section site-gallery" style={sectionStyle(gallery)}><div className="site-section-heading"><div><span className="site-eyebrow">{productSection?'03':'02'} / SELECTED WORK</span><h2>{gallery.title||'Работы и атмосфера'}</h2></div><p>Визуальный результат говорит больше длинного описания.</p></div><div className={`site-gallery-grid${compositionClass(gallery)}`}>{galleryItems.slice(0,6).map((x,i)=><figure key={i} className={i===0?'featured':''}>{x.image&&<img src={x.image} alt={x.name} loading="lazy"/>}<figcaption><span>0{i+1}</span><b>{x.name}</b></figcaption></figure>)}</div></section>
@@ -362,6 +362,10 @@ function SectionInspector({block,index,patch,onMove,onDelete}){
   if(!block) return <aside className="editor-inspector"><div className="editor-inspector-card"><b>Выберите секцию</b><p>Нажмите на секцию слева, чтобы редактировать её.</p></div></aside>
   const title={hero:'Главный экран',services:'Услуги / товары',gallery:'Галерея',testimonials:'Отзывы',faq:'FAQ',contacts:'Контакты',cta:'Призыв к действию'}[block.type]||'Секция'
   const set=(key,value)=>patch(index,{[key]:value})
+  const serviceItems=(block.items||[]).map((item,i)=>typeof item==='string'?{name:item}:({...item,name:item?.name||`Услуга ${i+1}`}))
+  const updateService=(itemIndex,key,value)=>{const next=serviceItems.map((item,i)=>i===itemIndex?{...item,[key]:value}:item);set('items',next)}
+  const addService=()=>set('items',[...serviceItems,{name:`Новая услуга ${serviceItems.length+1}`,description:'',image:'',cta:'Подробнее',action:'booking'}])
+  const removeService=itemIndex=>set('items',serviceItems.filter((_,i)=>i!==itemIndex))
   return <aside className="editor-inspector">
     <div className="editor-inspector-card"><b>{title}</b><p>Секция {index+1}. Изменения сразу попадают в живой предпросмотр.</p></div>
     <div className="editor-inspector-fields">
@@ -374,9 +378,10 @@ function SectionInspector({block,index,patch,onMove,onDelete}){
       </>}
       {['services','gallery','testimonials','faq'].includes(block.type)&&<>
         <label>Заголовок<input value={block.title||''} onChange={e=>set('title',e.target.value)}/></label>
-        <label>Элементы<textarea rows="7" value={(block.items||[]).join('\n')} onChange={e=>set('items',e.target.value.split('\n').filter(Boolean))}/></label>
+        {block.type!=='services'&&<label>Элементы<textarea rows="7" value={(block.items||[]).map(x=>typeof x==='string'?x:x?.name||'').join('\n')} onChange={e=>set('items',e.target.value.split('\n').filter(Boolean))}/></label>}
         <label>Колонки<input type="number" min="1" max="4" value={block.columns||3} onChange={e=>set('columns',Number(e.target.value)||3)}/></label>
       </>}
+      {block.type==='services'&&<div className="editor-service-items"><div className="editor-inline-head"><b>Карточки услуг</b><button type="button" className="filter" onClick={addService}>+ Добавить</button></div>{serviceItems.length===0&&<div className="editor-empty-mini">Добавьте первую карточку услуги.</div>}{serviceItems.map((item,i)=><div className="editor-service-item" key={i}><div className="editor-service-item-head"><span>0{i+1}</span><b>{item.name||`Услуга ${i+1}`}</b><button type="button" className="icon-btn" onClick={()=>removeService(i)} aria-label="Удалить карточку">×</button></div><label>Название<input value={item.name||''} onChange={e=>updateService(i,'name',e.target.value)}/></label><label>Описание<textarea rows="3" value={item.description||''} onChange={e=>updateService(i,'description',e.target.value)}/></label><label>Изображение<input value={item.image||''} onChange={e=>updateService(i,'image',e.target.value)} placeholder="https://..."/></label><label>Текст кнопки<input value={item.cta||''} onChange={e=>updateService(i,'cta',e.target.value)} placeholder="Подробнее"/></label><label>Действие<select value={item.action||'booking'} onChange={e=>updateService(i,'action',e.target.value)}><option value="booking">Заявка / запись</option><option value="catalog">Каталог</option><option value="contact">Контакты</option><option value="link">Внешняя ссылка</option></select></label>{item.action==='link'&&<label>Ссылка<input value={item.link||''} onChange={e=>updateService(i,'link',e.target.value)} placeholder="https://..."/></label>}</div>)}</div>}
       {block.type==='contacts'&&<>
         <label>Заголовок<input value={block.title||''} onChange={e=>set('title',e.target.value)}/></label>
         <label>Текст<textarea rows="6" value={block.text||''} onChange={e=>set('text',e.target.value)}/></label>
@@ -387,7 +392,7 @@ function SectionInspector({block,index,patch,onMove,onDelete}){
         <label>Текст<textarea rows="5" value={block.text||''} onChange={e=>set('text',e.target.value)}/></label>
         <label>Кнопка<input value={block.button||''} onChange={e=>set('button',e.target.value)}/></label>
       </>}
-            <label>Стиль текста<select value={block.align||'left'} onChange={e=>set('align',e.target.value)}><option value="left">Слева</option><option value="center">По центру</option><option value="right">Справа</option></select></label>
+      <label>Стиль текста<select value={block.align||'left'} onChange={e=>set('align',e.target.value)}><option value="left">Слева</option><option value="center">По центру</option><option value="right">Справа</option></select></label>
       {block.type==='hero'&&<label>Кнопка ведёт<select value={block.action||'booking'} onChange={e=>set('action',e.target.value)}><option value="booking">К заявке / записи</option><option value="catalog">К каталогу</option><option value="contact">К контактам</option></select></label>}
       {['services','gallery','testimonials'].includes(block.type)&&<label>Композиция<select value={block.layout||'grid'} onChange={e=>set('layout',e.target.value)}><option value="grid">Сетка</option><option value="featured">Выделенная карточка</option><option value="split">Широкая секция</option></select></label>}
       <label>Размер заголовка<select value={block.headingSize||'large'} onChange={e=>set('headingSize',e.target.value)}><option value="small">Маленький</option><option value="medium">Средний</option><option value="large">Большой</option><option value="xl">Очень большой</option></select></label>
@@ -397,14 +402,9 @@ function SectionInspector({block,index,patch,onMove,onDelete}){
       <label>Скругление<select value={block.radius||18} onChange={e=>set('radius',Number(e.target.value)||0)}><option value="0">Без скругления</option><option value="12">12 px</option><option value="18">18 px</option><option value="28">28 px</option></select></label>
       <label>Внутренний отступ<select value={block.spacing||'normal'} onChange={e=>set('spacing',e.target.value)}><option value="compact">Компактный</option><option value="normal">Обычный</option><option value="spacious">Большой</option></select></label>
     </div>
-    <div className="editor-inspector-actions">
-      <button className="filter" onClick={()=>onMove(-1)} disabled={index===0}>↑ Выше</button>
-      <button className="filter" onClick={()=>onMove(1)} disabled={index<0}>↓ Ниже</button>
-      <button className="filter" onClick={onDelete}>Удалить секцию</button>
-    </div>
+    <div className="editor-inspector-actions"><button className="filter" onClick={()=>onMove(-1)} disabled={index===0}>↑ Выше</button><button className="filter" onClick={()=>onMove(1)} disabled={index<0}>↓ Ниже</button><button className="filter" onClick={onDelete}>Удалить секцию</button></div>
   </aside>
 }
-
 function ProjectWorkspace({project,data,view,setView,onProjectUpdated,onBack,onRefresh}){
   const current=data?.project||project||{}
   const pages=Array.isArray(data?.pages)?data.pages:[]
