@@ -916,3 +916,19 @@ button,.btn,.primary{min-height:40px}
   .template-preview-cart{flex-direction:column;align-items:stretch}
   .template-actions{flex-wrap:wrap}
 }
+
+
+/* Template image & contrast fix */
+.public-hero{background-size:cover;background-position:center;position:relative;min-height:560px;display:flex;align-items:flex-end;overflow:hidden}
+.public-hero-content{position:relative;z-index:1;max-width:850px}
+.public-hero h1,.public-hero p,.public-hero small{color:#fff}
+.public-hero h1{text-shadow:0 3px 24px rgba(0,0,0,.34)}
+.public-hero p{color:rgba(255,255,255,.84);text-shadow:0 2px 14px rgba(0,0,0,.28)}
+.public-product-card{overflow:hidden;padding:0!important}
+.public-product-image{width:100%;height:230px;display:block;object-fit:cover;background:#eceef1}
+.public-product-card>b,.public-product-card>span,.public-product-card>strong,.public-product-actions{margin-left:20px;margin-right:20px}
+.public-product-card>b{margin-top:17px}
+.public-product-card>strong{margin-bottom:2px}
+.public-product-actions{display:flex;gap:14px;padding-bottom:20px}
+.public-product-actions .text-action{font-size:12px}
+@media(max-width:640px){.public-hero{min-height:500px}.public-product-image{height:200px}}
