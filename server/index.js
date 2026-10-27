@@ -911,7 +911,7 @@ app.post('/api/projects', async (req, res) => {
   const project={id:crypto.randomUUID(),studio_id:req.user.studio_id,name,slug,project_type:projectType,status:'draft',domain:null,settings:{miniApp:{enabled:projectType.includes('miniapp')},...(clientId?{clientId}:{} )}}
   memoryProjects.unshift(project)
   memoryPages.set(project.id,[{id:crypto.randomUUID(),title:'Главная',slug:'home',published:false,content:{blocks:template.blocks,theme:template.theme,templateId:template.id,siteType:template.id}}])
-  memoryCatalog.set(project.id,template.catalog.map(item=>({id:crypto.randomUUID(),project_id:project.id,...item})))
+  memoryCatalog.set(project.id,template.catalog.map(item=>({id:crypto.randomUUID(),project_id:project.id,...item,image_url:item.image_url||item.image||null})))
   return res.status(201).json({project})
 }
   const client=await pool.connect()
@@ -928,7 +928,7 @@ app.post('/api/projects', async (req, res) => {
     const template=templateDefinition(templateId)
     const { rows } = await client.query('insert into projects (studio_id,name,slug,project_type,status,settings) values ($1,$2,$3,$4,$5,$6) returning *',[req.user.studio_id,name,slug,projectType,'draft',JSON.stringify({miniApp:{enabled:projectType.includes('miniapp')},...(clientId?{clientId}:{} )})])
     await client.query('insert into pages(project_id,title,slug,content) values($1,$2,$3,$4)',[rows[0].id,'Главная','home',JSON.stringify({blocks:template.blocks,theme:template.theme,templateId:template.id,siteType:template.id})])
-    for(const item of template.catalog) await client.query('insert into catalog_items(project_id,name,description,price,currency,active) values($1,$2,$3,$4,$5,$6)',[rows[0].id,item.name,item.description,item.price,item.currency,true])
+    for(const item of template.catalog) await client.query('insert into catalog_items(project_id,name,description,price,currency,image_url,active) values($1,$2,$3,$4,$5,$6,$7)',[rows[0].id,item.name,item.description,item.price,item.currency,item.image_url||item.image||null,true])
     await client.query('commit')
     res.status(201).json({project:rows[0]})
   }catch(error){
@@ -964,8 +964,8 @@ app.post('/api/projects/:id/duplicate',async(req,res)=>{
   const project=q.rows[0]
   const pages=await pool.query('select title,slug,content from pages where project_id::text=$1::text order by created_at',[source.id])
   for(const p of pages.rows){await pool.query('insert into pages(project_id,title,slug,content,published) values($1,$2,$3,$4,false)',[project.id,p.title,p.slug,JSON.stringify(p.content||{blocks:[]})])}
-  const items=await pool.query('select name,description,price,currency,active from catalog_items where project_id::text=$1::text order by created_at',[source.id])
-  for(const item of items.rows){await pool.query('insert into catalog_items(project_id,name,description,price,currency,active) values($1,$2,$3,$4,$5,$6)',[project.id,item.name,item.description,item.price,item.currency,item.active])}
+  const items=await pool.query('select name,description,price,currency,image_url,active from catalog_items where project_id::text=$1::text order by created_at',[source.id])
+  for(const item of items.rows){await pool.query('insert into catalog_items(project_id,name,description,price,currency,image_url,active) values($1,$2,$3,$4,$5,$6,$7)',[project.id,item.name,item.description,item.price,item.currency,item.image_url||null,item.active])}
   res.status(201).json({project})
 })
 app.post('/api/projects/:id/archive',async(req,res)=>{
@@ -1112,7 +1112,8 @@ app.get('/api/public/:slug', async (req,res) => {
       description: item.description || '',
       price: Number(item.price || 0),
       currency: String(item.currency || 'RUB').toUpperCase(),
-      image_url: item.image_url || null,
+      image_url: item.image_url || item.image || null,
+      image: item.image_url || item.image || null,
       active: true
     }))
     return res.json({project:publicProject,pages:(memoryPages.get(project.id)||[]).filter(x=>x.published),catalog:publicCatalog})
@@ -1441,7 +1442,7 @@ app.post('/api/projects/:id/unpublish',async(req,res)=>{const project=await owne
 app.get('/api/projects/:id/catalog', async (req,res) => {
   const id = String(req.params.id||'').trim()
   if (!id) return res.status(400).json({error:'Проект не указан'})
-  if (!pool) { const project=memoryProjects.find(x=>(x.id===id||x.slug===id)&&x.studio_id===req.user.studio_id); if(!project)return res.status(404).json({error:'Проект не найден'}); return res.json({ items: memoryCatalog.get(project.id) || [] }) }
+  if (!pool) { const project=memoryProjects.find(x=>(x.id===id||x.slug===id)&&x.studio_id===req.user.studio_id); if(!project)return res.status(404).json({error:'Проект не найден'}); return res.json({ items: (memoryCatalog.get(project.id) || []).map(item=>({...item,image:item.image||item.image_url||null,image_url:item.image_url||item.image||null})) }) }
   // Resolve the project first and keep every comparison explicitly text-to-text.
   // This avoids PostgreSQL text/uuid operator mismatches on installations with
   // mixed legacy column types.
