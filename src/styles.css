@@ -844,3 +844,25 @@ button,.btn,.primary{min-height:40px}
 
 /* Service card editor */
 .editor-service-items{display:grid;gap:10px;margin-top:2px}.editor-inline-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.editor-inline-head b{font-size:12px}.editor-service-item{display:grid;gap:8px;padding:10px;border:1px solid rgba(0,0,0,.08);border-radius:12px;background:#fff}.editor-service-item-head{display:grid;grid-template-columns:24px minmax(0,1fr) 28px;gap:7px;align-items:center}.editor-service-item-head span{font-size:10px;opacity:.45}.editor-service-item-head b{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.editor-service-item-head .icon-btn{width:28px;height:28px;padding:0}.editor-empty-mini{padding:10px;border:1px dashed rgba(0,0,0,.12);border-radius:10px;font-size:11px;opacity:.62}.editor-live-preview .site-service-card>img{display:block;width:100%;height:180px;object-fit:cover;object-position:var(--editor-image-position,center);margin:-1px -1px 14px;width:calc(100% + 2px)}
+
+/* Final readability + commercial template fixes */
+.public-commercial{color:var(--public-text,#111827);background:var(--public-bg,#fff)}
+.public-commercial .site-section-heading h2,.public-commercial .site-section-heading p,.public-commercial .site-service-card h3,.public-commercial .site-service-card p,.public-commercial .site-service-card span,.public-commercial .site-product-info h3,.public-commercial .site-product-info p,.public-commercial .site-product-info span{color:inherit}
+.public-commercial .site-service-card{color:#111827!important;background:#fff!important}
+.public-commercial .site-service-card h3{color:#111827!important;text-shadow:none!important}
+.public-commercial .site-service-card p,.public-commercial .site-service-card span{color:#5f6368!important}
+.public-commercial .site-services{color:#111827}
+.public-commercial .site-services .site-section-heading h2{color:#111827!important}
+.site-template-fitness .site-services,.site-template-fitness .site-services .site-section-heading{color:#fff}
+.site-template-fitness .site-services .site-section-heading h2{color:#fff!important}
+.site-template-fitness .site-service-card{background:#181a1e!important;color:#fff!important;border-color:#30343b!important}
+.site-template-fitness .site-service-card h3{color:#fff!important}
+.site-template-fitness .site-service-card p,.site-template-fitness .site-service-card span{color:#b9bec7!important}
+.site-template-shop .site-services,.site-template-services .site-services{color:#111827!important}
+.site-template-shop .site-service-card,.site-template-services .site-service-card{color:#111827!important;background:#fff!important}
+.site-template-shop .site-service-card h3,.site-template-services .site-service-card h3{color:#111827!important}
+.site-template-shop .site-service-card p,.site-template-services .site-service-card p{color:#5f6368!important}
+.site-template-shop .site-catalog,.site-template-services .site-gallery{color:#111827}
+.site-template-shop .site-catalog .site-section-heading h2,.site-template-services .site-gallery .site-section-heading h2{color:#111827!important}
+.public-commercial .site-service-card button{color:inherit}
+@media(max-width:600px){.site-template-shop .site-service-card,.site-template-services .site-service-card{min-height:240px}.site-template-shop .site-service-card h3,.site-template-services .site-service-card h3{font-size:26px}}
