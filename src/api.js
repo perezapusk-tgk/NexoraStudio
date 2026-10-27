@@ -114,5 +114,6 @@ export const api = {
   analytics: () => request('/analytics/overview'),
   projectAnalytics: (id) => request('/projects/' + id + '/analytics'),
   templates: () => request('/templates'),
+  template: (id) => request('/templates/' + encodeURIComponent(String(id||''))),
   adminOverview: () => request('/admin/overview'),
 }
