@@ -214,18 +214,22 @@ function demoProjects(){return [
   {id:'demo-fitness',studio_id:demoStudio.id,name:'Urban Fitness',slug:'urban-fitness',project_type:'miniapp',status:'published',domain:null},
   {id:'demo-cafe',studio_id:demoStudio.id,name:'Mokka Coffee',slug:'mokka-coffee',project_type:'website',status:'published',domain:null}
 ]}
-function demoCatalog(projectId){return TEMPLATE_DEFINITIONS.services.catalog.map((x,i)=>({id:'demo-cat-'+projectId+'-'+i,project_id:projectId,...x,active:true}))}
+function demoCatalog(projectId){
+  const project=demoProjects().find(x=>x.id===projectId)
+  const id=String(project?.name||'').toLowerCase().includes('barber')?'barber':String(project?.name||'').toLowerCase().includes('beauty')?'beauty':String(project?.name||'').toLowerCase().includes('fitness')?'fitness':String(project?.name||'').toLowerCase().includes('mokka')?'cafe':'services'
+  return TEMPLATE_DEFINITIONS[id].catalog.map((x,i)=>({id:'demo-cat-'+projectId+'-'+i,project_id:projectId,...x,active:true}))
+}
 function demoLeads(){return [{id:'lead-1',project_id:'demo-barber',project_slug:'barber-house',name:'Иван',phone:'+7 900 000-00-01',email:'ivan@example.com',message:'Хочу записаться',status:'new',created_at:new Date().toISOString()}]}
 function demoClients(){return [{id:'client-1',studio_id:demoStudio.id,name:'Иван',phone:'+7 900 000-00-01',email:'ivan@example.com',created_at:new Date().toISOString()}]}
 function demoBookings(){return [{id:'booking-1',project_id:'demo-barber',project_slug:'barber-house',client_id:'client-1',client_name:'Иван',service_name:'Мужская стрижка',starts_at:new Date(Date.now()+86400000).toISOString(),status:'confirmed',created_at:new Date().toISOString()}]}
 function demoPayments(){return [{id:'pay-1',project_id:'demo-barber',client_id:'client-1',amount:85,currency:'RUB',status:'paid',description:'Заказ',created_at:new Date().toISOString()}]}
 function demoInvoices(){return [{id:'inv-1',project_id:'demo-barber',client_id:'client-1',number:'INV-DEMO-001',amount:85,currency:'RUB',status:'paid',description:'Счёт',created_at:new Date().toISOString()}]}
 const memoryProjects = demoProjects()
-const memoryPages = new Map(memoryProjects.map(p => [p.id, [{id:'page-'+p.id,title:'Главная',slug:'home',published:p.status==='published',content:{blocks:[
-  {type:'hero',headline:p.name,subheadline:'Современный цифровой опыт для ваших клиентов.',cta:'Оставить заявку'},
-  {type:'services',title:'Услуги',items:['Основная услуга','Популярная услуга','Премиум услуга']},
-  {type:'contacts',title:'Контакты',text:'Свяжитесь с нами удобным способом.'}
-]}}]]))
+const memoryPages = new Map(memoryProjects.map(p => {
+  const id=String(p.name||'').toLowerCase().includes('barber')?'barber':String(p.name||'').toLowerCase().includes('beauty')?'beauty':String(p.name||'').toLowerCase().includes('fitness')?'fitness':String(p.name||'').toLowerCase().includes('mokka')?'cafe':'services'
+  const template=TEMPLATE_DEFINITIONS[id]||TEMPLATE_DEFINITIONS.services
+  return [p.id,[{id:'page-'+p.id,title:'Главная',slug:'home',published:p.status==='published',content:{blocks:template.blocks,theme:template.theme,templateId:template.id,siteType:template.id}}]]
+}))
 const memoryCatalog = new Map(memoryProjects.map(p => [p.id, demoCatalog(p.id)]))
 const memoryLeads = [...demoLeads()]
 const memoryClients = [...demoClients()]
