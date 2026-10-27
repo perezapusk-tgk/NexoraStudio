@@ -1,0 +1,83 @@
+/* Nexora Studio — premium interface layer */
+:root{
+  --nx-ink:#11131a;
+  --nx-muted:#667085;
+  --nx-line:#e8eaf0;
+  --nx-soft:#f6f7fb;
+  --nx-accent:#635bff;
+}
+body{background:var(--nx-soft)!important}
+.topbar{box-shadow:0 1px 0 rgba(15,23,42,.04),0 8px 28px rgba(15,23,42,.035)!important}
+.content{max-width:1560px!important}
+.page-head h1{font-weight:760!important;letter-spacing:-.055em!important}
+.page-head p{font-size:13px!important;color:#7a8496!important}
+.metrics{gap:14px!important}
+.metric{position:relative;overflow:hidden;background:linear-gradient(145deg,#fff 0%,#fcfcff 100%)!important;border-color:#e7e9f0!important}
+.metric:after{content:"";position:absolute;right:-30px;top:-35px;width:110px;height:110px;border-radius:50%;background:rgba(99,91,255,.045);pointer-events:none}
+.metric-value{font-weight:780!important}
+.grid-main{gap:16px!important}
+.card-head{padding:17px 19px!important}
+.card-head h2{font-size:14px!important;font-weight:720!important}
+.project-row{min-height:64px;padding:12px 19px!important;transition:background .16s ease,transform .16s ease}
+.project-row:hover{background:#fafaff!important}
+.quick{margin-top:28px!important}
+.quick-card{min-height:66px!important;background:linear-gradient(145deg,#fff,#fcfcff)!important}
+.quick-card b{font-size:11px!important}
+.quick-card span{font-size:9px!important}
+.filter.active{box-shadow:0 5px 15px rgba(24,24,27,.13)!important}
+
+/* Workspace / editor */
+.workspace-page{gap:20px!important}
+.workspace-head{padding:2px 0 4px}
+.workspace-title h1{font-weight:760!important;letter-spacing:-.05em!important}
+.workspace-actions .primary{padding-inline:15px!important}
+.workspace-tabs{background:#fff!important;border:1px solid var(--nx-line)!important;border-radius:13px!important;padding:4px!important;box-shadow:0 3px 14px rgba(15,23,42,.035)!important}
+.workspace-tabs button{border-radius:9px!important}
+.editor-theme,.editor-canvas,.catalog-form,.settings-form,.workspace-card{border-color:#e5e8ef!important}
+.editor-theme{background:linear-gradient(145deg,#fff,#fbfbff)!important}
+.editor-live-preview{background:#eef0f5!important;border-radius:18px!important;box-shadow:inset 0 0 0 1px rgba(15,23,42,.04)!important}
+.editor-live-preview .site-service-card{transition:transform .18s ease,box-shadow .18s ease!important}
+.editor-live-preview .site-service-card:hover{transform:translateY(-2px)!important;box-shadow:0 14px 34px rgba(15,23,42,.10)!important}
+.editor-service-item{border-color:#e7e9ef!important;background:#fff!important;box-shadow:0 2px 8px rgba(15,23,42,.025)!important}
+.editor-service-item:hover{border-color:#d7d9e4!important}
+.editor-service-item-head b{font-size:12px!important}
+.editor-inline-head b{font-size:12px!important}
+
+/* Public website: premium, not feed-like */
+.public-commercial{background:#fff!important}
+.public-commercial .site-header{background:rgba(255,255,255,.86)!important;backdrop-filter:blur(18px)!important;border-bottom:1px solid rgba(17,24,39,.07)!important}
+.public-commercial .site-header-inner{max-width:1240px!important}
+.public-commercial .site-logo{font-weight:760!important;letter-spacing:-.03em!important}
+.public-commercial .site-logo-mark{box-shadow:0 8px 20px rgba(0,0,0,.14)!important}
+.public-commercial .site-nav button{font-weight:560!important}
+.public-commercial .site-hero{position:relative!important;overflow:hidden!important}
+.public-commercial .site-hero:after{content:"";position:absolute;inset:auto -10% -35% 35%;height:70%;background:radial-gradient(circle,rgba(255,255,255,.16),transparent 65%);pointer-events:none}
+.public-commercial .site-hero-inner{position:relative!important;z-index:1!important;max-width:1240px!important}
+.public-commercial .site-hero-copy h1{font-weight:800!important;letter-spacing:-.065em!important;line-height:.98!important}
+.public-commercial .site-hero-copy p{max-width:620px!important;font-size:17px!important;line-height:1.65!important}
+.public-commercial .site-trust{max-width:1240px!important;margin:0 auto!important;border-left:1px solid #eee!important;border-right:1px solid #eee!important}
+.public-commercial .site-section,.public-commercial .site-about,.public-commercial .site-contact{max-width:1240px!important;margin-left:auto!important;margin-right:auto!important}
+.public-commercial .site-section-heading h2,.public-commercial .site-about h2,.public-commercial .site-contact h2{font-weight:780!important;letter-spacing:-.055em!important}
+.public-commercial .site-service-grid{gap:16px!important}
+.public-commercial .site-service-card{background:#fff!important;border:1px solid #e9ebf0!important;box-shadow:0 8px 28px rgba(15,23,42,.045)!important;transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease!important}
+.public-commercial .site-service-card:hover{transform:translateY(-5px)!important;box-shadow:0 20px 45px rgba(15,23,42,.10)!important;border-color:#dfe2ea!important}
+.public-commercial .site-service-card img{height:210px!important}
+.public-commercial .site-service-card h3{font-weight:730!important;letter-spacing:-.025em!important}
+.public-commercial .site-catalog .site-product-card{border:1px solid #e8eaf0!important;box-shadow:0 8px 28px rgba(15,23,42,.045)!important}
+.public-commercial .site-testimonial,.public-commercial .site-faq details{border-color:#e8eaf0!important;box-shadow:0 6px 22px rgba(15,23,42,.035)!important}
+.public-commercial .site-contact{border-radius:28px!important;overflow:hidden!important}
+.public-commercial .site-footer{max-width:1240px!important;margin:0 auto!important}
+
+/* Better mobile */
+@media(max-width:760px){
+  .topbar{box-shadow:0 1px 0 rgba(15,23,42,.04)!important}
+  .content{padding:18px 14px 30px!important}
+  .metrics{gap:9px!important}
+  .metric{min-width:0}
+  .workspace-head{grid-template-columns:1fr!important;align-items:flex-start!important}
+  .workspace-actions{width:100%!important}
+  .workspace-actions>*{flex:1!important}
+  .public-commercial .site-hero-copy h1{font-size:clamp(42px,11vw,64px)!important}
+  .public-commercial .site-hero-copy p{font-size:15px!important}
+  .public-commercial .site-trust{grid-template-columns:1fr 1fr!important}
+}
