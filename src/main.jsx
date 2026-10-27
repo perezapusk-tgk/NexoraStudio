@@ -192,6 +192,7 @@ function PublicMiniApp({data,slug}){
   const add=item=>setCart(v=>{const found=v.find(x=>x.id===item.id);return found?v.map(x=>x.id===item.id?{...x,quantity:x.quantity+1}:x):[...v,{...item,quantity:1}]});
   const change=(id,d)=>setCart(v=>v.map(x=>x.id===id?{...x,quantity:Math.max(0,x.quantity+d)}:x).filter(x=>x.quantity>0));
   const total=cart.reduce((s,x)=>s+Number(x.price||0)*x.quantity,0);
+  const openCatalog=()=>document.getElementById('mini-public-catalog')?.scrollIntoView({behavior:'smooth',block:'start'});
   const checkout=async e=>{e.preventDefault();if(!cart.length)return;setSending(true);try{const result=await api.publicCheckout(slug,{name:form.name,phone:form.phone,email:form.email,surface:'miniapp',items:cart.map(x=>({catalog_id:x.id,quantity:x.quantity}))});if(result?.checkout_url){window.location.assign(result.checkout_url);return}setSent({number:result?.order?.number||result?.order?.id||'—',paymentPending:true});setOpen(false);setCart([]);setForm({name:'',phone:'',email:''})}catch(error){setSent({error:'Не удалось оформить заказ. Проверьте данные и попробуйте ещё раз.'});}finally{setSending(false)}};
   return <div className="mini-public" style={{background:theme.background,color:theme.text,'--mini-accent':theme.accent}}>
     <div className="mini-public-top"><div><b>{project.name}</b><span>Telegram Mini App</span></div>{cart.length>0&&<button className="filter" onClick={()=>setOpen(true)}>Корзина · {cart.reduce((s,x)=>s+x.quantity,0)}</button>}</div>
