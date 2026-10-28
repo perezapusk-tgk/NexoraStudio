@@ -426,7 +426,7 @@ function ProjectWorkspace({project,data,view,setView,onProjectUpdated,onBack,onR
     }catch(e){setError(e.message||'Не удалось сохранить товар')}finally{setBusy('')}
   }
   const editCatalog=async item=>{setEditCatalogId(item.id);setNewItem({name:item.name||'',price:String(item.price??''),description:item.description||'',image:item.image||item.image_url||''});setError('');setNotice('')}
-  const removeCatalog=async id=>{if(!window.confirm('Удалить товар из каталога?'))return;setBusy('delete-catalog');try{await api.deleteCatalogItem(current.id,id);setCatalog(v=>v.filter(x=>x.id!==id))}catch(e){setError(e.message||'Не удалось удалить товар')}finally{setBusy('')}}
+  const removeCatalog=async id=>{setBusy('delete-catalog');try{await api.deleteCatalogItem(current.id,id);setCatalog(v=>v.filter(x=>x.id!==id));setNotice('Товар удалён')}catch(e){setError(e.message||'Не удалось удалить товар')}finally{setBusy('')}}
   const configureBot=async()=>{
     if(!telegramToken.trim())return setError('Вставьте токен Telegram-бота')
     setBusy('telegram');setError('')
@@ -968,6 +968,8 @@ function SettingsPage(){
   const [billingAccount,setBillingAccount]=useState(null)
   const [font,setFont]=useState(localStorage.getItem('nexora_font')||'Inter')
   const [accent,setAccent]=useState(localStorage.getItem('nexora_accent')||'#111827')
+  const [teamDialog,setTeamDialog]=useState(null)
+  const [teamMessage,setTeamMessage]=useState('')
   useEffect(()=>{document.documentElement.style.setProperty('--accent',accent);document.documentElement.style.setProperty('--font-family',font);localStorage.setItem('nexora_font',font);localStorage.setItem('nexora_accent',accent)},[font,accent])
   const labels={profile:'Профиль студии',branding:'Брендинг',team:'Команда',notifications:'Уведомления',payments:'Оплата',security:'Безопасность',billing:'Тариф и оплата'}
   const loadTeam=async()=>{try{const r=await api.team();setTeam(r.members||[]);setInvites(r.invitations||[])}catch{}}
@@ -975,20 +977,23 @@ function SettingsPage(){
   useEffect(()=>{if(tab==='billing'){api.billingAccount().then(setBillingAccount).catch(()=>{});api.studioUsage().then(setUsage).catch(()=>{})}},[tab])
   const changeLanguage=v=>{setUiLanguage(v);setLanguage(v)}
   const changeCurrency=async value=>{const next=String(value||'RUB').toUpperCase();setBillingCurrency(next);setCurrency(next);try{await api.updateBillingSettings(next)}catch{}}
-  const add=async()=>{if(!form.email)return;setBusy(true);try{await api.addTeamMember(form);setForm({email:'',role:'member'});await loadTeam();window.alert('Приглашение создано. Скопируйте ссылку из списка приглашений.')}catch(e){window.alert(e.message||'Не удалось создать приглашение')}finally{setBusy(false)}}
-  const role=async(id,v)=>{try{await api.updateTeamRole(id,v);await loadTeam()}catch{window.alert('Не удалось изменить роль')}}
-  const remove=async id=>{if(!window.confirm('Удалить участника?'))return;try{await api.removeTeamMember(id);await loadTeam()}catch{window.alert('Не удалось удалить участника')}}
-  const revoke=async id=>{if(!window.confirm('Отозвать приглашение?'))return;try{await api.revokeTeamInvitation(id);await loadTeam()}catch{window.alert('Не удалось отозвать приглашение')}}
+  const add=async()=>{if(!form.email)return;setBusy(true);setTeamMessage('');try{await api.addTeamMember(form);setForm({email:'',role:'member'});await loadTeam();setTeamMessage('Приглашение создано. Ссылка доступна в списке приглашений.')}catch(e){setTeamMessage(e.message||'Не удалось создать приглашение')}finally{setBusy(false)}}
+  const role=async(id,v)=>{setTeamMessage('');try{await api.updateTeamRole(id,v);await loadTeam();setTeamMessage('Роль участника обновлена.')}catch(e){setTeamMessage(e.message||'Не удалось изменить роль')}}
+  const remove=async id=>setTeamDialog({type:'remove',id,title:'Удалить участника?',text:'Доступ участника к рабочему пространству будет удалён.'})
+  const revoke=async id=>setTeamDialog({type:'revoke',id,title:'Отозвать приглашение?',text:'Ссылка приглашения перестанет работать.'})
+  const confirmTeamAction=async()=>{if(!teamDialog)return;const {type,id}=teamDialog;setBusy(type);setTeamDialog(null);setTeamMessage('');try{if(type==='remove')await api.removeTeamMember(id);else await api.revokeTeamInvitation(id);await loadTeam();setTeamMessage(type==='remove'?'Участник удалён.':'Приглашение отозвано.')}catch(e){setTeamMessage(e.message||(type==='remove'?'Не удалось удалить участника':'Не удалось отозвать приглашение'))}finally{setBusy(false)}}
   const switchPlan=async()=>{setTab('payments')}
   const planPrice=p=>Number(p.rubPrice??0).toLocaleString('ru-RU')
   return <><Header eyebrow="Рабочее пространство" title="Настройки" description="Управляйте студией, командой, безопасностью и доступами."/>
     <div className="settings-layout">
       <div className="settings-nav card">{Object.keys(labels).map(x=><button key={x} className={tab===x?'selected':''} onClick={()=>setTab(x)}>{labels[x]}</button>)}</div>
       <section className="card settings-form">
+        {teamMessage&&<div className="template-preview-notice" role="status"><span>{teamMessage}</span><button className="icon-btn" onClick={()=>setTeamMessage('')} aria-label="Закрыть"><X size={16}/></button></div>}
         {tab==='profile'&&<div className="setting-block"><h2>Профиль студии</h2><span>Основная информация рабочего пространства.</span><label>Название студии<input value="Nexora Studio" readOnly/></label><label>Рабочий email<input value="studio@nexora.local" readOnly/></label><div className="catalog-form-grid"><label>Язык интерфейса<select value={language} onChange={e=>changeLanguage(e.target.value)}><option value="ru">Русский</option><option value="en">Английский</option></select></label><label>Валюта оплаты<select value={billingCurrency} onChange={e=>changeCurrency(e.target.value)}><option value="RUB">Российский рубль (₽)</option><option value="USD">Доллар США ($)</option></select></label></div></div>}
         {tab==='team'&&<><div className="setting-block"><h2>Команда студии</h2><span>Управляйте ролями и доступами сотрудников.</span><div className="team-list">{team.map(m=><div className="team-row" key={m.id}><div className="user-avatar">{String(m.name||'?').slice(0,1)}</div><div className="team-person"><b>{m.name}</b><span>{m.email}</span></div>{m.role==='owner'?<span className="status success"><i/>Владелец</span>:<><select value={m.role} onChange={e=>role(m.id,e.target.value)}><option value="admin">Администратор</option><option value="member">Участник</option><option value="viewer">Наблюдатель</option></select><button className="filter" onClick={()=>remove(m.id)}>Удалить</button></>}</div>)}</div></div><div className="setting-block"><h2>Пригласить сотрудника</h2><div className="team-add-grid"><input type="email" placeholder="Email сотрудника" value={form.email} onChange={e=>setForm(v=>({...v,email:e.target.value}))}/><select value={form.role} onChange={e=>setForm(v=>({...v,role:e.target.value}))}><option value="admin">Администратор</option><option value="member">Участник</option><option value="viewer">Наблюдатель</option></select><button className="primary" disabled={busy} onClick={add}>{busy?'Создаём…':'Создать приглашение'}</button></div></div><div className="setting-block"><h2>Ожидают приглашения</h2>{invites.length===0?<div className="empty-editor"><b>Нет активных приглашений</b></div>:<div className="team-list">{invites.map(inv=><div className="team-row" key={inv.id}><div className="team-person"><b>{inv.email}</b><span>Истекает {new Date(inv.expires_at).toLocaleDateString('ru-RU')}</span></div><span className="status draft"><i/>Ожидает</span><button className="filter" onClick={()=>revoke(inv.id)}>Отозвать</button></div>)}</div>}</div></>}
        </section>
      </div>
+     {teamDialog&&<div className="public-modal-backdrop" onMouseDown={()=>setTeamDialog(null)}><section className="public-modal card" onMouseDown={e=>e.stopPropagation()}><button className="public-close" onClick={()=>setTeamDialog(null)}><X size={18}/></button><div className="eyebrow">Подтверждение</div><h2>{teamDialog.title}</h2><p>{teamDialog.text}</p><div className="setting-actions"><button className="filter" onClick={()=>setTeamDialog(null)}>Отмена</button><button className="primary" onClick={confirmTeamAction} disabled={busy}>{busy?'Выполняем…':'Подтвердить'}</button></div></section></div>}
    </>
  }
 
